@@ -954,15 +954,9 @@ public:
 #ifdef POLY_DEBUG
 			ASSERT(l1.poly.contains(r1.poly));
 #endif
-			l1.poly.bounded_H79_extrapolation_assign(r1.poly, dummy);
-			// poly_l.BHRZ03_widening_assign(poly_r);
+			l1.poly.bounded_BHRZ03_extrapolation_assign(r1.poly, dummy);
 		}
-		l1.num_axis = -1;
-		for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(l1.id2axis); it; it++) {
-			if ((*it).snd > l1.num_axis)
-				l1.num_axis = (*it).snd;
-		}
-		l1.num_axis++;
+		l1.num_axis = l1.poly.space_dimension();
 #ifdef POLY_DEBUG			
 		cerr << "=== all done. ===" << endl;
 		cerr << l.serial << ": result dimension: " << l1.poly.space_dimension() << endl;
@@ -1033,6 +1027,7 @@ protected:
 	void configure(const PropList &props) ;
 private:
 	typedef PPLManager::t state_t;
+	void analyzeGraph(ai::CFGGraph &graph, state_t &s);
 
 };
 

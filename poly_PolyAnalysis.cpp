@@ -75,6 +75,10 @@ class DumbOrder {
 PPLManager *beurk = NULL;
 /**
  */
+
+void PolyAnalysis::analyzeGraph(ai::CFGGraph &graph, state_t &s) {
+}
+
 void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	cout << "Processing Poly Analysis." << endl;
 	const CFGCollection *coll = INVOLVED_CFGS(ws);
@@ -106,6 +110,10 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	while (ana) {
 		state_t s;
 		s = ana.input();
+		if ((*ana)->isSynth()) {
+			cout << "oui!" << endl;
+				
+		}
 			
 		BasicBlock *bl = (BasicBlock*) *ana; 
 
@@ -143,6 +151,7 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 
 		}
 
+		cout << "BB: " << bl << " dimension=" << s.poly.space_dimension() << endl;
 #ifdef POLY_DEBUG			
 		cout << "inst! bb= ";
 		cout << bl << endl;
@@ -216,13 +225,11 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 			if (LOOP_EXIT_EDGE(e)) {
 				Block *bb = LOOP_EXIT_EDGE(e);
 				int bound = MAX_ITERATION(bb);
-				if (bound >= 0) {
 #ifdef POLY_DEBUG			
 					cout << "LOOPEXIT: " << bound << endl;
 #endif
 					edgeState = man->loopExit(edgeState, bb->id(), bound);
 					man->bring_out_your_dead(edgeState); // TODO PERF FIXME
-				}
 			}
 
 			if (man->hasFilter()) {
@@ -299,6 +306,10 @@ typedef PPL::Variable* PVAR;
 
 void PPLManager::integer_wrap(PPLManager::t &dom) {
 	// FIXME
+	return; // TODO
+	
+	// code below is crap
+	
 	PPL::Constraint_System cons = dom.poly.minimized_constraints();
 	PPL::Constraint_System result;
 	for (PPL::Constraint_System::const_iterator it = cons.begin(); it != cons.end(); it++) {
@@ -538,8 +549,9 @@ PPLManager::t PPLManager::loopExit(PPLManager::t s_in, int loop, int bound) {
 	Ident id(loop, Ident::ID_LOOP);
 	ASSERT(s_out.exists(id)); /* You are supposed to be already inside the loop when you call loopExit() */ 
 	Variable v = s_out.lookup(id);
-	s_out.poly.add_constraint(v <= bound);
-	//s_out.freeAxis(v.id());
+	if (bound >= 0)
+		s_out.poly.add_constraint(v <= bound);
+	 s_out.freeAxis(v.id());
 	if (s_out.poly.is_empty()) {
 #ifdef POLY_DEBUG			
 		cout << "is empty after loopExit!" << endl;
@@ -594,7 +606,8 @@ PPLManager::t PPLManager::update(t s_in, sem::inst si) {
 				sem::reg_t dest = si.d();
 				Ident id(dest, Ident::ID_REG);
 				PPL::Variable v = s_out.create(id, true);
-				s_out.poly.add_constraint(v == si.cst());
+				int32_t cst = si.cst(); // FIXME TODO
+				s_out.poly.add_constraint(v == cst);
 				break;
 		        
 		}
