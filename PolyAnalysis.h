@@ -266,6 +266,7 @@ class PPLDomain {
 		friend class PPLManager;
 		inline void print(io::Output & out) const {
 			out << "[" << serial << "]";
+			PPL::Constraint_System cons = poly.minimized_constraints();
 			cons.print();
 			out << "";
 		}
@@ -277,11 +278,9 @@ class PPLDomain {
 			mem_ref = 0;
 			gen++;
 		}
-		PPLDomain (const PPLDomain &src) /*  : cong(src.cong), cons(src.cons) */  {
+		PPLDomain (const PPLDomain &src)  {
 			ASSERT(src.magic == 0xDEADBEEF);
-//			src.cons.print();
-			cong = src.cong;
-			cons = src.cons;
+			poly = src.poly;
 			magic = src.magic;
 			num_axis = src.num_axis;
 			id2axis = src.id2axis;
@@ -341,8 +340,7 @@ class PPLDomain {
 
 		inline void operator=(const PPLDomain& dom) {
 			ASSERT(dom.magic == 0xDEADBEEF);
-			cong = dom.cong;
-			cons = dom.cons;
+			poly = dom.poly;
 			magic = dom.magic;
 			serial = dom.serial;
 			num_axis = dom.num_axis;
@@ -356,7 +354,6 @@ class PPLDomain {
 		}
 		void sanity_checks() {
 			int max_axis = -1;
-			PPL::C_Polyhedron poly(cons);
 			if (isBottom())  {
 				ASSERT(poly.is_empty());
 				return;
@@ -377,7 +374,7 @@ class PPLDomain {
 				ASSERT(id2axis[ident] == i);
 			}
 			ASSERT(max_axis + 1 == num_axis);
-			ASSERT(cons.space_dimension() <= num_axis); // unused axis can exist at the end
+			ASSERT(poly.space_dimension() <= num_axis); // unused axis can exist at the end
 			ASSERT(trash.size() >= num_axis);
 			ASSERT(trash.countOnes() <= num_axis);
 		}
@@ -390,12 +387,11 @@ class PPLDomain {
 
 	friend bool operator==(const PPLDomain &a, const PPLDomain &b);
 		int serial;
-		PPL::Constraint_System cons;
+		PPL::C_Polyhedron poly;
 	private:
 		int num_axis;
 		uint32_t magic;
 		static int gen;
-		PPL::Congruence_System cong;
 
 };
 
@@ -596,97 +592,30 @@ private:
 			BitVector &_bv;
 			int _size;
 	};
-	class GetPointerExpr {
-		public:
-			~GetPointerExpr() {
-				free(tab);
-			}
-			/*
-			 * Destination axis layout:
-			 * Axis 0..(n-1) for common ancestor axis
-			 * Axis n for target pointer axis
-			 */
-			GetPointerExpr(const t &dom, const Ident &ptr) {
-				ASSERT(ptr.getType() == Ident::ID_MEM_ADDR);
-				int map_dest = 0;
-				PPL::C_Polyhedron poly(dom.cons);
-				int count = poly.space_dimension();
-				tab = (int*)malloc(sizeof(int)*count);
-				for (int i = 0; i < count; i++)
-					tab[i] = -1;
-				_ptr_orig_axis = -1;
-				/*
-				for (elm::genstruct::HashTable<Ident, PPL::Variable*,HashIdent>::PairIterator it(dom.ids); it; it++) {
-					const Ident &id = (*it).fst;
-					if (id.getType() == Ident::ID_SPECIAL) {
-						PPL::Variable *var = (*it).snd;
-						if (map_dest < id.getCanonicalAxis())
-							map_dest = id.getCanonicalAxis();
-						tab[var->id()] = map_dest;
-					} else if (id == ptr) {
-						PPL::Variable *var = (*it).snd;
-						_ptr_orig_axis = var->id();
-					}
-				}
-				*/
-				_codomain_size = map_dest + 2; /* +1 space for pointer axis */
-				ASSERT(_ptr_orig_axis != -1);
-			}
-			bool has_empty_codomain() const { return false; }
-			PPL::dimension_type max_in_codomain() const { 
-				cout << "max in codomain is: " << (_codomain_size - 1) << endl;
-				return _codomain_size - 1 + 1;  // FIXME TODO
-			}
-			bool maps(PPL::dimension_type i, PPL::dimension_type &j) const {
-				if (i == _ptr_orig_axis) {
-					j = max_in_codomain();
-					cout << char('A' + i) << "[PTR] mapped to: axis " << char('A' + j) << endl;
-					return true;
-				}
-				if (tab[i] == -1) {
-					cout << char('A' + i) << " mapped to: the dark and empty nothingness of the void" << endl;
-					return false;
-				}
-				j = tab[i];
-				cout << char('A' + i) << "[ETC] mapped to: axis " << char('A' + j) << endl;
-				return true;
-			}
-
-		private:
-				int *tab;
-				int _codomain_size;
-				int _ptr_orig_axis;
-	};
 
 public:
 	genstruct::Vector<PPL::Variable*> to_remove;
 
 	PPLManager() { 
+		PPL::Constraint_System initcons;
 		_init.num_axis = 0;
 		_bot.num_axis = -1;
 		_top.num_axis = 0;
+
+		_init.poly = PPL::C_Polyhedron(0, PPL::UNIVERSE);
+		_bot.poly = PPL::C_Polyhedron(0, PPL::EMPTY);
+		_top.poly = PPL::C_Polyhedron(0, PPL::UNIVERSE);
+
 		Variable var_sp = _init.create(Ident(13, Ident::ID_REG));
 		Variable var_fp = _init.create(Ident(11, Ident::ID_REG));
 		Variable var_lr = _init.create(Ident(14, Ident::ID_REG));
 		Variable var_ssp = _init.create(Ident(Ident::ID_START_SP, Ident::ID_SPECIAL));
 		Variable var_sfp = _init.create(Ident(Ident::ID_START_FP, Ident::ID_SPECIAL));
 		Variable var_slr = _init.create(Ident(Ident::ID_START_LR, Ident::ID_SPECIAL));
-		_init.cons.insert(var_ssp == var_sp);
-		_init.cons.insert(var_sfp == var_fp);
-		_init.cons.insert(var_slr == var_lr);
 
-		_top.cons.clear();
-		PPL::Variable v(0);
-		_bot.cons.insert(0*v == 1);
-		cout << "Initial state: " ;
-		_init.cons.print();
-		cout << endl;
-		cout << "TOP state: " ;
-		_top.cons.print();
-		cout << endl;
-		cout << "BOTTOM state: " ;
-		_bot.cons.print();
-		cout << endl;
+		_init.poly.add_constraint(var_ssp == var_sp);
+		_init.poly.add_constraint(var_sfp == var_fp);
+		_init.poly.add_constraint(var_slr == var_lr);
 	} 
 	~PPLManager() { }
 
@@ -819,40 +748,36 @@ public:
 #endif
 		switch (this_op) {
 			case sem::NE: {
-				PPL::Constraint_System cons2 = res.cons;
-				res.cons.insert(res.lookup(compare_reg) <= -1);
-				cons2.insert(res.lookup(compare_reg) >= 1);
-				PPL::C_Polyhedron poly(res.cons);
-				PPL::C_Polyhedron poly2(cons2);
-				poly.poly_hull_assign(poly2);
-				res.cons = poly.minimized_constraints();
+				PPL::C_Polyhedron poly2 = res.poly;
+				res.poly.add_constraint(res.lookup(compare_reg) <= -1);
+				poly2.add_constraint(res.lookup(compare_reg) >= 1);
+				res.poly.poly_hull_assign(poly2);
 				break;
 			}
 			case sem::EQ:
-				res.cons.insert(res.lookup(compare_reg) == 0);
+				res.poly.add_constraint(res.lookup(compare_reg) == 0);
 				break;
 			case sem::GE:
 			case sem::UGE:
-				res.cons.insert(res.lookup(compare_reg) >= 0);
+				res.poly.add_constraint(res.lookup(compare_reg) >= 0);
 				break;
 			case sem::GT:
 			case sem::UGT:
-				res.cons.insert(res.lookup(compare_reg) >= 1);
+				res.poly.add_constraint(res.lookup(compare_reg) >= 1);
 				break;
 			case sem::LE:
 			case sem::ULE:
-				res.cons.insert(res.lookup(compare_reg) <= 0);
+				res.poly.add_constraint(res.lookup(compare_reg) <= 0);
 				break;
 			case sem::LT:
 			case sem::ULT:
-				res.cons.insert(res.lookup(compare_reg) <= -1);
+				res.poly.add_constraint(res.lookup(compare_reg) <= -1);
 				break;
 			default:
 				break;
 		};
-		PPL::C_Polyhedron poly(res.cons);
 #ifdef POLY_DEBUG			
-		cout << "empty? " << poly.is_empty() << endl;
+		cout << "empty? " << res.poly.is_empty() << endl;
 #endif
 		return res;
 	}
@@ -870,15 +795,13 @@ public:
 		int axis = 0;
 		ASSERT(!l.trash.countOnes());
 		ASSERT(!r.trash.countOnes());
-		PPL::C_Polyhedron poly_r(r.cons);
-		if (poly_r.is_empty()) {
+		if (r.poly.is_empty()) {
 #ifdef POLY_DEBUG			
 			cerr << "trivial join (r empty)" << endl;
 #endif
 			return l;
 			}
-		PPL::C_Polyhedron poly_l(l.cons);
-		if (poly_l.is_empty()) {
+		if (l.poly.is_empty()) {
 #ifdef POLY_DEBUG			
 			cerr << "trivial join (l empty)" << endl;
 #endif
@@ -890,14 +813,14 @@ public:
 			cerr << "================= WIDENING ==================" << endl;
 		} else cerr << "=================== JOIN ====================" << endl;
 		cerr << "=== prepare phase ===" << endl;
-		cerr << l.serial << ": left hand term dimension: " << poly_l.space_dimension() << endl;
-		l.cons.print();
+		cerr << l.serial << ": left hand term dimension: " << l.poly.space_dimension() << endl;
+		l.poly.minimized_constraints().print();
 		cerr << endl;
 		display_loc_vars((PPLManager::t&)l);
 		displayIdentMap(l);
 		cout << endl;
-		cerr << r.serial << ": right hand term dimension: " << poly_r.space_dimension() << endl;
-		r.cons.print();
+		cerr << r.serial << ": right hand term dimension: " << r.poly.space_dimension() << endl;
+		r.poly.minimized_constraints().print();
 		cerr << endl;
 		display_loc_vars((PPLManager::t&)r);
 		displayIdentMap(r);
@@ -942,8 +865,8 @@ public:
 #ifdef POLY_DEBUG			
 		cerr << "Identifying address expressions appearing on both sides\n";	
 #endif
-		collect_pointer_expr(mapl_ptr, mapl, axis, l1, poly_l);
-		collect_pointer_expr(mapr_ptr, mapr, axis, r1, poly_r);
+		collect_pointer_expr(mapl_ptr, mapl, axis, l1, l1.poly);
+		collect_pointer_expr(mapr_ptr, mapr, axis, r1, r1.poly);
 		
 
 		// mapl/mapr: on ajoute tout les pointeurs communs, on map vers une numerotation commune
@@ -985,10 +908,8 @@ public:
 			}
 		}
 
-		map_space_dimensions(MapWithHash(mapl), poly_l);
-		map_space_dimensions(MapWithHash(mapr), poly_r);
-		l1.cons = poly_l.minimized_constraints();
-		r1.cons = poly_r.minimized_constraints();
+		map_space_dimensions(MapWithHash(mapl), l1.poly);
+		map_space_dimensions(MapWithHash(mapr), r1.poly);
 
 		l1.map_identifiers(MapWithHash(mapl));
 		r1.map_identifiers(MapWithHash(mapr));
@@ -996,14 +917,14 @@ public:
 		// Fin preparation
 #ifdef POLY_DEBUG			
 		cerr << "=== prepare done ===" << endl;
-		cerr << l.serial << ": left hand term dimension: " << poly_l.space_dimension() << endl;
-		l1.cons.print();
+		cerr << l.serial << ": left hand term dimension: " << l1.poly.space_dimension() << endl;
+		l1.poly.minimized_constraints().print();
 		cerr << endl;
 		display_loc_vars((PPLManager::t&)l1);
 		displayIdentMap(l1);
 		cout << endl;
-		cerr << r.serial << ": right hand term dimension: " << poly_r.space_dimension() << endl;
-		r1.cons.print();
+		cerr << r.serial << ": right hand term dimension: " << r1.poly.space_dimension() << endl;
+		r1.poly.minimized_constraints().print();
 		cerr << endl;
 		display_loc_vars((PPLManager::t&)r1);
 		displayIdentMap(r1);
@@ -1011,20 +932,18 @@ public:
 		cerr << "=== convex-hull phase ===" << endl;
 #endif
 
-		poly_l.poly_hull_assign(poly_r);
+		l1.poly.poly_hull_assign(r1.poly);
 		if (widen) {
 #ifdef POLY_DEBUG			
 			cerr << "before widening: " << endl;
-		l1.cons = poly_l.minimized_constraints();
-		r1.cons = poly_r.minimized_constraints();
-		cerr << l.serial << ": left hand term dimension: " << poly_l.space_dimension() << endl;
-		l1.cons.print();
+		cerr << l.serial << ": left hand term dimension: " << l1.poly.space_dimension() << endl;
+		l1.poly.minimized_constraints().print();
 		cerr << endl;
 		display_loc_vars((PPLManager::t&)l1);
 		displayIdentMap(l1);
 		cout << endl;
-		cerr << r.serial << ": right hand term dimension: " << poly_r.space_dimension() << endl;
-		r1.cons.print();
+		cerr << r.serial << ": right hand term dimension: " << r1.poly.space_dimension() << endl;
+		r1.poly.minimized_constraints().print();
 		cerr << endl;
 		display_loc_vars((PPLManager::t&)r1);
 		displayIdentMap(r1);
@@ -1032,11 +951,12 @@ public:
 		cerr << "---" << endl;
 #endif
 		PPL::Constraint_System dummy;
-			ASSERT(poly_l.contains(poly_r));
-			poly_l.bounded_H79_extrapolation_assign(poly_r, dummy);
+#ifdef POLY_DEBUG
+			ASSERT(l1.poly.contains(r1.poly));
+#endif
+			l1.poly.bounded_H79_extrapolation_assign(r1.poly, dummy);
 			// poly_l.BHRZ03_widening_assign(poly_r);
 		}
-		l1.cons = poly_l.minimized_constraints();
 		l1.num_axis = -1;
 		for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(l1.id2axis); it; it++) {
 			if ((*it).snd > l1.num_axis)
@@ -1045,8 +965,8 @@ public:
 		l1.num_axis++;
 #ifdef POLY_DEBUG			
 		cerr << "=== all done. ===" << endl;
-		cerr << l.serial << ": result dimension: " << poly_l.space_dimension() << endl;
-		l1.cons.print();
+		cerr << l.serial << ": result dimension: " << l1.poly.space_dimension() << endl;
+		l1.poly.minimized_constraints().print();
 		cerr << endl;
 		display_loc_vars((PPLManager::t&)l1);
 		displayIdentMap(l1);
@@ -1054,141 +974,6 @@ public:
 #endif
 		return l1;
 
-
-#ifdef UNDEF
-
-		PPL::C_Polyhedron poly2_l(poly_l);
-		PPL::C_Polyhedron poly2_r(poly_r);
-
-		MapWithHash mwhl(mapl);
-		MapWithHash mwhr(mapr);
-
-		poly2_l.map_space_dimensions(mwhl);
-		poly2_r.map_space_dimensions(mwhr);
-
-		for (genstruct::HashTable<int,int>::PairIterator it(mapl); it; it++) {
-			// get ptr expr for axis 
-			PPL::Constraint *c = NULL; // FIXME
-			//const Pair<int,int*> &p = map[*c];
-			const auto &p = *map[*c];
-			if ((p.fst == -1) || (p.snd == -1))
-				continue;	
-
-			mapl2.put(p.fst, axisl);
-			mapr2.put(p.snd, axisr);
-			axisl++;
-			axisr++;
-		}
-		// remap d vers d1 avec mapl2
-		// remap s vers s1 avec mapr2
-		//
-		// ensuite on prends l'idmap d'un des deux au pif osef a
-		//
-		//
-		return l;
-
-		/////////////////////////////////
-
-
-		genstruct::HashTable<Ident, PPL::Variable*, HashIdent> newids;
-		
-		genstruct::HashTable<Ident, int> ptrmap1,ptrmap2;
-		int idx = 0; 
-		/* ptrmap1 (resp.2) maps old ptr (ID_MEM_ADDR and ID_MEM_VAL) axis in D (resp.S) to common new ptr axis offset */
-		cout << "debut construction ptrmap" << endl;
-		for (genstruct::HashTable<PPL::Constraint, elm::Pair<int,int>, HashCons>::PairIterator it(map); it; it++) {
-			const Pair<PPL::Constraint,Pair<int,int> > &p = *it;
-			if ((p.snd.fst == -1) || (p.snd.snd == -1))
-				continue; // discard unmatched pointers
-			/* Put ID_MEM_ADDR identifier type on even new axis, and ID_MEM_VAL type on odd new axis */
-			Ident id_addr1(p.snd.fst, Ident::ID_MEM_ADDR);
-			Ident id_val1(p.snd.fst, Ident::ID_MEM_VAL);
-			Ident id_addr2(p.snd.snd, Ident::ID_MEM_ADDR);
-			Ident id_val2(p.snd.snd, Ident::ID_MEM_VAL); 
-			/*
-			PPL::Variable *var_addr1 = d.ids[id_addr1];
-			PPL::Variable *var_val1 = d.ids[id_val1];
-			PPL::Variable *var_addr2 = d.ids[id_addr2];
-			PPL::Variable *var_val2 = d.ids[id_val2];
-			*/
-			cout << "New ptr (";
-			id_addr1.print(cout);
-			cout << ",";
-			id_addr2.print(cout);
-			cout << ") has expr: ";
-			p.fst.print();
-			cout << " and axis: " << idx << " + BASE" << endl;
-			cout << endl;
-			ptrmap1[id_addr1] = idx;
-			ptrmap1[id_val1] = idx + 1;
-			ptrmap2[id_addr2] = idx;
-			ptrmap2[id_val2] = idx + 1; 
-
-			newids[id_addr1] = new PPL::Variable(idx);
-			newids[id_val1] = new PPL::Variable(idx + 1);
-			/*
-			d.ids[id_addr1] = idx;
-			d.ids[id_val1] = idx + 1; 
-			*/ 
-			idx+=2;
-		}
-		cout << "end construction" << endl;
-		RemapBeforeJoin rbj2(d, ptrmap1, &newids);
-		cout << "remapjoin D " << endl;
-		RemapBeforeJoin rbj1(s, ptrmap2);
-		cout << "remapjoin S " << endl;
-		poly.map_space_dimensions(rbj1);
-		poly2.map_space_dimensions(rbj2);
-		cout << "remap done" << endl;
-		//d.cons = poly2.minimized_constraints();
-
-		/* Now, REG/SPECIAL are mapped on their canonical axis in d and r,
-		 * and MEM_ADDR/MEM_VAL are mapped on the same axis if their expression is equivalent.
-		 * Unmatched pointers are discarded ( "cylindrified" ). */
-		cout << "before hull, d=" << endl;
-		d.cons.print();
-		cout << endl;
-		cout << "before hull, s=" << endl;
-		poly.minimized_constraints().print();
-		cout << endl;
-
-		poly2.poly_hull_assign(poly);
-		d.cons = poly2.minimized_constraints();
-		/*
-		for (elm::genstruct::HashTable<Ident, PPL::Variable*,HashIdent>::PairIterator it(d.ids); it; it++) {
-			PPL::Variable *v = (*it).snd;
-			delete v;
-		}
-		d.ids = newids; */ 
-		cout << "joined:" << endl;
-		d.cons.print();
-		fflush(stdout);
-		cout << endl;
-		/*
-		cout << "Ident: ";
-		for (elm::genstruct::HashTable<Ident, PPL::Variable*,HashIdent>::PairIterator it(d.ids); it; it++) {
-			elm::Pair<Ident, PPL::Variable *> p = *it;
-			cout << p.fst << " = " << *p.snd << ", ";
-		}
-		cout << endl;
-		*/
-		displayIdentMap(d);
-
-		cerr << "================ END JOIN ====================" << endl;
-		beurk->display_loc_vars((PPLManager::t&)d);
-		fflush(stdout);
-		cerr << "OK" << endl;
-
-	   
-		/*
-		Ident id(0,Ident::IdentType(0));
-		GetPointerExpr gpexpr(d, id);
-	    PPL::C_Polyhedron poly3(d.cons);
-		poly3.map_space_dimensions(gpexpr); */ 
-		d.num_axis = max(rbj1.max_in_codomain(), rbj2.max_in_codomain()) + 1 ;
-		printf("D= %d\n", d.num_axis);
-		return d;
-#endif
 
 	}
 	inline bool equals(const t& v1, const t& v2) { 
@@ -1208,10 +993,10 @@ public:
 	bool may_be_equal(PPLManager::t &s, PPL::Variable &v1, PPL::Variable &v2);
 	bool must_be_equal(PPLManager::t &s, PPL::Variable &v1, PPL::Variable &v2);
 	void scratch(Ident &id, PPLManager::t &dom);
-	void get_range(Ident &id, PPLManager::t &dom, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d);
-	void get_range(PPL::Variable &var, PPLManager::t &dom, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d);
-	bool get_constant(Ident &id, PPLManager::t &dom, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d);
-	bool get_constant(PPL::Variable &var, PPLManager::t &dom, PPL::Coefficient &cst, PPL::Coefficient &cst_d);
+	void get_range(Ident &id, PPLManager::t &dom, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
+	void get_range(PPL::Variable &var, PPLManager::t &dom, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
+	bool get_constant(Ident &id, PPLManager::t &dom, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d, bool display = false);
+	bool get_constant(PPL::Variable &var, PPLManager::t &dom, PPL::Coefficient &cst, PPL::Coefficient &cst_d, bool display = false);
 	bool is_constrained(Ident &id, PPLManager::t &dom);
 	bool is_constrained(PPL::Variable &var, PPLManager::t &dom);
 	void display_loc_vars(PPLManager::t &dom);
@@ -1261,8 +1046,7 @@ bool operator==(const PPLDomain &a, const PPLDomain &b) {
 	PPLManager::displayIdentMap(b);
 	cout << "------------" << endl;
 	*/
-	if (!((a.cong == b.cong) &&
-		    (a.cons == b.cons) &&
+	if (!((a.poly == b.poly) &&
 			(a.id2axis.count() == b.id2axis.count()) && 
 			(a.magic == b.magic))) {
 		return false;
