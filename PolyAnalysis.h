@@ -1,4 +1,4 @@
-#define POLY_DEBUG 1
+// #define POLY_DEBUG 1
 
 
 /*
@@ -299,20 +299,26 @@ class PPLDomain {
 			axis2id.clear();
 			axis2id.setLength(old_length);
 			// cout << "trash bitvector:" << PPLDomain::trash << endl;
+#ifdef POLY_DEBUG			
 			cout << "REMAP: ";
+#endif
 			for (elm::genstruct::HashTable<Ident, int, HashIdent>::MutableIter it(id2axis); it; it++) {
 				int &n = it.item();
 				PPL::dimension_type old_axis = n;
 				PPL::dimension_type new_axis = n;
 				if (pfunc.maps(old_axis, new_axis)) {
 				   	if (old_axis != new_axis) {
+#ifdef POLY_DEBUG			
 						cout << it.key() << "[" << PPL::Variable(old_axis) << "->" << PPL::Variable(new_axis) << "] ";
+#endif
 						n = new_axis;
 					}
 					axis2id[new_axis] = it.key();
 				} else todel.add(it.key());
 			}
+#ifdef POLY_DEBUG			
 			cout << endl;
+#endif
 			for (genstruct::Vector<Ident>::Iterator it(todel); it; it++) {
 				id2axis.remove(*it);
 			}
@@ -384,12 +390,12 @@ class PPLDomain {
 
 	friend bool operator==(const PPLDomain &a, const PPLDomain &b);
 		int serial;
+		PPL::Constraint_System cons;
 	private:
 		int num_axis;
 		uint32_t magic;
 		static int gen;
 		PPL::Congruence_System cong;
-		PPL::Constraint_System cons;
 
 };
 
@@ -808,7 +814,9 @@ public:
 		ASSERT(hasFilter());
 		t res = before;
 		this_op = taken ? compare_op : sem::invert(compare_op);
+#ifdef POLY_DEBUG			
 		cout << "compare_reg is: " << compare_reg << endl;
+#endif
 		switch (this_op) {
 			case sem::NE: {
 				PPL::Constraint_System cons2 = res.cons;
@@ -843,7 +851,9 @@ public:
 				break;
 		};
 		PPL::C_Polyhedron poly(res.cons);
+#ifdef POLY_DEBUG			
 		cout << "empty? " << poly.is_empty() << endl;
+#endif
 		return res;
 	}
 
@@ -862,15 +872,20 @@ public:
 		ASSERT(!r.trash.countOnes());
 		PPL::C_Polyhedron poly_r(r.cons);
 		if (poly_r.is_empty()) {
+#ifdef POLY_DEBUG			
 			cerr << "trivial join (r empty)" << endl;
+#endif
 			return l;
 			}
 		PPL::C_Polyhedron poly_l(l.cons);
 		if (poly_l.is_empty()) {
+#ifdef POLY_DEBUG			
 			cerr << "trivial join (l empty)" << endl;
+#endif
 			return r;
 		}
 
+#ifdef POLY_DEBUG			
 		if (widen) {
 			cerr << "================= WIDENING ==================" << endl;
 		} else cerr << "=================== JOIN ====================" << endl;
@@ -886,6 +901,7 @@ public:
 		cerr << endl;
 		display_loc_vars((PPLManager::t&)r);
 		displayIdentMap(r);
+#endif
 
 		genstruct::HashTable<PPL::Constraint, elm::Pair<int,int>, HashCons> map;
 		genstruct::HashTable<PPL::Constraint, int, HashCons> mapl_ptr;
@@ -905,7 +921,9 @@ public:
 		t l1 = l;
 
 		// mapl/mapr : on map tout les id SPECIAL vers une numerotation commune
+#ifdef POLY_DEBUG			
 		cerr << "Mapping common ancestors to common destination axis\n";
+#endif
 		for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(l.id2axis); it; it++) {
 			const Ident &ident = (*it).fst;
 			if (ident.getType() != Ident::ID_SPECIAL)
@@ -921,13 +939,17 @@ public:
 		// chopper les constraints des pointeurs sur L, mettre dans la hashmap 
 		// on recupere dans mapl_ptr/mapr_ptr un mapping de contrainte vers numero de pointeur (ptr1, ptr2, etc)
 	
+#ifdef POLY_DEBUG			
 		cerr << "Identifying address expressions appearing on both sides\n";	
+#endif
 		collect_pointer_expr(mapl_ptr, mapl, axis, l1, poly_l);
 		collect_pointer_expr(mapr_ptr, mapr, axis, r1, poly_r);
 		
 
 		// mapl/mapr: on ajoute tout les pointeurs communs, on map vers une numerotation commune
+#ifdef POLY_DEBUG			
 		cout << "COMMON PTRs: " ;
+#endif
 		for (genstruct::HashTable<PPL::Constraint, int, HashCons>::PairIterator it(mapl_ptr); it; it++) {
 			const PPL::Constraint &cons = (*it).fst;
 			if (mapr_ptr.hasKey(cons)) {
@@ -941,11 +963,15 @@ public:
 				mapr[r_addr.id()] = axis;
 				mapl[l_val.id()] = axis + 1;
 				mapr[r_val.id()] = axis + 1;
+#ifdef POLY_DEBUG			
 				cout << "ptr" << ptrl << "/ptr" << ptrr << ", ";
+#endif
 				axis += 2;
 			}
 		}
+#ifdef POLY_DEBUG			
 		cout << endl;
+#endif
 
 		// maplregs/mapr : ajout dans map de tous les axes registres (temporaires ou non) de l/r vers une numerotation commune
 		for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(l.id2axis); it; it++) {
@@ -968,6 +994,7 @@ public:
 		r1.map_identifiers(MapWithHash(mapr));
 
 		// Fin preparation
+#ifdef POLY_DEBUG			
 		cerr << "=== prepare done ===" << endl;
 		cerr << l.serial << ": left hand term dimension: " << poly_l.space_dimension() << endl;
 		l1.cons.print();
@@ -982,9 +1009,11 @@ public:
 		displayIdentMap(r1);
 
 		cerr << "=== convex-hull phase ===" << endl;
+#endif
 
 		poly_l.poly_hull_assign(poly_r);
 		if (widen) {
+#ifdef POLY_DEBUG			
 			cerr << "before widening: " << endl;
 		l1.cons = poly_l.minimized_constraints();
 		r1.cons = poly_r.minimized_constraints();
@@ -1001,12 +1030,11 @@ public:
 		displayIdentMap(r1);
 		cerr << endl;
 		cerr << "---" << endl;
+#endif
 		PPL::Constraint_System dummy;
-			poly_l.bounded_BHRZ03_extrapolation_assign(poly_r, dummy);
-			//poly_l.BHRZ03_widening_assign(poly_r);
 			ASSERT(poly_l.contains(poly_r));
-			static unsigned int p = 5;
-			//poly_l.widening_assign(poly_r, &p);
+			poly_l.bounded_H79_extrapolation_assign(poly_r, dummy);
+			// poly_l.BHRZ03_widening_assign(poly_r);
 		}
 		l1.cons = poly_l.minimized_constraints();
 		l1.num_axis = -1;
@@ -1015,6 +1043,7 @@ public:
 				l1.num_axis = (*it).snd;
 		}
 		l1.num_axis++;
+#ifdef POLY_DEBUG			
 		cerr << "=== all done. ===" << endl;
 		cerr << l.serial << ": result dimension: " << poly_l.space_dimension() << endl;
 		l1.cons.print();
@@ -1022,6 +1051,7 @@ public:
 		display_loc_vars((PPLManager::t&)l1);
 		displayIdentMap(l1);
 		cerr << "=====================================" << endl;
+#endif
 		return l1;
 
 

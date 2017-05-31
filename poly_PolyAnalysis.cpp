@@ -64,6 +64,14 @@ void PolyAnalysis::configure(const PropList &props) {
 }
 
 
+class DumbOrder {
+	public:
+	bool isBefore(Block *b1, Block *b2) {
+		return (b1->id() < b2->id());
+	}
+};
+
+
 PPLManager *beurk = NULL;
 /**
  */
@@ -88,7 +96,9 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	PPLManager *man = new PPLManager(); //ws, cfg);
 	beurk = man;
 	ai::EdgeStore<PPLManager, ai::CFGGraph> store(*man, graph);
-	ai::WorkListDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph> > ana(*man, graph, store);
+	DumbOrder order;
+	ai::OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, DumbOrder > ana(*man, graph, store, order);
+	// ai::OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph> > ana(*man, graph, store);
 
 	genstruct::HashTable<int, state_t> headerState;
 
@@ -100,7 +110,9 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 		BasicBlock *bl = (BasicBlock*) *ana; 
 
 		if (LOOP_HEADER(bl)) {
+#ifdef POLY_DEBUG			
 			cout << "doing loopheader: " << bl->id() << endl;
+#endif
 			Ident id(bl->id(), Ident::ID_LOOP);
 			PPL::Coefficient binf_n, binf_d, bsup_n, bsup_d;
 			man->get_range(id, s, binf_n, binf_d, bsup_n, bsup_d);
@@ -108,11 +120,15 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 			if ( PPL::raw_value(bsup_d).get_ui() != 0) {
 				bound = PPL::raw_value(bsup_n).get_ui() / PPL::raw_value(bsup_d).get_ui();
 			}
+#ifdef POLY_DEBUG			
 			cout << "ITERATION: " << bound << endl;
+#endif
 			if ((MAX_ITERATION(bl) != -2) && ((MAX_ITERATION(bl) < bound)  || (bound == -2))) {
 				MAX_ITERATION(bl) = bound;
 				for (genstruct::Vector<Edge*>::Iterator exitedge(**EXIT_LIST(bl)); exitedge; exitedge++) {
+#ifdef POLY_DEBUG			
 					cout << "Trigger exit edge with bound: " << bound << "(" << *exitedge << ")" << endl;
+#endif
 					Block::EdgeIter e = exitedge->source()->ins();
 					ana.change(e);
 				}
@@ -127,96 +143,56 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 
 		}
 
+#ifdef POLY_DEBUG			
 		cout << "inst! bb= ";
 		cout << bl << endl;
+#endif
 		if (s.isBottom()) {
+#ifdef POLY_DEBUG			
 			cout << "! Skip block because input state is Bottom" << endl;
+#endif
 			ana++;
 			continue;
 		}
 		for (BasicBlock::InstIter inst(bl); inst; inst++) {
+#ifdef POLY_DEBUG			
 		        cout << ";;; inst: " << *inst << endl;
+#endif
 		        sem::Block block;
 			inst->semInsts(block);
 			for(sem::Block::InstIter semi(block); semi; semi++) {
+#ifdef POLY_DEBUG			
 					cout << "===============================================" << endl;
 					s.sanity_checks();
 			        cout << "BEFORE: " << s << endl;
-					/*
-					for (elm::genstruct::HashTable<Ident, PPL::Variable*,HashIdent>::PairIterator it(s.ids); it; it++) {
-						PPL::Coefficient a, b, c, d;
-						elm::Pair<Ident, PPL::Variable *> p = *it;
-						cout << "range " << p.fst << ": ";
-						man->get_range(*p.snd, s, a, b, c, d);
-					} */ // FIXME
 					man->displayIdentMap(s);
-					/*
-			        cout << "Ident: "; 
-					for (elm::genstruct::HashTable<Ident, PPL::Variable*,HashIdent>::PairIterator it(s.ids); it; it++) {
-						elm::Pair<Ident, PPL::Variable *> p = *it;
-						cout << p.fst << " = " << *p.snd << ", ";
-					}
-					cout << endl;
-					*/
 			        cout << "+++ IR +++: " << *semi << endl;
+#endif
 					// man->display_loc_vars(s);
 					s = man->update(s, *semi);
 					// man->display_loc_vars(s);
+#ifdef POLY_DEBUG			
 			        cout << "AFTER IR: " << s << endl;
-					int numvar = 0;
-					/*
-					for (elm::genstruct::HashTable<Ident, PPL::Variable*,HashIdent>::PairIterator it(s.ids); it; it++) {
-						elm::Pair<Ident, PPL::Variable *> p = *it;
-						cout << p.fst << " = " << *p.snd << ", ";
-						numvar++;
-					}
-					cout << endl;
-					*/
 					man->displayIdentMap(s);
-					// cout << "before remove: " << endl;
-					// man->display_loc_vars(s);
+#endif
 					man->bring_out_your_dead(s);
 					man->integer_wrap(s);
+#ifdef POLY_DEBUG			
 			        cout << "AFTER CLEANUP: " << s << endl;
 					man->displayIdentMap(s);
-					/*
-					for (elm::genstruct::HashTable<Ident, PPL::Variable*,HashIdent>::PairIterator it(s.ids); it; it++) {
-						PPL::Coefficient a, b, c, d;
-						elm::Pair<Ident, PPL::Variable *> p = *it;
-						cout << "range " << p.fst << ": ";
-						man->get_range(*p.snd, s, a, b, c, d);
-					}
-					*/
 					cout << "===============================================" << endl;
 					man->display_loc_vars(s);
 					cout << "===============================================" << endl << endl;
-					// cout << "actual ident count: " << numvar << endl;
+#endif
 			}
                                			
 		}
-		/*
-		cout << "inst: teste outedge " << *ana << endl;
-		BasicBlock *bl2 = (BasicBlock*) *ana;
-		for(Block::EdgeIter e = bl2->outs(); e; e++) {
-			cout << "outiter!" << endl;
-		}
-*/
-		if (bl->id() == 3) {
-/*			Ident truff(667,Ident::ID_REG);
-			s.ids[truff] = new PPL::Variable(42); */ 
-		}
 		s.serial = bl->id();
-		/*
-		if (LOOP_HEADER(bl)) {
-			cout << "Is loop header! creating LOOP special identifier." << endl;
-			Ident id(bl->id(), Ident::ID_LOOP);
-		} 
-		*/
 		for (ai::CFGGraph::Successor e(graph, *ana); e; e++) {
+#ifdef POLY_DEBUG			
 			cout << "---inst outedge!" << *e << "taken= " << (e->isTaken()) << endl;
-			//cout << "OUT STATE AT ADDR: " << hex(&s) << endl;
-//			printf("OUT STATE AT ADDR:; %x\n", &s);
 			fflush(stdout);
+#endif
 			bool hasEdgeState = false;
 			state_t edgeState;
 		    if (LOOP_HEADER(e->sink()) || man->hasFilter() || LOOP_EXIT_EDGE(e)) {
@@ -241,7 +217,9 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 				Block *bb = LOOP_EXIT_EDGE(e);
 				int bound = MAX_ITERATION(bb);
 				if (bound >= 0) {
+#ifdef POLY_DEBUG			
 					cout << "LOOPEXIT: " << bound << endl;
+#endif
 					edgeState = man->loopExit(edgeState, bb->id(), bound);
 					man->bring_out_your_dead(edgeState); // TODO PERF FIXME
 				}
@@ -249,12 +227,14 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 
 			if (man->hasFilter()) {
 				edgeState = man->filter(edgeState, e->isTaken());
+#ifdef POLY_DEBUG			
 				cout << "FILTERED STATE: " << endl;
 				man->displayIdentMap(edgeState);
 				fflush(stdout);
 				edgeState.print(cout); cout << endl;
 				fflush(stdout);
 				man->display_loc_vars(edgeState);
+#endif
 			}
 			if (hasEdgeState) {
 				ana.check(*e, edgeState);
@@ -342,8 +322,10 @@ void PPLManager::bring_out_your_dead(PPLManager::t &dom) {
 
 	dom.sanity_checks();
 	if (PPLDomain::trash.countOnes() == 0) {
+#ifdef POLY_DEBUG			
 		cout << "Nothing to clean" << endl;
 		dom.sanity_checks();
+#endif
 
 		return;
 	}
@@ -351,12 +333,36 @@ void PPLManager::bring_out_your_dead(PPLManager::t &dom) {
 	PPL::C_Polyhedron poly(dom.cons);
 	RemoveMarked rm(PPLDomain::trash, dom.cons.space_dimension());
 	map_space_dimensions(rm, poly);
-	dom.cons = poly.minimized_constraints();
+
+
+		int numcons = 0;
+		for (PPL::Constraint_System::const_iterator it = dom.cons.begin(); it != dom.cons.end(); it++) {
+			numcons++;
+		}
+		int mintime;
+		struct timespec ts,ts2;
+		clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts);
+		dom.cons = poly.minimized_constraints();
+		clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts2);
+		mintime = (ts2.tv_sec - ts.tv_sec)*1000000 + (ts2.tv_nsec - ts.tv_nsec)/1000;
+
+		cout << "Num constraints: " << numcons << ", time=" << mintime << " numtrash= " << PPLDomain::trash.countOnes() << endl;
+		/*
+		if (numcons == 41) {
+			dom.cons.print();
+			fflush(stdout);
+			cout << endl;
+		}
+		*/
+
+
 	dom.num_axis -= PPLDomain::trash.countOnes();
 	dom.map_identifiers(rm);
 	PPLDomain::trash.clear();
 	// displayIdentMap(dom);
+#ifdef POLY_DEBUG			
 	dom.sanity_checks();
+#endif
 
 	return; 
 
@@ -474,7 +480,9 @@ bool PPLManager::get_constant(Ident &id, PPLManager::t &dom, PPL::Coefficient &c
 	return get_constant(v, dom, cst_n, cst_d);
 }
 void PPLManager::get_range(Ident &id, PPLManager::t &dom, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d) {
+#ifdef POLY_DEBUG			
 	cout << "get_range(" << id << ") = ";
+#endif
 	Variable v = dom.lookup(id);
 	get_range(v, dom, binf_n, binf_d, bsup_n, bsup_d);
 }
@@ -505,6 +513,7 @@ void PPLManager::get_range(PPL::Variable &var, PPLManager::t &dom, PPL::Coeffici
 	}
 	poly.maximize(var, bsup_n, bsup_d, maximum);
 	poly.minimize(var, binf_n, binf_d, minimum);
+#ifdef POLY_DEBUG			
 	gmp_printf("[");
 	if (binf_d != 0) {
 		gmp_printf("%Zd", &PPL::raw_value(binf_n));
@@ -522,6 +531,7 @@ void PPLManager::get_range(PPL::Variable &var, PPLManager::t &dom, PPL::Coeffici
 
 //	gmp_printf("[%Zd/%Zd..%Zd/%Zd]\n", &PPL::raw_value(binf_n), &PPL::raw_value(binf_d), &PPL::raw_value(bsup_n), &PPL::raw_value(binf_d));
 	fflush(stdout);
+#endif
 
 /*
 	int axis = var.id();
@@ -570,13 +580,17 @@ void PPLManager::scratch(Ident &id, PPLManager::t &dom) {
 	if (!dom.exists(id)) 
 		return;
 	
+#ifdef POLY_DEBUG			
 	cout << "Before cylindrification: " << dom << endl;
+#endif
 	PPL::Variable v = dom.lookup(id);
 	PPL::C_Polyhedron poly(dom.cons);
 	poly.unconstrain(v);
 	dom.cons = poly.minimized_constraints();
+#ifdef POLY_DEBUG			
 	cout << "Scratch " << id << " (axis " << v << ")" << endl;
 	cout << "After cylindrification: " << dom << endl;
+#endif
 }
 PPL::Variable *PPLManager::make_var(Ident &id, PPLManager::t &dom) {
 	/*
@@ -667,7 +681,9 @@ bool PPLManager::must_be_equal(PPLManager::t &s, PPL::Variable &v1, PPL::Variabl
 void PPLManager::binary_operation_helper(PPLManager::t &s, int op, PPL::Variable *v, PPL::Variable *vs1, PPL::Variable *vs2) {
 	bool b;
 	PPL::Coefficient cst_n, cst_d;
+#ifdef POLY_DEBUG			
 	cout << "Handle binary op: " << *v << " == " << *vs1 << " X " << *vs2 << endl;
+#endif
 	switch (op) {
 		case sem::ADD:
 			s.cons.insert(*v == *vs1 + *vs2);
@@ -719,8 +735,11 @@ PPLManager::t PPLManager::loopExit(PPLManager::t s_in, int loop, int bound) {
 	Variable v = s_out.lookup(id);
 	s_out.cons.insert(v <= bound);
 	PPL::C_Polyhedron poly(s_out.cons);
+	//s_out.freeAxis(v.id());
 	if (poly.is_empty()) {
+#ifdef POLY_DEBUG			
 		cout << "is empty after loopExit!" << endl;
+#endif
 		return _bot;
 	}
 	return s_out;
@@ -744,7 +763,7 @@ PPLManager::t PPLManager::loopEntry(PPLManager::t s_in, int loop) {
 	return s_out;
 }
 
-PPLManager::t PPLManager::update(PPLManager::t s_in, sem::inst si) {
+PPLManager::t PPLManager::update(t s_in, sem::inst si) {
         PPLManager::t s_out = s_in;
 		ASSERT(!hasFilter() || (si.op == sem::BRANCH));
 
@@ -856,17 +875,23 @@ PPLManager::t PPLManager::update(PPLManager::t s_in, sem::inst si) {
 							if (must_be_equal(s_out, vaddr, vaddr2)) {
 								ASSERT(!replace_done);
 								replace_done = true;
+#ifdef POLY_DEBUG			
 								cout << "Address " << p.fst << " and " << id4 << " are equal (replacing)." << endl;
+#endif
 								s_out.freeAxis(vaddr2.id());
 								Ident old_val(p.fst.getId(), Ident::ID_MEM_VAL);
+#ifdef POLY_DEBUG			
 								cout << "Will be replaced: " << p.fst << " and " << old_val << endl;
+#endif
 								Variable vaddr2_val = s_out.lookup(old_val);
 								Variable new_val = s_out.lookup(id3);
 								s_out.freeAxis(vaddr2_val.id());
 								//PPLDomain::trash.set(vaddr2_val.id());
 								
 							} else {
+#ifdef POLY_DEBUG			
 								cout << "Address " << p.fst << " and " << id4 << " may overlap (joining)." << endl;
+#endif
 								Ident old_val(p.fst.getId(), Ident::ID_MEM_VAL);
 								Variable vaddr2_val = s_out.lookup(old_val);
 								Variable new_val = s_out.lookup(id3);
@@ -882,7 +907,9 @@ PPLManager::t PPLManager::update(PPLManager::t s_in, sem::inst si) {
 								cout << "ERROR: " << s_out << endl;
 								ASSERT(0 == 1);
 							}
+#ifdef POLY_DEBUG			
 							cout << "Address " << p.fst << " and " << id4 << " cannot overlap." << endl;
+#endif
 						}
 					} 
 				}
@@ -904,21 +931,27 @@ PPLManager::t PPLManager::update(PPLManager::t s_in, sem::inst si) {
 					old_cons.insert(v1 == vsrc) ;
 					old_cons.insert(v2 == vaddr);
 					PPL::C_Polyhedron poly1(s_out.cons);
+#ifdef POLY_DEBUG			
 					cout << "Hull 1: " ;
 					poly1.minimized_constraints().print();
 					fflush(stdout);
 					cout << endl;
+#endif
 					PPL::C_Polyhedron poly2(old_cons);
+#ifdef POLY_DEBUG			
 					cout << "Hull 2: " ;
 					poly2.minimized_constraints().print();
 					fflush(stdout);
 					cout << endl;
+#endif
 					poly_hull_helper(poly1, poly2);
 					s_out.cons = poly1.minimized_constraints();
+#ifdef POLY_DEBUG			
 					cout << "Hull: " ;
 					poly1.minimized_constraints().print();
 					fflush(stdout);
 					cout << endl;
+#endif
 				}
 			break;
 		}
@@ -939,13 +972,17 @@ PPLManager::t PPLManager::update(PPLManager::t s_in, sem::inst si) {
 					if (p.fst.getType() == Ident::ID_MEM_ADDR) {
 						// cout << "[LOAD] Comparing " << p.fst << " and " << id_addr << endl;
 						if (must_be_equal(s_out, vaddr, vsnd)) {
+#ifdef POLY_DEBUG			
 							cout << "Found! " << p.fst << endl;
+#endif
 							Ident id_val(p.fst.getId(), Ident::ID_MEM_VAL);
 							v_val= new Variable(s_out.lookup(id_val));
 							break;
 						}
 						if (may_be_equal(s_out, vaddr, vsnd)) {
+#ifdef POLY_DEBUG			
 							cout << "Candidate: " << p.fst << endl;
+#endif
 							// TODO faire un hull quand il y a que des candidats mais pas de valeur sure
 						}
 					}
@@ -954,7 +991,9 @@ PPLManager::t PPLManager::update(PPLManager::t s_in, sem::inst si) {
 				if (v_val != NULL) {
 					s_out.cons.insert(vdst == *v_val);
 				} else {
+#ifdef POLY_DEBUG			
 					cout << "Not found, creating new unconstrained ptr..." << endl;
+#endif
 					Ident addr, val;
 					s_out.create_ptr(addr, val);
 					Variable dummy_addr = s_out.create(addr);
@@ -1008,7 +1047,9 @@ void PPLDomain::freeAxis(int axis) {
 	axis2id[axis] = Ident();
 	id2axis.remove(old);
 	*/
+#ifdef POLY_DEBUG			
 	cout << "L'axe " << PPL::Variable(axis) << ", qui etait alloue a l'identificateur " << old << ", est marque pour etre supprime. " << endl;
+#endif
 	trash.set(axis);
 }
 
@@ -1017,7 +1058,9 @@ int PPLDomain::allocAxis(const Ident &ident, bool allow_replace) {
 	ASSERT(allow_replace || !id2axis.hasKey(ident));
 	if (id2axis.hasKey(ident)) {
 		int axis = id2axis[ident];
+#ifdef POLY_DEBUG			
 		cout << "L'identificateur " << ident << " etait deja associe a l'axe " << PPL::Variable(axis) << endl;
+#endif
 		freeAxis(axis);
 	}
 	id2axis[ident] = num_axis;
@@ -1025,7 +1068,9 @@ int PPLDomain::allocAxis(const Ident &ident, bool allow_replace) {
 		axis2id.setLength(num_axis + 1);
 	}
 	axis2id[num_axis] = ident;
+#ifdef POLY_DEBUG			
 	cout << "Nouvel axe " << PPL::Variable(num_axis) << " alloue pour l'identificateur " << ident << endl;
+#endif
 	num_axis++;
 	return num_axis - 1;
 /*	DomId *dom_id= new DomId(ident, *this);
@@ -1062,7 +1107,9 @@ void PPLDomain::rename(const Ident &ident, const Ident &newident, bool allow_rep
 	ASSERT(allow_replace || !id2axis.hasKey(newident));
 	if (id2axis.hasKey(newident)) {
 		axis = id2axis[newident];
+#ifdef POLY_DEBUG			
 		cout << "L'identificateur " << ident << " etait deja associe a l'axe " << PPL::Variable(axis) << endl;
+#endif
 		freeAxis(axis);
 	}
 	axis = id2axis[ident];
@@ -1070,7 +1117,9 @@ void PPLDomain::rename(const Ident &ident, const Ident &newident, bool allow_rep
 	axis2id[axis] = newident;
 	id2axis[newident] = axis;
 	id2axis.remove(ident);
+#ifdef POLY_DEBUG			
 	cout << "Renommage de l'identificateur " << ident << " en " << newident << " sur l'axe " << PPL::Variable(axis) << endl;
+#endif
 }
 
 bool PPLDomain::exists(const Ident &ident) {
