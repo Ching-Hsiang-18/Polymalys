@@ -757,7 +757,7 @@ PPLManager::t PPLManager::update(t s_in, sem::inst si) {
 				Ident id_dst(dst, Ident::ID_REG);
 				Ident id_addr(addr, Ident::ID_REG);
 				Variable vaddr = s_out.lookup(id_addr);
-				Variable *v_val = NULL;
+				PPL::Variable vdst = s_out.create(id_dst, true);
 				bool found = false;
 				
 				// Look for matching ID_MEM_ADDR identifier 
@@ -765,30 +765,30 @@ PPLManager::t PPLManager::update(t s_in, sem::inst si) {
 				{
 					elm::Pair<Ident, int> p = *it;
 					Variable vsnd = s_out.lookup(p.snd);
-						Ident id_val(p.fst.getId(), Ident::ID_MEM_VAL);
+					Ident id_val(p.fst.getId(), Ident::ID_MEM_VAL);
 					if (p.fst.getType() == Ident::ID_MEM_ADDR) {
-						// cout << "[LOAD] Comparing " << p.fst << " and " << id_addr << endl;
-						if (must_be_equal(s_out, vaddr, vsnd)) {
 #ifdef POLY_DEBUG			
-							cout << "Found! " << p.fst << endl;
-							ASSERT(!found);
-#endif
-							v_val= new Variable(s_out.lookup(id_val));
-							found = true;
-						}
-						if (may_be_equal(s_out, vaddr, vsnd)) {
-#ifdef POLY_DEBUG			
+						if (may_be_equal(s_in, vaddr, vsnd)) {
 							cout << "Candidate: " << p.fst << endl;
+						}
 #endif
-							PPL::C_Polyhedron this_read = s_out.Poly;
-							this_read.add_constraint(vdst 
+						if (must_be_equal(s_in, vaddr, vsnd)) {
+#ifdef POLY_DEBUG			
+							cout << "Matched load source: " << p.fst << endl;
+#endif
+							Variable v_val = s_out.lookup(id_val);
+							s_out.poly.add_constraint(vdst == v_val);
+							found = true;
+							break;
+
+						}
+						if (must_be_equal(s_in, vaddr, vsnd)) {
+							cout << "Exact!" << endl;
 						}
 					}
 				}
-				PPL::Variable vdst = s_out.create(id_dst, true);
-				if (v_val != NULL) {
-					s_out.poly.add_constraint(vdst == *v_val);
-				} else {
+
+				if (!found) {
 #ifdef POLY_DEBUG			
 					cout << "Not found, creating new unconstrained ptr..." << endl;
 #endif
