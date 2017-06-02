@@ -676,108 +676,78 @@ PPLManager::t PPLManager::update(t s_in, sem::inst si) {
 		case sem::STORE:                // MEMb(a) <- d
 		{
 				// TODO verifier si y'a pas une intersection possible avec un store existant
+
+				bool had_exact_match = false;
+				bool had_potential_match = false;
 				bool need_join = false;
-				PPL::C_Polyhedron old_poly = s_out.poly;
 		        sem::reg_t src = si.d();
 		        sem::reg_t addr = si.a();
-				Ident id1, id2;
-				s_out.create_ptr(id2, id1);
-				Ident id3(src, Ident::ID_REG); //registre donnee a stocker
-				Ident id4(addr, Ident::ID_REG); //registre adresse
-				Variable vsrc = s_out.lookup(id3, true);
-				Variable vaddr = s_out.lookup(id4, true);
 
-				bool replace_done = false;
+				/* collect union of states resulting from all possible writes */
+				PPL::C_Polyhedron all_writes = _bot.poly; 
+
+				Ident id_new_addr, id_new_val;
+				s_out.create_ptr(id_new_addr, id_new_val);
+
+				Variable v_new_addr = s_out.create(id_new_addr);
+				Variable v_new_val = s_out.create(id_new_val);
+
+				Ident id_reg_src(src, Ident::ID_REG);
+				Ident id_reg_addr(addr, Ident::ID_REG);
+
+				Variable v_reg_src = s_out.lookup(id_reg_src, true);
+				Variable v_reg_addr = s_out.lookup(id_reg_addr, true);
+
 				for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++)
 				{
 					elm::Pair<Ident, int> p = *it;
-					if (p.fst.getType() == Ident::ID_MEM_ADDR) {
-						PPL::Variable vaddr2 = s_out.lookup(p.snd);
-						// cout << "[STORE] Comparing " << p.fst << " and " << id4 << endl;
-						if (may_be_equal(s_out, vaddr, vaddr2)) {
-							if (must_be_equal(s_out, vaddr, vaddr2)) {
-								ASSERT(!replace_done);
-								replace_done = true;
-#ifdef POLY_DEBUG			
-								cout << "Address " << p.fst << " and " << id4 << " are equal (replacing)." << endl;
-#endif
-								s_out.freeAxis(vaddr2.id());
-								Ident old_val(p.fst.getId(), Ident::ID_MEM_VAL);
-#ifdef POLY_DEBUG			
-								cout << "Will be replaced: " << p.fst << " and " << old_val << endl;
-#endif
-								Variable vaddr2_val = s_out.lookup(old_val);
-								Variable new_val = s_out.lookup(id3);
-								s_out.freeAxis(vaddr2_val.id());
-								//PPLDomain::trash.set(vaddr2_val.id());
-								
+					if ((p.fst.getType() == Ident::ID_MEM_ADDR) && (p.fst != id_new_addr)) {
+						PPL::Variable v_ex_addr = s_out.lookup(p.snd);
+						/* Store address may overlap with existing pointer */
+						if (may_be_equal(s_out, v_reg_addr, v_ex_addr)) {
+							had_potential_match = true;
+							Ident id_ex_val(p.fst.getId(), Ident::ID_MEM_VAL);
+							Variable v_ex_val = s_out.lookup(id_ex_val);
+							if (must_be_equal(s_out, v_reg_addr, v_ex_addr)) {
+#ifdef POLY_DEBUG
+								 /* Our abstract domain should not have aliases, therefore an 
+								 * exact match should not happen more than once. */
+								ASSERT(!had_exact_match); 
+								cout << "Address " << p.fst << " and " << id_reg_addr << " are equal (replacing)." << endl;
+#endif								
+								had_exact_match = true;
+								s_out.freeAxis(v_ex_addr.id());
+								s_out.freeAxis(v_ex_val.id());
 							} else {
-#ifdef POLY_DEBUG			
-								cout << "Address " << p.fst << " and " << id4 << " may overlap (joining)." << endl;
-#endif
-								Ident old_val(p.fst.getId(), Ident::ID_MEM_VAL);
-								Variable vaddr2_val = s_out.lookup(old_val);
-								Variable new_val = s_out.lookup(id3);
-								if (old_poly.space_dimension() < s_out.poly.space_dimension()) {
-									old_poly.add_space_dimensions_and_embed(s_out.poly.space_dimension() - old_poly.space_dimension());
-								}
-								old_poly.unconstrain(vaddr2_val);
-								old_poly.add_constraint(vaddr2_val == vsrc);
-
+#ifdef POLY_DEBUG
+								cout << "Address " << p.fst << " and " << id_reg_addr << " maybe equal (joining)." << endl;
+#endif								
+								PPL::C_Polyhedron this_write = s_out.poly;
+								this_write.unconstrain(v_ex_val);
+								this_write.add_constraint(v_reg_addr == v_ex_addr);
+								this_write.add_constraint(v_reg_src == v_ex_val);
+								poly_hull_helper(all_writes, this_write);
 								need_join = true;
-							}
-							// TODO: set to TOP
-						} else {
-							if (must_be_equal(s_out, vaddr, vaddr2)) {
-								cout << "ERROR: " << s_out << endl;
-								ASSERT(0 == 1);
-							}
-#ifdef POLY_DEBUG			
-							cout << "Address " << p.fst << " and " << id4 << " cannot overlap." << endl;
+#ifdef POLY_DEBUG
+								cout << "This write: " << endl;
+								this_write.minimized_constraints().print();
+								cout << "----" << endl;;
 #endif
+							}
 						}
-					} 
+					}
 				}
-				Variable v1 = s_out.create(id1);
-				Variable v2 = s_out.create(id2);
-				//cout << " ajout: " << id1 << " == " <<  id3 << endl;
-				//cout << "avant: " << endl;
-				//cons.print();
-				//cout << endl;
-				s_out.poly.add_constraint(v2 == vaddr);
-				//cout << "apres1: " << endl;
-				//cons.print();
-				//cout << endl;
-				s_out.poly.add_constraint(v1 == vsrc) ;
-				//cout << "apres2: " << endl;
-				//cons.print();
-				//cout << endl;
-				if (need_join) { 
-								if (old_poly.space_dimension() < s_out.poly.space_dimension()) {
-									old_poly.add_space_dimensions_and_embed(s_out.poly.space_dimension() - old_poly.space_dimension());
-								}
-					old_poly.add_constraint(v1 == vsrc) ;
-					old_poly.add_constraint(v2 == vaddr);
-#ifdef POLY_DEBUG			
-					cout << "Before Hull 1: " ;
-					s_out.poly.minimized_constraints().print();
-					fflush(stdout);
-					cout << endl;
+#ifdef POLY_DEBUG
+				ASSERT(!had_exact_match || had_potential_match);
 #endif
-#ifdef POLY_DEBUG			
-					cout << "Before Hull 2: " ;
-					old_poly.minimized_constraints().print();
-					fflush(stdout);
-					cout << endl;
+				if (need_join) {
+#ifdef POLY_DEBUG
+					cout << "Dynamic store!" << endl;
 #endif
-					poly_hull_helper(s_out.poly, old_poly);
-#ifdef POLY_DEBUG			
-					cout << "Hull: " ;
-					s_out.poly.minimized_constraints().print();
-					fflush(stdout);
-					cout << endl;
-#endif
+					poly_hull_helper(s_out.poly, all_writes);
 				}
+				s_out.poly.add_constraint(v_reg_addr == v_new_addr);
+				s_out.poly.add_constraint(v_reg_src == v_new_val);
 			break;
 		}
 		case sem::LOAD:         // d <- MEMb(a)
@@ -788,27 +758,30 @@ PPLManager::t PPLManager::update(t s_in, sem::inst si) {
 				Ident id_addr(addr, Ident::ID_REG);
 				Variable vaddr = s_out.lookup(id_addr);
 				Variable *v_val = NULL;
+				bool found = false;
 				
 				// Look for matching ID_MEM_ADDR identifier 
 				for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++)
 				{
 					elm::Pair<Ident, int> p = *it;
 					Variable vsnd = s_out.lookup(p.snd);
+						Ident id_val(p.fst.getId(), Ident::ID_MEM_VAL);
 					if (p.fst.getType() == Ident::ID_MEM_ADDR) {
 						// cout << "[LOAD] Comparing " << p.fst << " and " << id_addr << endl;
 						if (must_be_equal(s_out, vaddr, vsnd)) {
 #ifdef POLY_DEBUG			
 							cout << "Found! " << p.fst << endl;
+							ASSERT(!found);
 #endif
-							Ident id_val(p.fst.getId(), Ident::ID_MEM_VAL);
 							v_val= new Variable(s_out.lookup(id_val));
-							break;
+							found = true;
 						}
 						if (may_be_equal(s_out, vaddr, vsnd)) {
 #ifdef POLY_DEBUG			
 							cout << "Candidate: " << p.fst << endl;
 #endif
-							// TODO faire un hull quand il y a que des candidats mais pas de valeur sure
+							PPL::C_Polyhedron this_read = s_out.Poly;
+							this_read.add_constraint(vdst 
 						}
 					}
 				}
