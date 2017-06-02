@@ -76,199 +76,205 @@ PPLManager *beurk = NULL;
 /**
  */
 
-void PolyAnalysis::analyzeGraph(ai::CFGGraph &graph, state_t &s) {
-}
+void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
+	if (!strcmp(cfg.name().toCString(), "gsignal")) {
+		return;
+	}
 
-void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
-	cout << "Processing Poly Analysis." << endl;
-	const CFGCollection *coll = INVOLVED_CFGS(ws);
-	/*
-	// test ppl
-	PPL::Variable x(0);
-	PPL::Constraint_System cs;
-	cs.insert(x >= 0);
-	cs.print();
-	PPL::Constraint_System cs2;
-	cs2 = cs;
-	*/
-	ASSERT(coll);
-	
-	CFG *main = coll->get(0);
-	cout << "nombre de CFG: " << coll->count() << endl;
-	
-	ai::CFGGraph graph(main);
-	PPLManager *man = new PPLManager(); //ws, cfg);
-	beurk = man;
+	ai::CFGGraph graph(&cfg);
+	PPLManager *man;
+    if (do_init) {
+		man = new PPLManager(); 
+	} else {
+		man = new PPLManager(s);
+	}
 	ai::EdgeStore<PPLManager, ai::CFGGraph> store(*man, graph);
 	DumbOrder order;
 	ai::OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, DumbOrder > ana(*man, graph, store, order);
-	// ai::OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph> > ana(*man, graph, store);
 
 	genstruct::HashTable<int, state_t> headerState;
 
-	cout << "Starting abstract interpretation." << endl;	
+	cout << "Starting abstract interpretation for CFG: " << cfg.name() << endl;	
 	while (ana) {
 		state_t s;
 		s = ana.input();
 		if ((*ana)->isSynth()) {
-			cout << "oui!" << endl;
-				
-		}
-			
-		BasicBlock *bl = (BasicBlock*) *ana; 
+			CFG *subCFG = (*ana)->toSynth()->callee();
+			cout << "Call from " << (*ana)->toSynth()->caller()->name() << " to " << subCFG->name() << endl;
+			analyzeGraph(*subCFG, s, false);
+			cout << "Return from " << subCFG->name() << " to " << (*ana)->toSynth()->caller()->name() << endl;
+			for (ai::CFGGraph::Successor e(graph, *ana); e; e++)
+					ana.check(*e, s);
+		} else {
+			BasicBlock *bl = (BasicBlock*) *ana;
 
-		if (LOOP_HEADER(bl)) {
+			if (LOOP_HEADER(bl)) {
 #ifdef POLY_DEBUG			
-			cout << "doing loopheader: " << bl->id() << endl;
+				cout << "doing loopheader: " << bl->id() << endl;
 #endif
-			Ident id(bl->id(), Ident::ID_LOOP);
-			PPL::Coefficient binf_n, binf_d, bsup_n, bsup_d;
-			man->get_range(id, s, binf_n, binf_d, bsup_n, bsup_d);
-			int bound = -2;
-			if ( PPL::raw_value(bsup_d).get_ui() != 0) {
-				bound = PPL::raw_value(bsup_n).get_ui() / PPL::raw_value(bsup_d).get_ui();
-			}
-#ifdef POLY_DEBUG			
-			cout << "ITERATION: " << bound << endl;
-#endif
-			if ((MAX_ITERATION(bl) != -2) && ((MAX_ITERATION(bl) < bound)  || (bound == -2))) {
-				MAX_ITERATION(bl) = bound;
-				for (genstruct::Vector<Edge*>::Iterator exitedge(**EXIT_LIST(bl)); exitedge; exitedge++) {
-#ifdef POLY_DEBUG			
-					cout << "Trigger exit edge with bound: " << bound << "(" << *exitedge << ")" << endl;
-#endif
-					Block::EdgeIter e = exitedge->source()->ins();
-					ana.change(e);
+				Ident id(bl->id(), Ident::ID_LOOP);
+				PPL::Coefficient binf_n, binf_d, bsup_n, bsup_d;
+				man->get_range(id, s, binf_n, binf_d, bsup_n, bsup_d);
+				int bound = -2;
+				if ( PPL::raw_value(bsup_d).get_ui() != 0) {
+					bound = PPL::raw_value(bsup_n).get_ui() / PPL::raw_value(bsup_d).get_ui();
 				}
+#ifdef POLY_DEBUG			
+				cout << "ITERATION: " << bound << endl;
+#endif
+				if ((MAX_ITERATION(bl) != -2) && ((MAX_ITERATION(bl) < bound)  || (bound == -2))) {
+					MAX_ITERATION(bl) = bound;
+					for (genstruct::Vector<Edge*>::Iterator exitedge(**EXIT_LIST(bl)); exitedge; exitedge++) {
+#ifdef POLY_DEBUG			
+						cout << "Trigger exit edge with bound: " << bound << "(" << *exitedge << ")" << endl;
+#endif
+						Block::EdgeIter e = exitedge->source()->ins();
+						ana.change(e);
+					}
 
 
-			}
-			if (headerState.hasKey(bl->id())) {
-				s = headerState[bl->id()] = man->widening(s, headerState[bl->id()]);
-			} else {
-				headerState[bl->id()] = s;
-			}
-
-		}
-
-		cout << "BB: " << bl << " dimension=" << s.poly.space_dimension() << endl;
-#ifdef POLY_DEBUG			
-		cout << "inst! bb= ";
-		cout << bl << endl;
-#endif
-		if (s.isBottom()) {
-#ifdef POLY_DEBUG			
-			cout << "! Skip block because input state is Bottom" << endl;
-#endif
-			ana++;
-			continue;
-		}
-		for (BasicBlock::InstIter inst(bl); inst; inst++) {
-#ifdef POLY_DEBUG			
-		        cout << ";;; inst: " << *inst << endl;
-#endif
-		        sem::Block block;
-			inst->semInsts(block);
-			for(sem::Block::InstIter semi(block); semi; semi++) {
-#ifdef POLY_DEBUG			
-					cout << "===============================================" << endl;
-					s.sanity_checks();
-			        cout << "BEFORE: " << s << endl;
-					man->displayIdentMap(s);
-			        cout << "+++ IR +++: " << *semi << endl;
-#endif
-					// man->display_loc_vars(s);
-					s = man->update(s, *semi);
-					// man->display_loc_vars(s);
-#ifdef POLY_DEBUG			
-			        cout << "AFTER IR: " << s << endl;
-					man->displayIdentMap(s);
-#endif
-					man->bring_out_your_dead(s);
-					man->integer_wrap(s);
-#ifdef POLY_DEBUG			
-			        cout << "AFTER CLEANUP: " << s << endl;
-					man->displayIdentMap(s);
-					cout << "===============================================" << endl;
-					man->display_loc_vars(s);
-					cout << "===============================================" << endl << endl;
-#endif
-			}
-                               			
-		}
-		s.serial = bl->id();
-		for (ai::CFGGraph::Successor e(graph, *ana); e; e++) {
-#ifdef POLY_DEBUG			
-			cout << "---inst outedge!" << *e << "taken= " << (e->isTaken()) << endl;
-			fflush(stdout);
-#endif
-			bool hasEdgeState = false;
-			state_t edgeState;
-		    if (LOOP_HEADER(e->sink()) || man->hasFilter() || LOOP_EXIT_EDGE(e)) {
-				hasEdgeState = true;
-				edgeState = s;
-			}
-
-			if (LOOP_HEADER(e->sink())) {
-				if (Dominance::dominates(e->sink(), e->source())) {
-					/* is back-edge */
-					edgeState = man->loopIter(edgeState, e->sink()->id());
-					man->bring_out_your_dead(edgeState); // TODO PERF FIXME
+				}
+				if (headerState.hasKey(bl->id())) {
+					s = headerState[bl->id()] = man->widening(s, headerState[bl->id()]);
 				} else {
-					/* is entry-edge */
-					edgeState = man->loopEntry(edgeState, e->sink()->id());
-					headerState.remove(e->sink()->id());
-					/*
-					*/
+					headerState[bl->id()] = s;
 				}
-			}
-			if (LOOP_EXIT_EDGE(e)) {
-				Block *bb = LOOP_EXIT_EDGE(e);
-				int bound = MAX_ITERATION(bb);
-#ifdef POLY_DEBUG			
-					cout << "LOOPEXIT: " << bound << endl;
-#endif
-					edgeState = man->loopExit(edgeState, bb->id(), bound);
-					man->bring_out_your_dead(edgeState); // TODO PERF FIXME
+
 			}
 
-			if (man->hasFilter()) {
-				edgeState = man->filter(edgeState, e->isTaken());
+			cout << "BB: " << bl << " dimension=" << s.poly.space_dimension() << endl;
 #ifdef POLY_DEBUG			
-				cout << "FILTERED STATE: " << endl;
-				man->displayIdentMap(edgeState);
-				fflush(stdout);
-				edgeState.print(cout); cout << endl;
-				fflush(stdout);
-				man->display_loc_vars(edgeState);
+			cout << "inst! bb= ";
+			cout << bl << endl;
 #endif
+			if (s.isBottom()) {
+#ifdef POLY_DEBUG			
+				cout << "! Skip block because input state is Bottom" << endl;
+#endif
+				ana++;
+				continue;
 			}
-			if (hasEdgeState) {
-				ana.check(*e, edgeState);
-			} else ana.check(*e, s);
+			for (BasicBlock::InstIter inst(bl); inst; inst++) {
+#ifdef POLY_DEBUG			
+					cout << ";;; inst: " << *inst << endl;
+#endif
+					sem::Block block;
+				inst->semInsts(block);
+				for(sem::Block::InstIter semi(block); semi; semi++) {
+#ifdef POLY_DEBUG			
+						cout << "===============================================" << endl;
+						s.sanity_checks();
+						cout << "BEFORE: " << s << endl;
+						man->displayIdentMap(s);
+						cout << "+++ IR +++: " << *semi << endl;
+#endif
+						// man->display_loc_vars(s);
+						s = man->update(s, *semi);
+						// man->display_loc_vars(s);
+#ifdef POLY_DEBUG			
+						cout << "AFTER IR: " << s << endl;
+						man->displayIdentMap(s);
+#endif
+						man->bring_out_your_dead(s);
+						man->integer_wrap(s);
+#ifdef POLY_DEBUG			
+						cout << "AFTER CLEANUP: " << s << endl;
+						man->displayIdentMap(s);
+						cout << "===============================================" << endl;
+						man->display_loc_vars(s);
+						cout << "===============================================" << endl << endl;
+#endif
+				}
+											
+			}
+			s.serial = bl->id();
+			for (ai::CFGGraph::Successor e(graph, *ana); e; e++) {
+#ifdef POLY_DEBUG			
+				cout << "---inst outedge!" << *e << "taken= " << (e->isTaken()) << endl;
+				fflush(stdout);
+#endif
+				bool hasEdgeState = false;
+				state_t edgeState;
+				if (LOOP_HEADER(e->sink()) || man->hasFilter() || LOOP_EXIT_EDGE(e)) {
+					hasEdgeState = true;
+					edgeState = s;
+				}
 
+				if (LOOP_HEADER(e->sink())) {
+					if (Dominance::dominates(e->sink(), e->source())) {
+						/* is back-edge */
+						edgeState = man->loopIter(edgeState, e->sink()->id());
+						man->bring_out_your_dead(edgeState); // TODO PERF FIXME
+					} else {
+						/* is entry-edge */
+						edgeState = man->loopEntry(edgeState, e->sink()->id());
+						headerState.remove(e->sink()->id());
+						/*
+						*/
+					}
+				}
+				if (LOOP_EXIT_EDGE(e)) {
+					Block *bb = LOOP_EXIT_EDGE(e);
+					int bound = MAX_ITERATION(bb);
+#ifdef POLY_DEBUG			
+						cout << "LOOPEXIT: " << bound << endl;
+#endif
+						edgeState = man->loopExit(edgeState, bb->id(), bound);
+						man->bring_out_your_dead(edgeState); // TODO PERF FIXME
+				}
+
+				if (man->hasFilter()) {
+					edgeState = man->filter(edgeState, e->isTaken());
+#ifdef POLY_DEBUG			
+					cout << "FILTERED STATE: " << endl;
+					man->displayIdentMap(edgeState);
+					fflush(stdout);
+					edgeState.print(cout); cout << endl;
+					fflush(stdout);
+					man->display_loc_vars(edgeState);
+#endif
+				}
+				if (hasEdgeState) {
+					ana.check(*e, edgeState);
+				} else ana.check(*e, s);
+
+			}
+			man->removeFilter();
 		}
-		man->removeFilter();
 		ana++;
 	}
-	cout << endl;
-	cout << "FINAL STATE: " << endl;
-	Block* bb = main->exit();
+	Block* bb = graph.exit();
 	Block::EdgeIter edge(bb->ins());
-	Edge *exitEdge = *edge;
-	
-	state_t fs = store.get(edge);
-	man->displayIdentMap(fs);
-	fflush(stdout);
-	fs.print(cout); cout << endl;
-	fflush(stdout);
-	man->display_loc_vars(fs);
-	cout << endl;
+	s = store.get(edge);
+	cout << "Ending abstract interpretation for CFG: " << cfg.name() << endl;	
+	if (do_init) {
+		cout << "FINAL STATE: " << endl;
+		man->displayIdentMap(s);
+		fflush(stdout);
+		s.print(cout); cout << endl;
+		fflush(stdout);
+		man->display_loc_vars(s);
+		cout << endl;
+	}
+}
+
+void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
+	const CFGCollection *coll = INVOLVED_CFGS(ws);
+	ASSERT(coll);
+	CFG *entry = coll->get(0);
+	cout << "CFG count: " << coll->count() << endl;
+	state_t dummy;
+	analyzeGraph(*entry, dummy, true);
+	/*
+	cout << "FINAL STATE: " << endl;
+	*/
 	cout << "LOOP BOUNDS: " << endl;
-	for (CFG::BlockIter iter(main->blocks()); iter; iter++) {
-		BasicBlock *bb = (BasicBlock*) *iter;
-		if (LOOP_HEADER(bb))
-			cout << "MAX_ITERATION(" << bb->id() << ") = " << MAX_ITERATION(bb) << endl;
+	for (CFGCollection::Iterator iter2(coll); iter2; iter2++) {
+		for (CFG::BlockIter iter((*iter2)->blocks()); iter; iter++) {
+			BasicBlock *bb = (BasicBlock*) *iter;
+			if (LOOP_HEADER(bb))
+				cout << "[" << (*iter2)->name() << "]" << "MAX_ITERATION(" << bb->id() << ") = " << MAX_ITERATION(bb) << endl;
+		}
 	}
 
 /*
@@ -663,7 +669,7 @@ PPLManager::t PPLManager::update(t s_in, sem::inst si) {
 
 					PPL::Variable v = s_out.create(id, true);
 					binary_operation_helper(s_out, si.op, &v, &vs1, &vs2);
-				} else s_out.create(id);
+				} else s_out.create(id, true);
 		        break;
 
 		}
@@ -826,10 +832,11 @@ PPLManager::t PPLManager::update(t s_in, sem::inst si) {
 			break;
 		case sem:: IF: {
 				Ident id(si.sr(), Ident::ID_REG);
-				ASSERT(s_out.exists(id));
-				compare_reg = id;
-				compare_op = si.cond();
-				ASSERT(si.jump() == 1);
+				if (s_out.exists(id)) {
+					compare_reg = id;
+					compare_op = si.cond();
+					ASSERT(si.jump() == 1);
+				}
 			}
 			break;
 		default:

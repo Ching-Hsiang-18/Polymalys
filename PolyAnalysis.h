@@ -1,4 +1,4 @@
-// #define POLY_DEBUG 1
+#define POLY_DEBUG 1
 
 
 /*
@@ -596,6 +596,13 @@ private:
 public:
 	genstruct::Vector<PPL::Variable*> to_remove;
 
+	PPLManager(t &init) : _init(init) { 
+		_bot.num_axis = -1;
+		_top.num_axis = 0;
+		_bot.poly = PPL::C_Polyhedron(0, PPL::EMPTY);
+		_top.poly = PPL::C_Polyhedron(0, PPL::UNIVERSE);
+	} 
+
 	PPLManager() { 
 		PPL::Constraint_System initcons;
 		_init.num_axis = 0;
@@ -1027,7 +1034,7 @@ protected:
 	void configure(const PropList &props) ;
 private:
 	typedef PPLManager::t state_t;
-	void analyzeGraph(ai::CFGGraph &graph, state_t &s);
+	void analyzeGraph(CFG &cfg, state_t &s, bool do_init);
 
 };
 
