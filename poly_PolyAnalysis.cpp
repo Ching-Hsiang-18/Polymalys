@@ -224,6 +224,14 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 				}
 
 				if (man->hasFilter()) {
+#ifdef POLY_DEBUG			
+					cout << "BEFORE FILTERING: " << endl;
+					man->displayIdentMap(edgeState);
+					fflush(stdout);
+					edgeState.print(cout); cout << endl;
+					fflush(stdout);
+					man->display_loc_vars(edgeState);
+#endif
 					edgeState = man->filter(edgeState, e->isTaken());
 #ifdef POLY_DEBUG			
 					cout << "FILTERED STATE: " << endl;
@@ -701,6 +709,21 @@ PPLManager::t PPLManager::update(t s_in, sem::inst si) {
 				for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++)
 				{
 					elm::Pair<Ident, int> p = *it;
+					if (p.fst.getType() == Ident::ID_LOOP) {
+						cout << "Projection de l'adresse du STORE (" << id_reg_addr << ") sur l'axe " << p.fst << ", STACK_FRAME" << endl;
+						cout << "A=addr, B=frame, C=bound" << endl;
+						genstruct::HashTable<int,int> map;
+						Ident id_frame(Ident::ID_START_SP, Ident::ID_SPECIAL);
+						Variable v_frame = s_out.lookup(id_frame);
+						Variable v_bound = s_out.lookup(p.fst);
+						map[v_reg_addr.id()] = 0;
+						map[v_frame.id()] = 1;
+						map[v_bound.id()] = 2;
+						PPL::C_Polyhedron tmp = s_out.poly;
+						map_space_dimensions(MapWithHash(map), tmp);
+						tmp.minimized_constraints().print();
+						cout << endl;
+					}
 					if ((p.fst.getType() == Ident::ID_MEM_ADDR) && (p.fst != id_new_addr)) {
 						PPL::Variable v_ex_addr = s_out.lookup(p.snd);
 						/* Store address may overlap with existing pointer */

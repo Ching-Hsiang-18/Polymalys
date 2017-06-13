@@ -1,4 +1,4 @@
-// #define POLY_DEBUG 1
+#define POLY_DEBUG 1
 
 
 /*
@@ -760,25 +760,43 @@ public:
 				poly2.add_constraint(res.lookup(compare_reg) >= 1);
 				res.poly.poly_hull_assign(poly2);
 				break;
+#ifdef POLY_DEBUG			
+			cout << "NE!" << endl;
+#endif
 			}
 			case sem::EQ:
+#ifdef POLY_DEBUG			
+			cout << "EQ!" << endl;
+#endif
 				res.poly.add_constraint(res.lookup(compare_reg) == 0);
 				break;
 			case sem::GE:
 			case sem::UGE:
 				res.poly.add_constraint(res.lookup(compare_reg) >= 0);
+#ifdef POLY_DEBUG			
+			cout << "(U)GE!" << endl;
+#endif
 				break;
 			case sem::GT:
 			case sem::UGT:
 				res.poly.add_constraint(res.lookup(compare_reg) >= 1);
+#ifdef POLY_DEBUG			
+			cout << "(U)GT!" << endl;
+#endif
 				break;
 			case sem::LE:
 			case sem::ULE:
 				res.poly.add_constraint(res.lookup(compare_reg) <= 0);
+#ifdef POLY_DEBUG			
+			cout << "(U)LE!" << endl;
+#endif
 				break;
 			case sem::LT:
 			case sem::ULT:
 				res.poly.add_constraint(res.lookup(compare_reg) <= -1);
+#ifdef POLY_DEBUG			
+			cout << "(U)LT!" << endl;
+#endif
 				break;
 			default:
 				break;
@@ -940,6 +958,7 @@ public:
 #endif
 
 		l1.poly.poly_hull_assign(r1.poly);
+		widen = false;
 		if (widen) {
 #ifdef POLY_DEBUG			
 			cerr << "before widening: " << endl;
