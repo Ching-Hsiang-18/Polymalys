@@ -93,6 +93,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 	ai::OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, DumbOrder > ana(*man, graph, store, order);
 
 	genstruct::HashTable<int, state_t> headerState;
+	
 
 	cout << "Starting abstract interpretation for CFG: " << cfg.name() << endl;	
 	while (ana) {
@@ -107,6 +108,19 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 					ana.check(*e, s);
 		} else {
 			BasicBlock *bl = (BasicBlock*) *ana;
+			if ((bl->id() == 1) && do_init) {
+				/* FIXME TODO (hack dégueu) */
+				cout << "Preparing TOTAL bounds ... " << endl; 
+				for (CFG::BlockIter iter(cfg.blocks()); iter; iter++) { 
+					BasicBlock *bb = (BasicBlock*) *iter; 
+					if (LOOP_HEADER(bb) && ENCLOSING_LOOP_HEADER(bb)) { 
+			 
+						Ident id_tot(bb->id() | LOOP_TOTAL, Ident::ID_LOOP); 
+						PPL::Variable v_tot = s.create(id_tot, true); 
+						s.poly.add_constraint(v_tot == 0); 
+					} 
+				} 
+			}
 
 			if (LOOP_HEADER(bl)) {
 #ifdef POLY_DEBUG			
@@ -119,11 +133,66 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 				if ( PPL::raw_value(bsup_d).get_ui() != 0) {
 					bound = PPL::raw_value(bsup_n).get_ui() / PPL::raw_value(bsup_d).get_ui();
 				}
+				if (ENCLOSING_LOOP_HEADER(bl)) {
+					int outer_bound = -2;
+
+#ifdef POLY_DEBUG			
+					cout << "Is inner loop! " << endl;
+#endif
+					/* Attempt to detect triangular loop (FIXME TODO inspect all outer loops) */
+					Ident outer_id(ENCLOSING_LOOP_HEADER(bl)->id(), Ident::ID_LOOP);
+
+					PPL::Coefficient binf_n, binf_d, bsup_n, bsup_d;
+					man->get_range(outer_id, s, binf_n, binf_d, bsup_n, bsup_d);
+					if ( PPL::raw_value(bsup_d).get_ui() != 0) {
+						outer_bound = PPL::raw_value(bsup_n).get_ui() / PPL::raw_value(bsup_d).get_ui();
+						genstruct::HashTable<int,int> map;
+						Variable v_inner = s.lookup(id, false);
+						Variable v_outer = s.lookup(outer_id, false);
+						map[v_inner.id()] = 0;
+						map[v_outer.id()] = 1;
+						PPL::C_Polyhedron tmp = s.poly;
+						man->map_space_dimensions(MapWithHash(map), tmp);
+						PPL::Constraint_System cons = tmp.minimized_constraints();
+#ifdef POLY_DEBUG			
+						cout << "SYSTEME: " ;
+						cons.print();
+						fflush(stdout);
+						cout << endl;
+#endif
+						bool found = false;
+						int total;
+
+						for (PPL::Constraint_System::const_iterator it = cons.begin(); it != cons.end(); it++) {
+							const PPL::Constraint &c = *it;
+							if (c.is_nonstrict_inequality()) {
+								const PPL::Coefficient divisor = -c.coefficient(PPL::Variable(0));
+								const PPL::Coefficient coef = c.coefficient(PPL::Variable(1));
+								if ((divisor > 0) && (coef > 0)) {
+									const PPL::Coefficient cst = c.inhomogeneous_term();
+									const PPL::Coefficient expr_bound(outer_bound + 1 /* account for last backedge  in outer loop */ );
+									PPL::Coefficient sum = cst*expr_bound + (coef*(expr_bound - 1)* expr_bound) / 2;
+									sum = sum / divisor;
+									int temp_total = PPL::raw_value(sum).get_ui();
+									if ((temp_total < total) || !found)
+										total = temp_total;
+
+									found = true;
+								}
+							}
+						}
+						if (found) {
+							TOTAL_ITERATION(bl) = total;
+						}
+					}
+				}
+
 #ifdef POLY_DEBUG			
 				cout << "ITERATION: " << bound << endl;
 #endif
 				if ((MAX_ITERATION(bl) != -2) && ((MAX_ITERATION(bl) < bound)  || (bound == -2))) {
 					MAX_ITERATION(bl) = bound;
+					cout << "LOOP " << bl << " has bound: " << bound << endl;
 					for (genstruct::Vector<Edge*>::Iterator exitedge(**EXIT_LIST(bl)); exitedge; exitedge++) {
 #ifdef POLY_DEBUG			
 						cout << "Trigger exit edge with bound: " << bound << "(" << *exitedge << ")" << endl;
@@ -203,11 +272,11 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 				if (LOOP_HEADER(e->sink())) {
 					if (Dominance::dominates(e->sink(), e->source())) {
 						/* is back-edge */
-						edgeState = man->loopIter(edgeState, e->sink()->id());
+						edgeState = man->loopIter(edgeState, e->sink()->id(), ENCLOSING_LOOP_HEADER(e->sink()));
 						man->bring_out_your_dead(edgeState); // TODO PERF FIXME
 					} else {
 						/* is entry-edge */
-						edgeState = man->loopEntry(edgeState, e->sink()->id());
+						edgeState = man->loopEntry(edgeState, e->sink()->id(), ENCLOSING_LOOP_HEADER(e->sink()));
 						headerState.remove(e->sink()->id());
 						/*
 						*/
@@ -220,6 +289,17 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 						cout << "LOOPEXIT: " << bound << endl;
 #endif
 						edgeState = man->loopExit(edgeState, bb->id(), bound);
+						if (!ENCLOSING_LOOP_HEADER(bb)) {
+							/* bound inner total bounds FIXME TODO hack dégueu */ 
+							for (CFG::BlockIter iter(cfg.blocks()); iter; iter++) { 
+								BasicBlock *inner = (BasicBlock*) *iter;
+								if (LOOP_HEADER(inner) && (ENCLOSING_LOOP_HEADER(inner) == bb)) {
+									edgeState = man->loopTotal(edgeState, inner->id(), TOTAL_ITERATION(inner));
+
+								}
+							}
+
+						}
 						man->bring_out_your_dead(edgeState); // TODO PERF FIXME
 				}
 
@@ -280,8 +360,10 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	for (CFGCollection::Iterator iter2(coll); iter2; iter2++) {
 		for (CFG::BlockIter iter((*iter2)->blocks()); iter; iter++) {
 			BasicBlock *bb = (BasicBlock*) *iter;
-			if (LOOP_HEADER(bb))
+			if (LOOP_HEADER(bb)) {
 				cout << "[" << (*iter2)->name() << "]" << "MAX_ITERATION(" << bb->id() << ") = " << MAX_ITERATION(bb) << endl;
+				cout << "[" << (*iter2)->name() << "]" << "TOTAL_ITERATION(" << bb->id() << ") = " << TOTAL_ITERATION(bb) << endl;
+			}
 		}
 	}
 
@@ -565,7 +647,7 @@ PPLManager::t PPLManager::loopExit(PPLManager::t s_in, int loop, int bound) {
 	Variable v = s_out.lookup(id);
 	if (bound >= 0)
 		s_out.poly.add_constraint(v <= bound);
-	 s_out.freeAxis(v.id());
+    s_out.freeAxis(v.id());
 	if (s_out.poly.is_empty()) {
 #ifdef POLY_DEBUG			
 		cout << "is empty after loopExit!" << endl;
@@ -575,21 +657,57 @@ PPLManager::t PPLManager::loopExit(PPLManager::t s_in, int loop, int bound) {
 	return s_out;
 }
 
-PPLManager::t PPLManager::loopIter(PPLManager::t s_in, int loop) {
+PPLManager::t PPLManager::loopTotal(PPLManager::t s_in, int loop, int bound) {
+	PPLManager::t s_out = s_in;
+	Ident id(loop | LOOP_TOTAL, Ident::ID_LOOP);
+	ASSERT(s_out.exists(id)); /* You are supposed to be already inside the loop when you call loopExit() */ 
+	Variable v = s_out.lookup(id);
+	if (bound >= 0)
+		s_out.poly.add_constraint(v <= bound);
+    s_out.freeAxis(v.id());
+	if (s_out.poly.is_empty()) {
+#ifdef POLY_DEBUG			
+		cout << "is empty after loopTotal!" << endl;
+#endif
+		return _bot;
+	}
+	return s_out;
+}
+
+PPLManager::t PPLManager::loopIter(PPLManager::t s_in, int loop, bool inner) {
 	PPLManager::t s_out = s_in;
 	Ident id(loop, Ident::ID_LOOP);
 	ASSERT(s_out.exists(id)); /* You are supposed to be already inside the loop when you call loopIter() */ 
 	Variable v_old = s_out.lookup(id);
 	Variable v_new = s_out.create(id, true);
 	s_out.poly.add_constraint(v_new == v_old + 1);
+
+	if (inner) {
+		Ident id_tot(loop | LOOP_TOTAL, Ident::ID_LOOP);
+		ASSERT(s_out.exists(id_tot)); /* You are supposed to be already inside the loop when you call loopIter() */ 
+		Variable v_old_tot = s_out.lookup(id_tot);
+		Variable v_new_tot = s_out.create(id_tot, true);
+		s_out.poly.add_constraint(v_new_tot == v_old_tot + 1);
+	}
+
 	return s_out;
 }
 
-PPLManager::t PPLManager::loopEntry(PPLManager::t s_in, int loop) {
+PPLManager::t PPLManager::loopEntry(PPLManager::t s_in, int loop, bool inner) {
 	PPLManager::t s_out = s_in;
 	Ident id(loop, Ident::ID_LOOP);
 	PPL::Variable v = s_out.create(id, true);
 	s_out.poly.add_constraint(v == 0);
+/*
+	if (inner) {
+		Ident id_tot(loop | LOOP_TOTAL, Ident::ID_LOOP);
+		if (!s_out.exists(id_tot)) {
+			PPL::Variable v_tot = s_out.create(id_tot, true);
+			s_out.poly.add_constraint(v_tot == 0);
+		}
+
+	}
+*/
 	return s_out;
 }
 

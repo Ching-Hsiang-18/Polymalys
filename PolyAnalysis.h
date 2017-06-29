@@ -1,4 +1,4 @@
-#define POLY_DEBUG 1
+// #define POLY_DEBUG 1
 
 
 /*
@@ -112,6 +112,8 @@ class Variable {
 		const PPLDomain &_dom;
 };
 */
+
+#define LOOP_TOTAL 0x10000
 class Ident {
 	public:
 		friend class HashIdent;
@@ -428,6 +430,22 @@ inline Output& operator<<(Output& o, const PPL::Variable pv) {
 		o << name;
 		return o;
 }  
+class MapWithHash {
+	public:
+		MapWithHash(genstruct::HashTable<int,int> &map) : _map(map) { }
+		bool has_empty_codomain() const { return false; }
+		PPL::dimension_type max_in_codomain() const { 
+			return 0;
+		}
+		bool maps(PPL::dimension_type i, PPL::dimension_type &j) const {
+			if (_map.hasKey(i)) {
+				j = _map[i];
+				return true;
+			} else return false;
+		}
+	private:
+		genstruct::HashTable<int,int> &_map;
+};
 
 /*
  * 1) identifier les axes communs avec getpointerexpr etc)
@@ -528,22 +546,6 @@ private:
 			int _base_ptr_axis;
 			genstruct::Vector<const Ident*> revmap;
 	};
-	class MapWithHash {
-		public:
-			MapWithHash(genstruct::HashTable<int,int> &map) : _map(map) { }
-			bool has_empty_codomain() const { return false; }
-			PPL::dimension_type max_in_codomain() const { 
-				return 0;
-			}
-			bool maps(PPL::dimension_type i, PPL::dimension_type &j) const {
-				if (_map.hasKey(i)) {
-					j = _map[i];
-					return true;
-				} else return false;
-			}
-		private:
-			genstruct::HashTable<int,int> &_map;
-	};
 	/* workaround for PPL crazyness */
 	template <class F> class MapHelper {
 		public:
@@ -623,6 +625,7 @@ public:
 		_init.poly.add_constraint(var_ssp == var_sp);
 		_init.poly.add_constraint(var_sfp == var_fp);
 		_init.poly.add_constraint(var_slr == var_lr);
+
 	} 
 	~PPLManager() { }
 
@@ -958,7 +961,6 @@ public:
 #endif
 
 		l1.poly.poly_hull_assign(r1.poly);
-		widen = false;
 		if (widen) {
 #ifdef POLY_DEBUG			
 			cerr << "before widening: " << endl;
@@ -1003,9 +1005,10 @@ public:
 	inline void dump(io::Output& out, const t& v) {  }
 	inline void dump(io::Output& out, value_t v) {  }
 	t update(t s, sem::inst si);
-	t loopEntry(PPLManager::t s_in, int loop);
-	t loopIter(PPLManager::t s_in, int loop);
+	t loopEntry(PPLManager::t s_in, int loop, bool inner=false);
+	t loopIter(PPLManager::t s_in, int loop, bool inner=false);
 	t loopExit(PPLManager::t s_in, int loop, int bound);
+	t loopTotal(PPLManager::t s_in, int loop, int bound);
 	PPL::Variable *make_var(Ident &id, PPLManager::t &dom);
 	void bring_out_your_dead(PPLManager::t &dom);
 	void binary_operation_helper(PPLManager::t &s, int op, PPL::Variable *v, PPL::Variable *vs1, PPL::Variable *vs2);
