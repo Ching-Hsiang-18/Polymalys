@@ -15,10 +15,19 @@ poly_PlugHook.o: poly_PlugHook.cpp
 
 clean:
 	rm -f *~ core* poly.so *.o
+	make -C tests clean
 
 install: poly.so
 	mkdir -p $(HOME)/.otawa/proc/otawa
 	cp poly.eld $(HOME)/.otawa/proc/otawa/
 	cp poly.so $(HOME)/.otawa/proc/otawa/
 
-.PHONY: clean install
+test: douter
+
+tests: douter
+
+douter: install
+	make -C tests douter
+
+
+.PHONY: clean install douter test tests

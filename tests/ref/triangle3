@@ -1,0 +1,6 @@
+[main]MAX_ITERATION(2) = 10
+[main]TOTAL_ITERATION(2) = -1
+[main]MAX_ITERATION(4) = 16
+[main]TOTAL_ITERATION(4) = 97
+[main]MAX_ITERATION(8) = 97
+[main]TOTAL_ITERATION(8) = -1
