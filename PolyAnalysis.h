@@ -1,3 +1,4 @@
+
 // #define POLY_DEBUG 1
 
 
@@ -43,6 +44,8 @@ using namespace otawa::util ;
 #define LOC_VAR_SIZE 4
 
 #define MAX_AXIS 1024
+
+#define STACK_START 0x70000000 /* We assume that objects in stack can never be lower than this address */
 
 class PPLManager;
 extern PPLManager *beurk;
@@ -622,9 +625,25 @@ public:
 		Variable var_sfp = _init.create(Ident(Ident::ID_START_FP, Ident::ID_SPECIAL));
 		Variable var_slr = _init.create(Ident(Ident::ID_START_LR, Ident::ID_SPECIAL));
 
+		/*
+		_init.poly.add_constraint(var_ssp == STACK_START);
+		_init.poly.add_constraint(var_sfp == STACK_START);
+		_init.poly.add_constraint(var_slr == STACK_START);
+		*/
+
 		_init.poly.add_constraint(var_ssp == var_sp);
 		_init.poly.add_constraint(var_sfp == var_fp);
 		_init.poly.add_constraint(var_slr == var_lr);
+
+		/* return addr */
+		/*
+		Ident id_ret_addr, id_ret_val;
+		_init.create_ptr(id_ret_addr, id_ret_val);
+		Variable ret_addr = _init.create(id_ret_addr);
+		Variable ret_val = _init.create(id_ret_val);
+		_init.poly.add_constraint(ret_addr == var_ssp + 4);
+		*/
+
 
 	} 
 	~PPLManager() { }
@@ -1004,7 +1023,7 @@ public:
 	inline void set(t& d, const t& s) {  }
 	inline void dump(io::Output& out, const t& v) {  }
 	inline void dump(io::Output& out, value_t v) {  }
-	t update(t s, sem::inst si);
+	t update(t s, sem::inst si, int instaddr);
 	t loopEntry(PPLManager::t s_in, int loop, bool inner=false);
 	t loopIter(PPLManager::t s_in, int loop, bool inner=false);
 	t loopExit(PPLManager::t s_in, int loop, int bound);
@@ -1013,8 +1032,8 @@ public:
 	void bring_out_your_dead(PPLManager::t &dom);
 	void binary_operation_helper(PPLManager::t &s, int op, PPL::Variable *v, PPL::Variable *vs1, PPL::Variable *vs2);
 	void integer_wrap(PPLManager::t &s);
-	bool may_be_equal(PPLManager::t &s, PPL::Variable &v1, PPL::Variable &v2);
-	bool must_be_equal(PPLManager::t &s, PPL::Variable &v1, PPL::Variable &v2);
+	bool may_be_equal(PPLManager::t &s, PPL::Variable &v1, PPL::Variable &v2, int offset = 0);
+	bool must_be_equal(PPLManager::t &s, PPL::Variable &v1, PPL::Variable &v2, int offset = 0);
 	void scratch(Ident &id, PPLManager::t &dom);
 	void get_range(Ident &id, PPLManager::t &dom, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
 	void get_range(PPL::Variable &var, PPLManager::t &dom, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);

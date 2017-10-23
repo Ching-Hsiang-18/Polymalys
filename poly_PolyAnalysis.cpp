@@ -93,6 +93,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 	ai::OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, DumbOrder > ana(*man, graph, store, order);
 
 	genstruct::HashTable<int, state_t> headerState;
+	int first = 1;
 	
 
 	cout << "Starting abstract interpretation for CFG: " << cfg.name() << endl;	
@@ -108,8 +109,11 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 					ana.check(*e, s);
 		} else {
 			BasicBlock *bl = (BasicBlock*) *ana;
-			if ((bl->id() == 1) && do_init) {
+			cout << "handle bb: " << bl << "\n";
+			cout << bl->id() << endl;
+			if (first) {
 				/* FIXME TODO (hack dégueu) */
+				first = 0;
 				cout << "Preparing TOTAL bounds ... " << endl; 
 				for (CFG::BlockIter iter(cfg.blocks()); iter; iter++) { 
 					BasicBlock *bb = (BasicBlock*) *iter; 
@@ -238,7 +242,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 						cout << "+++ IR +++: " << *semi << endl;
 #endif
 						// man->display_loc_vars(s);
-						s = man->update(s, *semi);
+						s = man->update(s, *semi, inst->address());
 						// man->display_loc_vars(s);
 #ifdef POLY_DEBUG			
 						cout << "AFTER IR: " << s << endl;
@@ -582,12 +586,12 @@ PPL::Variable *PPLManager::make_var(Ident &id, PPLManager::t &dom) {
 		return new Variable(id, dom);
 }
 
-bool PPLManager::may_be_equal(PPLManager::t &s, PPL::Variable &v1, PPL::Variable &v2) {
-	return !s.poly.relation_with(v1 == v2).implies(PPL::Poly_Con_Relation::is_disjoint()); 
+bool PPLManager::may_be_equal(PPLManager::t &s, PPL::Variable &v1, PPL::Variable &v2, int offset) {
+	return !s.poly.relation_with(v1 == v2 + offset).implies(PPL::Poly_Con_Relation::is_disjoint()); 
 }
 
-bool PPLManager::must_be_equal(PPLManager::t &s, PPL::Variable &v1, PPL::Variable &v2) {
-	return s.poly.relation_with(v1 == v2).implies(PPL::Poly_Con_Relation::is_included()); 
+bool PPLManager::must_be_equal(PPLManager::t &s, PPL::Variable &v1, PPL::Variable &v2, int offset) {
+	return s.poly.relation_with(v1 == v2 + offset).implies(PPL::Poly_Con_Relation::is_included()); 
 }
 
 void PPLManager::binary_operation_helper(PPLManager::t &s, int op, PPL::Variable *v, PPL::Variable *vs1, PPL::Variable *vs2) {
@@ -604,6 +608,8 @@ void PPLManager::binary_operation_helper(PPLManager::t &s, int op, PPL::Variable
 			b = get_constant(*vs2, s, cst_n, cst_d);
 			if (b && (cst_d == 1))  {
 				s.poly.add_constraint(*v == *vs1 * (1 << PPL::raw_value(cst_n).get_ui()));
+			} else {
+				s.poly.add_constraint(*v >= *vs1);
 			}
 			break;
 		case sem::CMP:          // d <- a ~ b
@@ -616,6 +622,8 @@ void PPLManager::binary_operation_helper(PPLManager::t &s, int op, PPL::Variable
 			b = get_constant(*vs2, s, cst_n, cst_d);
 			if (b && (cst_d == 1))  {
 				s.poly.add_constraint(*vs1 == *v * (1 << PPL::raw_value(cst_n).get_ui()));
+			} else {
+				s.poly.add_constraint(*vs1 >= *v);
 			}
 			break;
 		case sem::MUL:
@@ -625,7 +633,7 @@ void PPLManager::binary_operation_helper(PPLManager::t &s, int op, PPL::Variable
 			} else {
 				b = get_constant(*vs2, s, cst_n, cst_d);
 				s.poly.add_constraint(*v * cst_d == *vs1 * cst_n);
-			}
+			} 
 			break;
 		case sem::MULH: // d <- (a * b) >> bitlength(d)
 			b = get_constant(*vs1, s, cst_n, cst_d);
@@ -711,7 +719,7 @@ PPLManager::t PPLManager::loopEntry(PPLManager::t s_in, int loop, bool inner) {
 	return s_out;
 }
 
-PPLManager::t PPLManager::update(t s_in, sem::inst si) {
+PPLManager::t PPLManager::update(t s_in, sem::inst si, int instaddr) {
         PPLManager::t s_out = s_in;
 		ASSERT(!hasFilter() || (si.op == sem::BRANCH));
 
@@ -823,6 +831,18 @@ PPLManager::t PPLManager::update(t s_in, sem::inst si) {
 
 				Variable v_reg_src = s_out.lookup(id_reg_src, true);
 				Variable v_reg_addr = s_out.lookup(id_reg_addr, true);
+
+				/*
+				 * Teste si l'adresse du store peut aliaser SSP+4
+				 */
+
+				Ident id_frame(Ident::ID_START_SP, Ident::ID_SPECIAL);
+				Variable var_ssp = s_out.lookup(id_frame);
+				if (may_be_equal(s_out, v_reg_addr, var_ssp, 4)) {
+					cout << "warning: unsafe write at EIP=0x" << hex(instaddr) << endl;
+				}
+
+				
 
 				for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++)
 				{
