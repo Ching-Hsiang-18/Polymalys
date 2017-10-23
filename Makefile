@@ -1,3 +1,6 @@
+CC=clang
+CXX=clang
+
 CXXFLAGS=`otawa-config --cflags`
 LIBS=`otawa-config --libs`
 LIBS+=-lppl

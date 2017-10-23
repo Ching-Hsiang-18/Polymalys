@@ -1,24 +1,3 @@
-/*
- *
- *	This file is part of OTAWA
- *	Copyright (c) 2009, IRIT UPS.
- *
- *	OTAWA is free software; you can redistribute it and/or modify
- *	it under the terms of the GNU General Public License as published by
- *	the Free Software Foundation; either version 2 of the License, or
- *	(at your option) any later version.
- *
- *	OTAWA is distributed in the hope that it will be useful,
- *	but WITHOUT ANY WARRANTY; without even the implied warranty of
- *	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *	GNU General Public License for more details.
- *
- *	You should have received a copy of the GNU General Public License
- *	along with OTAWA; if not, write to the Free Software
- *	Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- */
-
-
 #include <otawa/otawa.h>
 #include <otawa/util/WideningListener.h>
 #include <otawa/util/WideningFixPoint.h>
@@ -41,6 +20,10 @@ namespace otawa { namespace poly {
  * TODO
  */
 
+#define BEURK_NUM_LOC_VARS 8
+#define BEURK_LOC_VAR_SIZE 4
+#define BEURK_MAX_AXIS 1024
+
 p::declare PolyAnalysis::reg = p::init("otawa::poly::PolyAnalysis", Version(1,0,0))
 	.require(COLLECTED_CFG_FEATURE)
 	.require(LOOP_INFO_FEATURE)
@@ -49,38 +32,17 @@ p::declare PolyAnalysis::reg = p::init("otawa::poly::PolyAnalysis", Version(1,0,
 
 /**
  */
-PolyAnalysis::PolyAnalysis(p::declare& r): Processor(r) {
-}
+PolyAnalysis::PolyAnalysis(p::declare& r): Processor(r) { }
 
 
 /**
  */
 void PolyAnalysis::configure(const PropList &props) {
 	Processor::configure(props);
-	cout << "Configuring Poly Analysis." << endl;
-	//GLOBAL_STATE_ENTRY(props);
-	//entry(&pv, dfa::INITIAL_STATE(workspace()), allocator);
-	// time = TIME(props);
 }
 
 
-class DumbOrder {
-	public:
-	bool isBefore(Block *b1, Block *b2) {
-		return (b1->id() < b2->id());
-	}
-};
-
-
-PPLManager *beurk = NULL;
-/**
- */
-
 void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
-	if (!strcmp(cfg.name().toCString(), "gsignal")) {
-		return;
-	}
-
 	ai::CFGGraph graph(&cfg);
 	PPLManager *man;
     if (do_init) {
@@ -89,8 +51,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 		man = new PPLManager(s);
 	}
 	ai::EdgeStore<PPLManager, ai::CFGGraph> store(*man, graph);
-	DumbOrder order;
-	ai::OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, DumbOrder > ana(*man, graph, store, order);
+	ai::OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph> > ana(*man, graph, store);
 
 	genstruct::HashTable<int, state_t> headerState;
 	int first = 1;
@@ -111,20 +72,6 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 			BasicBlock *bl = (BasicBlock*) *ana;
 			cout << "handle bb: " << bl << "\n";
 			cout << bl->id() << endl;
-			if (first) {
-				/* FIXME TODO (hack dégueu) */
-				first = 0;
-				cout << "Preparing TOTAL bounds ... " << endl; 
-				for (CFG::BlockIter iter(cfg.blocks()); iter; iter++) { 
-					BasicBlock *bb = (BasicBlock*) *iter; 
-					if (LOOP_HEADER(bb) && ENCLOSING_LOOP_HEADER(bb)) { 
-			 
-						Ident id_tot(bb->id() | LOOP_TOTAL, Ident::ID_LOOP); 
-						PPL::Variable v_tot = s.create(id_tot, true); 
-						s.poly.add_constraint(v_tot == 0); 
-					} 
-				} 
-			}
 
 			if (LOOP_HEADER(bl)) {
 #ifdef POLY_DEBUG			
@@ -137,60 +84,6 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 				if ( PPL::raw_value(bsup_d).get_ui() != 0) {
 					bound = PPL::raw_value(bsup_n).get_ui() / PPL::raw_value(bsup_d).get_ui();
 				}
-				if (ENCLOSING_LOOP_HEADER(bl)) {
-					int outer_bound = -2;
-
-#ifdef POLY_DEBUG			
-					cout << "Is inner loop! " << endl;
-#endif
-					/* Attempt to detect triangular loop (FIXME TODO inspect all outer loops) */
-					Ident outer_id(ENCLOSING_LOOP_HEADER(bl)->id(), Ident::ID_LOOP);
-
-					PPL::Coefficient binf_n, binf_d, bsup_n, bsup_d;
-					man->get_range(outer_id, s, binf_n, binf_d, bsup_n, bsup_d);
-					if ( PPL::raw_value(bsup_d).get_ui() != 0) {
-						outer_bound = PPL::raw_value(bsup_n).get_ui() / PPL::raw_value(bsup_d).get_ui();
-						genstruct::HashTable<int,int> map;
-						Variable v_inner = s.lookup(id, false);
-						Variable v_outer = s.lookup(outer_id, false);
-						map[v_inner.id()] = 0;
-						map[v_outer.id()] = 1;
-						PPL::C_Polyhedron tmp = s.poly;
-						man->map_space_dimensions(MapWithHash(map), tmp);
-						PPL::Constraint_System cons = tmp.minimized_constraints();
-#ifdef POLY_DEBUG			
-						cout << "SYSTEME: " ;
-						cons.print();
-						fflush(stdout);
-						cout << endl;
-#endif
-						bool found = false;
-						int total;
-
-						for (PPL::Constraint_System::const_iterator it = cons.begin(); it != cons.end(); it++) {
-							const PPL::Constraint &c = *it;
-							if (c.is_nonstrict_inequality()) {
-								const PPL::Coefficient divisor = -c.coefficient(PPL::Variable(0));
-								const PPL::Coefficient coef = c.coefficient(PPL::Variable(1));
-								if ((divisor > 0) && (coef > 0)) {
-									const PPL::Coefficient cst = c.inhomogeneous_term();
-									const PPL::Coefficient expr_bound(outer_bound + 1 /* account for last backedge  in outer loop */ );
-									PPL::Coefficient sum = cst*expr_bound + (coef*(expr_bound - 1)* expr_bound) / 2;
-									sum = sum / divisor;
-									int temp_total = PPL::raw_value(sum).get_ui();
-									if ((temp_total < total) || !found)
-										total = temp_total;
-
-									found = true;
-								}
-							}
-						}
-						if (found) {
-							// TOTAL_ITERATION(bl) = total;
-						}
-					}
-				}
-
 #ifdef POLY_DEBUG			
 				cout << "ITERATION: " << bound << endl;
 #endif
@@ -204,8 +97,6 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 						Block::EdgeIter e = exitedge->source()->ins();
 						ana.change(e);
 					}
-
-
 				}
 				if (headerState.hasKey(bl->id())) {
 					s = headerState[bl->id()] = man->widening(s, headerState[bl->id()]);
@@ -260,7 +151,6 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 				}
 											
 			}
-			s.serial = bl->id();
 			for (ai::CFGGraph::Successor e(graph, *ana); e; e++) {
 #ifdef POLY_DEBUG			
 				cout << "---inst outedge!" << *e << "taken= " << (e->isTaken()) << endl;
@@ -293,17 +183,6 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 						cout << "LOOPEXIT: " << bound << endl;
 #endif
 						edgeState = man->loopExit(edgeState, bb->id(), bound);
-						if (!ENCLOSING_LOOP_HEADER(bb)) {
-							/* bound inner total bounds FIXME TODO hack dégueu */ 
-							for (CFG::BlockIter iter(cfg.blocks()); iter; iter++) { 
-								BasicBlock *inner = (BasicBlock*) *iter;
-								if (LOOP_HEADER(inner) && (ENCLOSING_LOOP_HEADER(inner) == bb)) {
-									edgeState = man->loopTotal(edgeState, inner->id(), TOTAL_ITERATION(inner));
-
-								}
-							}
-
-						}
 						man->bring_out_your_dead(edgeState); // TODO PERF FIXME
 				}
 
@@ -357,9 +236,7 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	cout << "CFG count: " << coll->count() << endl;
 	state_t dummy;
 	analyzeGraph(*entry, dummy, true);
-	/*
-	cout << "FINAL STATE: " << endl;
-	*/
+
 	cout << "LOOP BOUNDS: " << endl;
 	for (CFGCollection::Iterator iter2(coll); iter2; iter2++) {
 		for (CFG::BlockIter iter((*iter2)->blocks()); iter; iter++) {
@@ -371,63 +248,13 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 		}
 	}
 
-/*
-	PPL::C_Polyhedron poly(dom.cons);
-	bool maximum, minimum;
-	if (var.id() >= poly.space_dimension()) {
-		bsup_n = 0;
-		binf_n = 0;
-		bsup_d = 0;
-		binf_d = 0;
-		return;
-	}
-	poly.maximize(var, bsup_n, bsup_d, maximum);
-	poly.minimize(var, binf_n, binf_d, minimum);
-	gmp_printf("[");
-	if (binf_d != 0) {
-		gmp_printf("%Zd", &PPL::raw_value(binf_n));
-		if (binf_d != 1)
-			gmp_printf("/%Zd", &PPL::raw_value(binf_d));
-	} else gmp_printf("-inf");
-	gmp_printf("..");
-	if (bsup_d != 0) {
-		gmp_printf("%Zd", &PPL::raw_value(bsup_n));
-		if (bsup_d != 1)
-			gmp_printf("/%Zd", &PPL::raw_value(bsup_d));
-	} else gmp_printf("+inf");
-	gmp_printf("]");
-	fflush(stdout);
-	
-*/	
-	
 	
 }
 typedef PPL::Variable* PVAR;
 
 void PPLManager::integer_wrap(PPLManager::t &dom) {
-	// FIXME
-	return; // TODO
+	return; // TODO integer wrap not supported yet
 	
-	// code below is crap
-	
-	PPL::Constraint_System cons = dom.poly.minimized_constraints();
-	PPL::Constraint_System result;
-	for (PPL::Constraint_System::const_iterator it = cons.begin(); it != cons.end(); it++) {
-		const PPL::Constraint &c = *it;
-		if (c.is_equality()) {
-			PPL::Linear_Expression e;
-			for (PPL::dimension_type i = c.space_dimension(); i-- > 0;) {
-				e += c.coefficient(PPL::Variable(i)) * PPL::Variable(i);
-			}
-			const mpz_class &val = c.inhomogeneous_term();
-			mpz_class val2 = val % 0x100000000;
-			if (val2 < -0x7FFFFFFF)
-				val2 = val2 + 0x100000000;
-			e += val2;
-			result.insert(e == 0);
-		} else result.insert(c);
-	}
-	dom.poly = PPL::C_Polyhedron(result);
 }
 
 void PPLManager::bring_out_your_dead(PPLManager::t &dom) {
@@ -462,10 +289,10 @@ void PPLManager::display_loc_vars(PPLManager::t &dom) {
 	Ident id_ssp(Ident::ID_START_SP, Ident::ID_SPECIAL);
 	Variable ssp = dom.lookup(id_ssp);
 	cout << mcons.space_dimension() << " Local variables: " << endl;
-	for (int i = 0 ; i < NUM_LOC_VARS*LOC_VAR_SIZE; i += LOC_VAR_SIZE) {
+	for (int i = 0 ; i < BEURK_NUM_LOC_VARS*BEURK_LOC_VAR_SIZE; i += BEURK_LOC_VAR_SIZE) {
 		PPL::Constraint_System cons = mcons;
 		PPL::Variable v(dom.num_axis);
-		cons.insert(v == ssp - i - LOC_VAR_SIZE);
+		cons.insert(v == ssp - i - BEURK_LOC_VAR_SIZE);
 		cout << " [SP - " << hex(i) << "] == ";
 		bool found = false;
 		for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(dom.id2axis); it; it++)
@@ -519,18 +346,6 @@ void PPLManager::get_range(Ident &id, PPLManager::t &dom, PPL::Coefficient &binf
 	get_range(v, dom, binf_n, binf_d, bsup_n, bsup_d, display);
 }
 
-bool PPLManager::is_constrained(Ident &id, PPLManager::t &dom){
-	Variable v = dom.lookup(id);
-	return is_constrained(v, dom);
-}
-
-int PPLDomain::gen = 0;
-bool PPLManager::is_constrained(PPL::Variable &var, PPLManager::t &dom) {
-	int axis = var.id();
-	RemoveAllButOne pfunc(axis);
-	map_space_dimensions(pfunc, dom.poly);
-	return !dom.poly.is_universe();
-}
 
 void PPLManager::get_range(PPL::Variable &var, PPLManager::t &dom, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display) {
 	bool maximum, minimum;
@@ -581,6 +396,7 @@ void PPLManager::scratch(Ident &id, PPLManager::t &dom) {
 	cout << "After cylindrification: " << dom << endl;
 #endif
 }
+
 PPL::Variable *PPLManager::make_var(Ident &id, PPLManager::t &dom) {
 		dom.allocAxis(id);
 		return new Variable(id, dom);
@@ -648,6 +464,7 @@ void PPLManager::binary_operation_helper(PPLManager::t &s, int op, PPL::Variable
 			break;
 	}
 }
+
 PPLManager::t PPLManager::loopExit(PPLManager::t s_in, int loop, int bound) {
 	PPLManager::t s_out = s_in;
 	Ident id(loop, Ident::ID_LOOP);
@@ -665,22 +482,6 @@ PPLManager::t PPLManager::loopExit(PPLManager::t s_in, int loop, int bound) {
 	return s_out;
 }
 
-PPLManager::t PPLManager::loopTotal(PPLManager::t s_in, int loop, int bound) {
-	PPLManager::t s_out = s_in;
-	Ident id(loop | LOOP_TOTAL, Ident::ID_LOOP);
-	ASSERT(s_out.exists(id)); /* You are supposed to be already inside the loop when you call loopExit() */ 
-	Variable v = s_out.lookup(id);
-	if (bound >= 0)
-		s_out.poly.add_constraint(v <= bound);
-    s_out.freeAxis(v.id());
-	if (s_out.poly.is_empty()) {
-#ifdef POLY_DEBUG			
-		cout << "is empty after loopTotal!" << endl;
-#endif
-		return _bot;
-	}
-	return s_out;
-}
 
 PPLManager::t PPLManager::loopIter(PPLManager::t s_in, int loop, bool inner) {
 	PPLManager::t s_out = s_in;
@@ -690,14 +491,6 @@ PPLManager::t PPLManager::loopIter(PPLManager::t s_in, int loop, bool inner) {
 	Variable v_new = s_out.create(id, true);
 	s_out.poly.add_constraint(v_new == v_old + 1);
 
-	if (inner) {
-		Ident id_tot(loop | LOOP_TOTAL, Ident::ID_LOOP);
-		ASSERT(s_out.exists(id_tot)); /* You are supposed to be already inside the loop when you call loopIter() */ 
-		Variable v_old_tot = s_out.lookup(id_tot);
-		Variable v_new_tot = s_out.create(id_tot, true);
-		s_out.poly.add_constraint(v_new_tot == v_old_tot + 1);
-	}
-
 	return s_out;
 }
 
@@ -706,16 +499,6 @@ PPLManager::t PPLManager::loopEntry(PPLManager::t s_in, int loop, bool inner) {
 	Ident id(loop, Ident::ID_LOOP);
 	PPL::Variable v = s_out.create(id, true);
 	s_out.poly.add_constraint(v == 0);
-/*
-	if (inner) {
-		Ident id_tot(loop | LOOP_TOTAL, Ident::ID_LOOP);
-		if (!s_out.exists(id_tot)) {
-			PPL::Variable v_tot = s_out.create(id_tot, true);
-			s_out.poly.add_constraint(v_tot == 0);
-		}
-
-	}
-*/
 	return s_out;
 }
 
@@ -858,7 +641,7 @@ PPLManager::t PPLManager::update(t s_in, sem::inst si, int instaddr) {
 						map[v_frame.id()] = 1;
 						map[v_bound.id()] = 2;
 						PPL::C_Polyhedron tmp = s_out.poly;
-						map_space_dimensions(MapWithHash(map), tmp);
+						map_space_dimensions(PPLManager::MapWithHash(map), tmp);
 						tmp.minimized_constraints().print();
 						cout << endl;
 					}
@@ -998,7 +781,7 @@ const PPL::Variable &Ident::getVar() {
 }
 */
 
-BitVector PPLDomain::trash(MAX_AXIS);
+BitVector PPLDomain::trash(BEURK_MAX_AXIS);
 
 void PPLDomain::freeAxis(int axis) {
 	ASSERT(axis2id[axis].getType() != Ident::ID_INVALID);
@@ -1014,7 +797,7 @@ void PPLDomain::freeAxis(int axis) {
 }
 
 int PPLDomain::allocAxis(const Ident &ident, bool allow_replace) { 
-	ASSERT(num_axis < MAX_AXIS);
+	ASSERT(num_axis < BEURK_MAX_AXIS);
 	ASSERT(allow_replace || !id2axis.hasKey(ident));
 	if (id2axis.hasKey(ident)) {
 		int axis = id2axis[ident];
@@ -1036,12 +819,6 @@ int PPLDomain::allocAxis(const Ident &ident, bool allow_replace) {
 		poly.add_space_dimensions_and_embed(num_axis - poly.space_dimension());
 	}
 	return num_axis - 1;
-/*	DomId *dom_id= new DomId(ident, *this);
-	DomVar *nv = new DomVar(num_axis, *this);
-	ASSERT(!id2var.hasKey(*dom_id));
-	num_axis++;
-	id2var.put(*dom_id, nv);
-	return *nv; */
 }
 
 Variable PPLDomain::lookup(const Ident &ident, bool allow_create) {
@@ -1091,4 +868,11 @@ bool PPLDomain::exists(const Ident &ident) {
 bool PPLDomain::exists(int axis) {
 	return axis2id[axis].getType() != Ident::ID_INVALID;
 }
+
+
+Identifier<int> MAX_AXIS("otawa::poly::MAX_AXIS", 512);
+Identifier<int> LOC_VAR_SIZE("otawa::poly::LOC_VAR_SIZE", 4);
+Identifier<int> NUM_LOC_VARS("otawa::poly::NUM_LOC_VARS", 8);
+
+
 } }	// otawa::poly

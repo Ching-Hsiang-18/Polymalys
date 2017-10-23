@@ -1,27 +1,5 @@
-
 // #define POLY_DEBUG 1
-
-
-/*
- *	GlobalAnalysis class interface
- *
- *	This file is part of OTAWA
- *	Copyright (c) 2009, IRIT UPS.
- *
- *	OTAWA is free software; you can redistribute it and/or modify
- *	it under the terms of the GNU General Public License as published by
- *	the Free Software Foundation; either version 2 of the License, or
- *	(at your option) any later version.
- *
- *	OTAWA is distributed in the hope that it will be useful,
- *	but WITHOUT ANY WARRANTY; without even the implied warranty of
- *	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *	GNU General Public License for more details.
- *
- *	You should have received a copy of the GNU General Public License
- *	along with OTAWA; if not, write to the Free Software
- *	Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- */
+//
 #ifndef OTAWA_POLY_ANALYSIS_FEATURE_H
 #define OTAWA_POLY_ANALYSIS_FEATURE_H
 
@@ -37,54 +15,21 @@ namespace PPL = Parma_Polyhedra_Library;
 
 namespace otawa { namespace poly {
 
-using namespace otawa ;
-using namespace otawa::util ;
+using namespace otawa;
+using namespace otawa::util;
 
-#define NUM_LOC_VARS 8
-#define LOC_VAR_SIZE 4
-
-#define MAX_AXIS 1024
-
-#define STACK_START 0x70000000 /* We assume that objects in stack can never be lower than this address */
+extern Identifier<int> MAX_AXIS;
+extern Identifier<int> NUM_LOC_VARS;
+extern Identifier<int> LOC_VAR_SIZE;
+extern p::feature POLY_ANALYSIS_FEATURE;
 
 class PPLManager;
-extern PPLManager *beurk;
-//class Ident { 
-/* 
-	public:
-		friend class PPLManager;
-		Ident(String name = "???") : _name(name) { }
-		~Ident() {}
-		inline void print(io::Output & out) const {  
-   */	/* 
-			char letter = (pv.id() % 26) + 'A';
-			int number = pv.id() / 26;
-			char name[32];
-			if (number) {
-				snprintf(name, sizeof(name), "%c%u", letter, number);
-			} else {
-				snprintf(name, sizeof(name), "%c", letter);
-			}
-			out << _name << " (" << name << ")";  */ /* 
-			out << _name;
-		}  
-		inline bool operator==(const Ident& id) const {
-			return (_name == id._name);
-		}
-		inline bool operator!=(const Ident& id) const {
-			return (_name != id._name);
-		} */ /* 
-	private:
-		String _name; */ 
-//		PPL::Variable pv;
-// };
-inline Output& operator<<(Output& o, const PPL::Variable pv);
-
 class HashIdent;
 class HashIdent2;
 class PPLDomain;
 class Ident;
-template <class T> class IdHolder;
+
+inline Output& operator<<(Output& o, const PPL::Variable pv);
 
 class Variable : public PPL::Variable {
 	public:
@@ -98,28 +43,12 @@ class Variable : public PPL::Variable {
 		const Ident &_ident;
 };
 
-
-
-// /
-// typedef IdHolder<Ident> DomId;
-// typedef Variable DomVar;
- /* 
-class Variable {
-	public:
-		Variable(int axis, const PPLDomain &dom) : _var(axis), _dom(dom) { }
-	const DomId &getId();
-	operator PPL::Variable&() const { return *const_cast<PPL::Variable*>(&_var); } // FIXME
-	operator PPL::Variable() const { return *(new PPL::Variable(0)); }
-	private:
-		const PPL::Variable _var;
-		const PPLDomain &_dom;
-};
-*/
-
 #define LOOP_TOTAL 0x10000
 class Ident {
+
 	public:
 		friend class HashIdent;
+		friend class PPLManager;
 		enum IdentType {
 			ID_REG=0,
 			ID_MEM_ADDR,
@@ -134,21 +63,11 @@ class Ident {
 			ID_START_FP=1,
 			ID_START_LR=2,
 		};
-		friend class PPLManager;
 		Ident() : _type(ID_INVALID) { }
 		Ident(int id, IdentType typ, const PPLDomain *dom = NULL) : _id(id), _type(typ) { }
-		Ident(int _canonicalAxis) : _id(_canonicalAxis / ID_MAX_TYPE), _type(IdentType(_canonicalAxis % ID_MAX_TYPE)) { }
 		~Ident() { } 
-		inline int getCanonicalAxis() const {
-			int temp_id = _id;
-			if (temp_id < 0) {
-				temp_id = 16 + _id;
-			}
-			return temp_id*ID_MAX_TYPE + _type;
-		}
 		inline int getId() const { return _id; }
 		inline IdentType getType() const { return _type; }
-		// const PPL::Variable &getVar();
 
 		inline void print(io::Output &out) const {
 			switch(_type) {
@@ -195,6 +114,7 @@ class Ident {
 		inline bool operator!=(const Ident &i) const {
 			return (_id != i._id) || (_type != i._type);
 		}
+
 	private:
 		int _id;
 		IdentType _type;
@@ -209,35 +129,6 @@ class HashIdent {
 			return (key1._id == key2._id) && (key1._type == key2._type);  
 		}
 };
-
-// FIXME
-//
-/*
-class HashIdent2 {
-	public:
-		static t::hash hash(const DomId& key) { 
-			return key._id;
-		};
-		static inline bool equals(const DomId& key1, const DomId& key2) {   
-			ASSERT((key1._dom == key2._dom));
-			return (key1._id == key2._id) && (key1._type == key2._type);  
-			return true;
-		}
-};
-*/
-
-/*
-template <class T> class IdHolder {
-	public:
-		IdHolder(T &value, PPLDomain &dom) : _value(value), _dom(dom) {  }
-		const DomVar &getVar();
-
-	private:
-		T _value;
-		PPLDomain &_dom;
-};
- */ 
-
 
 class HashCons {
 	public:
@@ -270,27 +161,20 @@ class PPLDomain {
 	public:
 		friend class PPLManager;
 		inline void print(io::Output & out) const {
-			out << "[" << serial << "]";
 			PPL::Constraint_System cons = poly.minimized_constraints();
 			cons.print();
 			out << "";
 		}
 		PPLDomain() { 
 //			cons.print();
-			magic = 0xDEADBEEF;
-			serial = 666;
 			num_axis = 0;
 			mem_ref = 0;
-			gen++;
 		}
 		PPLDomain (const PPLDomain &src)  {
-			ASSERT(src.magic == 0xDEADBEEF);
 			poly = src.poly;
-			magic = src.magic;
 			num_axis = src.num_axis;
 			id2axis = src.id2axis;
 			axis2id = src.axis2id;
-			serial = src.serial;
 			mem_ref = src.mem_ref;
 		}
 		~PPLDomain() { 
@@ -344,10 +228,7 @@ class PPLDomain {
 		int mem_ref;
 
 		inline void operator=(const PPLDomain& dom) {
-			ASSERT(dom.magic == 0xDEADBEEF);
 			poly = dom.poly;
-			magic = dom.magic;
-			serial = dom.serial;
 			num_axis = dom.num_axis;
 			id2axis = dom.id2axis;
 			axis2id = dom.axis2id;
@@ -358,6 +239,7 @@ class PPLDomain {
 			return num_axis == -1;
 		}
 		void sanity_checks() {
+#ifdef POLY_DEBUG
 			int max_axis = -1;
 			if (isBottom())  {
 				ASSERT(poly.is_empty());
@@ -382,6 +264,7 @@ class PPLDomain {
 			ASSERT(poly.space_dimension() <= num_axis); // unused axis can exist at the end
 			ASSERT(trash.size() >= num_axis);
 			ASSERT(trash.countOnes() <= num_axis);
+#endif
 		}
 
 
@@ -391,30 +274,11 @@ class PPLDomain {
 	static BitVector trash;
 
 	friend bool operator==(const PPLDomain &a, const PPLDomain &b);
-		int serial;
 		PPL::C_Polyhedron poly;
 	private:
 		int num_axis;
-		uint32_t magic;
-		static int gen;
 
 };
-
-class RemoveAllButOne {
-	public:
-		RemoveAllButOne(PPL::dimension_type selected) : _selected(selected) { }
-		bool has_empty_codomain() const { return false; }
-		PPL::dimension_type max_in_codomain() const { return 0; }
-		bool maps(PPL::dimension_type i, PPL::dimension_type &j) const {
-			if (i == _selected) {
-				j = 0;
-				return true;
-			}
-			return false;
-		}
-	private:
-		PPL::dimension_type _selected;
-}; 
 
 inline Output& operator<<(Output& o, const Ident &i) {
 	i.print(o);
@@ -433,123 +297,12 @@ inline Output& operator<<(Output& o, const PPL::Variable pv) {
 		o << name;
 		return o;
 }  
-class MapWithHash {
-	public:
-		MapWithHash(genstruct::HashTable<int,int> &map) : _map(map) { }
-		bool has_empty_codomain() const { return false; }
-		PPL::dimension_type max_in_codomain() const { 
-			return 0;
-		}
-		bool maps(PPL::dimension_type i, PPL::dimension_type &j) const {
-			if (_map.hasKey(i)) {
-				j = _map[i];
-				return true;
-			} else return false;
-		}
-	private:
-		genstruct::HashTable<int,int> &_map;
-};
 
-/*
- * 1) identifier les axes communs avec getpointerexpr etc)
- * 2) pour les registres garder que ce qiu existe dans l'id2axis des deux
- */
 class PPLManager {
 public:
 	typedef PPLDomain t;
 private:
-	/*
-	 * Remap domain axis before a join()/widening() operation, so that corresponding values are on the same
-	 * axis. Maps REGs using the canonical axis map, and PTR using the user-provided ptrmap hash.
-	 * Also update the new idmap accordingly, if provided (i.e. non-NULL)
-	 */
-	class RemapBeforeJoin {
-		public:
-			RemapBeforeJoin(const PPLManager::t &dom, genstruct::HashTable<Ident, int> &_ptrmap, elm::genstruct::HashTable<Ident, PPL::Variable*,HashIdent> *newmap = NULL) : _dom(dom) , ptrmap(_ptrmap) {  
-				/*
-				int num_addr = 0;
-				int num_val = 0;
-				PPL::C_Polyhedron us_poly(_us.cons);
-				PPL::C_Polyhedron them_poly(_them.cons);
-				_idx = us_poly.space_dimension();
-				*/
-				int highest_axis = 0;
-				/* Count REG/SPECIAL axis */
-				/*
-				for (elm::genstruct::HashTable<Ident, PPL::Variable*,HashIdent>::PairIterator it(_dom.ids); it; it++) {
-					const Ident &kaka = (*it).fst;
-					ASSERT(kaka.getType() != -1);
-					const Ident &id = *new Ident((*it).fst); 
-					printf("ADDR: 0x%x\n", &id);
-					PPL::Variable *var = (*it).snd;
-					if (revmap.length() < var->id() + 1) {
-						for (int k = revmap.length(); k < var->id() + 1; k++) {
-							revmap.push(NULL);
-						}
-					}
-					revmap.set(var->id(), &id);
-					if ((id.getType() == Ident::ID_REG) || (id.getType() == Ident::ID_SPECIAL)) {
-						if (newmap) {
-							(*newmap)[id] = new PPL::Variable(id.getCanonicalAxis());
-						}
-						if (highest_axis < id.getCanonicalAxis()) {
-							highest_axis = id.getCanonicalAxis();
-						}
-						cout << "processing a REG" << endl;
-					} else {
-						//
-					}
-				}
-				_base_ptr_axis = highest_axis + 1;
-				cout << "BASE: " << _base_ptr_axis << endl;
-				*/
-				/* Count ptrmap axis */
-				for (elm::genstruct::HashTable<Ident, int>::PairIterator it(_ptrmap); it; it++) {
-					int remapped_axis = (*it).snd + _base_ptr_axis;
-					if (highest_axis < remapped_axis)
-						highest_axis = remapped_axis;
-					if (newmap) {
-						(*newmap)[(*it).fst] = new PPL::Variable(remapped_axis);
-					} 
-					cout << "processing a pointer: " << remapped_axis << endl;
-				}
-				_codomain_size = highest_axis + 1;
-				cout << "REG/SPECIAL mapped from 0 to " << (_base_ptr_axis - 1) << ", PTR mapped from " << _base_ptr_axis << " to " << max_in_codomain() << endl;
-			}
-			bool has_empty_codomain() const { return false; }
-			PPL::dimension_type max_in_codomain() const { return _codomain_size - 1; }
-			bool maps(PPL::dimension_type i, PPL::dimension_type &j) const {
-				if (revmap.count() <= i)
-					return false;
-				const Ident *id = revmap.get(i);
-				if (!id)
-					return false;
-				if ((id->getType() == Ident::ID_REG) || (id->getType() == Ident::ID_SPECIAL)) {
-					j = id->getCanonicalAxis();
-					id->print(cout);
-					cout << endl;
-				} else if ((id->getType() == Ident::ID_MEM_ADDR) || (id->getType() == Ident::ID_MEM_VAL)) {
-					if (!ptrmap.hasKey(*id))
-						return false;
-					j = ptrmap[*id] + _base_ptr_axis;
-					cout << "ptrmap" << endl;
-				}
-				cout << j << " <= " << max_in_codomain() << endl;
-				ASSERT(j <= max_in_codomain());
-				return true;
-			}
-			int getBasePtrAxis() {
-				return _base_ptr_axis;
-			}
-		private:
-			genstruct::HashTable<Ident, int> &ptrmap;
-			PPLManager::t _dom;
-			int _codomain_size;
-			int _idx;
-			int _base_ptr_axis;
-			genstruct::Vector<const Ident*> revmap;
-	};
-	/* workaround for PPL crazyness */
+	/* wrapper around partial mapping functions (for PPL poly map), computes max-in-domain & empty automatically */
 	template <class F> class MapHelper {
 		public:
 			MapHelper(F &pfunc, int max_in_domain) : _pfunc(pfunc), _max_in_domain(max_in_domain), _empty(true) {
@@ -570,6 +323,16 @@ private:
 			PPL::dimension_type _max_in_codomain;
 			bool _empty;
 	};
+
+	public:
+	/* Map space dimensions using helper */ 
+	template <class F> void map_space_dimensions(F pfunc, PPL::C_Polyhedron &poly) {
+		MapHelper<F> a(pfunc, poly.space_dimension() - 1);
+		poly.map_space_dimensions(a);
+	}
+	private:
+
+	/* Partial mapping function that removes variables in set (bitvector) */
 	class RemoveMarked {
 		public:
 			~RemoveMarked() {
@@ -598,8 +361,24 @@ private:
 			int _size;
 	};
 
+	class MapWithHash {
+		public:
+			MapWithHash(genstruct::HashTable<int,int> &map) : _map(map) { }
+			bool has_empty_codomain() const { return false; }
+			PPL::dimension_type max_in_codomain() const { 
+				return 0;
+			}
+			bool maps(PPL::dimension_type i, PPL::dimension_type &j) const {
+				if (_map.hasKey(i)) {
+					j = _map[i];
+					return true;
+				} else return false;
+			}
+		private:
+			genstruct::HashTable<int,int> &_map;
+	};
+
 public:
-	genstruct::Vector<PPL::Variable*> to_remove;
 
 	PPLManager(t &init) : _init(init) { 
 		_bot.num_axis = -1;
@@ -608,6 +387,12 @@ public:
 		_top.poly = PPL::C_Polyhedron(0, PPL::UNIVERSE);
 	} 
 
+	/*
+	 * Setup initial states.
+	 * TOP : universe poly (no constraints)
+	 * BOT : empty poly (unsolvable constraint set)
+	 * INIT : TOP + variables representing starting SP/FP/LR registers
+	 */
 	PPLManager() { 
 		PPL::Constraint_System initcons;
 		_init.num_axis = 0;
@@ -625,33 +410,14 @@ public:
 		Variable var_sfp = _init.create(Ident(Ident::ID_START_FP, Ident::ID_SPECIAL));
 		Variable var_slr = _init.create(Ident(Ident::ID_START_LR, Ident::ID_SPECIAL));
 
-		/*
-		_init.poly.add_constraint(var_ssp == STACK_START);
-		_init.poly.add_constraint(var_sfp == STACK_START);
-		_init.poly.add_constraint(var_slr == STACK_START);
-		*/
-
 		_init.poly.add_constraint(var_ssp == var_sp);
 		_init.poly.add_constraint(var_sfp == var_fp);
 		_init.poly.add_constraint(var_slr == var_lr);
 
-		/* return addr */
-		/*
-		Ident id_ret_addr, id_ret_val;
-		_init.create_ptr(id_ret_addr, id_ret_val);
-		Variable ret_addr = _init.create(id_ret_addr);
-		Variable ret_val = _init.create(id_ret_val);
-		_init.poly.add_constraint(ret_addr == var_ssp + 4);
-		*/
-
-
 	} 
 	~PPLManager() { }
 
-
-	inline t& init(void) { 
-		return _init; 
-	}
+	inline t& init(void) { return _init; }
 	inline t& bot(void) { return _bot; }
 	inline t& top(void) { return _top; }
 
@@ -663,52 +429,8 @@ public:
 		}
 		cout << endl;
 	}
-	void fill_hashmap(const t &dom, genstruct::HashTable<PPL::Constraint, elm::Pair<int,int>, HashCons> &map, bool snd) {
-		cout << "compute ptr equivalence:" << endl;
-		/*
-		for (elm::genstruct::HashTable<Ident, PPL::Variable*,HashIdent>::PairIterator it(dom.ids); it; it++) {
-			const Ident &id = (*it).fst;
-			if (id.getType() == Ident::ID_MEM_ADDR) {
-				PPL::C_Polyhedron p(dom.cons);
-				GetPointerExpr gpexpr(dom, id);
-				p.map_space_dimensions(gpexpr);
-				PPL::Constraint_System cons = p.minimized_constraints();
-				cout << "testing for: ";
-				id.print(cout);
-				cout << endl;
-				bool ok = false;
-				for (PPL::Constraint_System::const_iterator it = cons.begin(); it != cons.end(); it++) {
-					const PPL::Constraint &c = *it;
-					c.print();
-					fflush(stdout);
-					cout << endl;
-					if (!c.is_equality())
-						continue;
-					if (c.coefficient(PPL::Variable(p.space_dimension() - 1)) != 0) {
-						cout << "successfully got ptr expr!" << endl;
-						if (!map.hasKey(c)) {
-							elm::Pair<int,int> p;
-							p.fst = -1;
-							p.snd = -1;
-							map[c] = p;
-							cout << "adding some stuff to the map" << endl;
-						} else cout << "already existed" << endl;
-						elm::Pair<int,int> &p = map[c];
-						int &val = snd ? p.snd : p.fst;
-						//ASSERT(val == -1);
-						val = id.getId();
-						ok = true;
-						break;
-					} 
-				}
-				if (!ok)  {
-					cout << "ptr expr is not statically known." << endl;
-				}
-			}
-		} */
-	}
 
-	// Return the first constraint in poly for which the coef of specified axis is non-zero
+	// Return the first constraint in poly for which the coef of specified variable axis is non-zero
 	bool get_constraint_for(PPL::C_Polyhedron &poly, PPL::Constraint *cons, int axis) {
 		PPL::Constraint_System cons_sys = poly.minimized_constraints();
 		for (PPL::Constraint_System::const_iterator it = cons_sys.begin(); it != cons_sys.end(); it++) {
@@ -720,17 +442,9 @@ public:
 				return true;
 			}
 		}
-		/*
-		if (!ok)  {
-			cout << "ptr expr is not statically known." << endl;
-		}
-		*/
 		return false;
 	}
-	template <class F> void map_space_dimensions(F pfunc, PPL::C_Polyhedron &poly) {
-		MapHelper<F> a(pfunc, poly.space_dimension() - 1);
-		poly.map_space_dimensions(a);
-	}
+
 
 	/*
 	 * map_ptr : reception de l'association Contrainte => numero de pointeur 
@@ -747,11 +461,6 @@ public:
 				map_space_dimensions(MapWithHash(map_regs), poly);
 				PPL::Constraint cons;
 			    if (get_constraint_for(poly, &cons, axis)) {
-					/*
-					cout << " constraint for " << (*it).fst << " is: ";
-				    cons.print();
-					cout << endl;
-					*/
 					map_ptr[cons] = (*it).fst.getId();
 				}
 				map_regs.remove((*it).snd);
@@ -762,7 +471,7 @@ public:
 		return (compare_reg.getType() != Ident::ID_INVALID);
 	}
 	inline void removeFilter() {
-		compare_reg = Ident::ID_INVALID;
+		compare_reg = Ident();
 	}
 
 	t filter(t &before, bool taken) {
@@ -860,13 +569,13 @@ public:
 			cerr << "================= WIDENING ==================" << endl;
 		} else cerr << "=================== JOIN ====================" << endl;
 		cerr << "=== prepare phase ===" << endl;
-		cerr << l.serial << ": left hand term dimension: " << l.poly.space_dimension() << endl;
+		cerr "left hand term dimension: " << l.poly.space_dimension() << endl;
 		l.poly.minimized_constraints().print();
 		cerr << endl;
 		display_loc_vars((PPLManager::t&)l);
 		displayIdentMap(l);
 		cout << endl;
-		cerr << r.serial << ": right hand term dimension: " << r.poly.space_dimension() << endl;
+		cerr "right hand term dimension: " << r.poly.space_dimension() << endl;
 		r.poly.minimized_constraints().print();
 		cerr << endl;
 		display_loc_vars((PPLManager::t&)r);
@@ -876,11 +585,7 @@ public:
 		genstruct::HashTable<PPL::Constraint, elm::Pair<int,int>, HashCons> map;
 		genstruct::HashTable<PPL::Constraint, int, HashCons> mapl_ptr;
 		genstruct::HashTable<PPL::Constraint, int, HashCons> mapr_ptr;
-		/* maps pointers, from linear expr, to ident number in D and S */ 
-		/*
-		fill_hashmap(d, map, false);
-		fill_hashmap(s, map, true);
-		*/
+
 		genstruct::HashTable<int,int> mapl;
 		genstruct::HashTable<int,int> mapr;
 
@@ -964,13 +669,13 @@ public:
 		// Fin preparation
 #ifdef POLY_DEBUG			
 		cerr << "=== prepare done ===" << endl;
-		cerr << l.serial << ": left hand term dimension: " << l1.poly.space_dimension() << endl;
+		cerr << "left hand term dimension: " << l1.poly.space_dimension() << endl;
 		l1.poly.minimized_constraints().print();
 		cerr << endl;
 		display_loc_vars((PPLManager::t&)l1);
 		displayIdentMap(l1);
 		cout << endl;
-		cerr << r.serial << ": right hand term dimension: " << r1.poly.space_dimension() << endl;
+		cerr << "right hand term dimension: " << r1.poly.space_dimension() << endl;
 		r1.poly.minimized_constraints().print();
 		cerr << endl;
 		display_loc_vars((PPLManager::t&)r1);
@@ -983,13 +688,13 @@ public:
 		if (widen) {
 #ifdef POLY_DEBUG			
 			cerr << "before widening: " << endl;
-		cerr << l.serial << ": left hand term dimension: " << l1.poly.space_dimension() << endl;
+		cerr << "left hand term dimension: " << l1.poly.space_dimension() << endl;
 		l1.poly.minimized_constraints().print();
 		cerr << endl;
 		display_loc_vars((PPLManager::t&)l1);
 		displayIdentMap(l1);
 		cout << endl;
-		cerr << r.serial << ": right hand term dimension: " << r1.poly.space_dimension() << endl;
+		cerr << "right hand term dimension: " << r1.poly.space_dimension() << endl;
 		r1.poly.minimized_constraints().print();
 		cerr << endl;
 		display_loc_vars((PPLManager::t&)r1);
@@ -1006,7 +711,7 @@ public:
 		l1.num_axis = l1.poly.space_dimension();
 #ifdef POLY_DEBUG			
 		cerr << "=== all done. ===" << endl;
-		cerr << l.serial << ": result dimension: " << l1.poly.space_dimension() << endl;
+		cerr << "result dimension: " << l1.poly.space_dimension() << endl;
 		l1.poly.minimized_constraints().print();
 		cerr << endl;
 		display_loc_vars((PPLManager::t&)l1);
@@ -1014,9 +719,8 @@ public:
 		cerr << "=====================================" << endl;
 #endif
 		return l1;
-
-
 	}
+
 	inline bool equals(const t& v1, const t& v2) { 
 		return (v1 == v2);
 	}
@@ -1063,8 +767,6 @@ private:
 	t _top;
 };
 
-
-
 class PolyAnalysis: public Processor {
 public:
 	static p::declare reg;
@@ -1080,22 +782,12 @@ private:
 };
 
 bool operator==(const PPLDomain &a, const PPLDomain &b) {
-	/*
-	 * cout << "COMPARE: " << endl;
-	a.cons.print(); cout << endl;
-	PPLManager::displayIdentMap(a);
-	cout << "------------" << endl;
-	b.cons.print(); cout << endl;
-	PPLManager::displayIdentMap(b);
-	cout << "------------" << endl;
-	*/
 	if (!((a.poly == b.poly) &&
-			(a.id2axis.count() == b.id2axis.count()) && 
-			(a.magic == b.magic))) {
+			(a.id2axis.count() == b.id2axis.count()))) {
 		return false;
 	}
 
-	// FIXME TODO not correct
+	// FIXME TODO not correct because of same memory location having different names
 	for (elm::genstruct::HashTable<Ident, int,HashIdent>::PairIterator it(a.id2axis); it; it++) {
 		const Pair<Ident, int> &p = *it;
 		if ((p.fst.getType() == Ident::ID_MEM_VAL) || (p.fst.getType() == Ident::ID_MEM_ADDR))
@@ -1112,7 +804,6 @@ bool operator!=(const PPLDomain &a, const PPLDomain &b) {
 	return !(a == b);
 }
 
-extern p::feature POLY_ANALYSIS_FEATURE;
 
 inline Output& operator<<(Output& o, const PPLDomain &dom) { 
 	dom.print(o);
@@ -1124,16 +815,6 @@ Variable::Variable(int axis, const PPLDomain &dom) 	: PPL::Variable(axis), _dom(
 	ASSERT(_ident.getType() != Ident::ID_INVALID);	
 }
 
- /* 
-template <class T> const DomVar &IdHolder<T>::getVar() {
-	DomVar *tmp = _dom.id2var[*this];
-	return *tmp;
-}
-const DomId &Variable::getId() {
-    int axis = _var.id();
-    return *(_dom.var2id[axis]);
-}
-*/
-} } // otawa::poly
+} } // namespace otawa::poly
 #endif	// OTAWA_POLY_ANALYSIS_FEATURE_H
 
