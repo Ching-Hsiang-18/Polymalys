@@ -29,5 +29,8 @@ tests: douter
 douter: install
 	make -C tests douter
 
+uninstall:
+	rm -f $(HOME)/.otawa/proc/otawa/poly.eld
+	rm -f $(HOME)/.otawa/proc/otawa/poly.so
 
 .PHONY: clean install douter test tests
