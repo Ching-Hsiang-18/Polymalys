@@ -1,1 +1,10 @@
-todo
+Requirements:
+- OTAWA version 2: http://www.otawa.fr
+- Parma Polyhedra Library (PPL): http://bugseng.com/products/ppl/
+
+Compiling: make
+
+Installing (in home directory, no root required): make install
+
+Testing: make test
+
