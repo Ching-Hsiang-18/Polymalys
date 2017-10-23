@@ -8,8 +8,6 @@ relation4
 bouclecond1
 boucleet1
 boucleou1
-imbrique1
-imbrique2
 break1
 break2
 fonction1
@@ -18,6 +16,3 @@ ptr1
 ptr2
 ptr3
 pile
-triangle
-triangle2
-triangle3

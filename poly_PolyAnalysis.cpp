@@ -186,7 +186,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 							}
 						}
 						if (found) {
-							TOTAL_ITERATION(bl) = total;
+							// TOTAL_ITERATION(bl) = total;
 						}
 					}
 				}
