@@ -1,4 +1,3 @@
-Requirements:
 - OTAWA version 2: http://www.otawa.fr
 - Parma Polyhedra Library (PPL): http://bugseng.com/products/ppl/
 - Having otawa-config in $PATH: export PATH=$PATH:/path/to/otawa/binaries/
@@ -8,4 +7,3 @@ Compiling: make
 Installing (in home directory, no root required): make install
 
 Testing: make test
-
