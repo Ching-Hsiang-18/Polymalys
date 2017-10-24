@@ -99,7 +99,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 					}
 				}
 				if (headerState.hasKey(bl->id())) {
-					s = headerState[bl->id()] = man->widening(s, headerState[bl->id()]);
+					s = headerState[bl->id()] = s.widening(headerState[bl->id()]);
 				} else {
 					headerState[bl->id()] = s;
 				}
@@ -129,7 +129,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 						cout << "===============================================" << endl;
 						s.sanity_checks();
 						cout << "BEFORE: " << s << endl;
-						man->displayIdentMap(s);
+						s->displayIdentMap();
 						cout << "+++ IR +++: " << *semi << endl;
 #endif
 						// man->display_loc_vars(s);
@@ -137,13 +137,13 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 						// man->display_loc_vars(s);
 #ifdef POLY_DEBUG			
 						cout << "AFTER IR: " << s << endl;
-						man->displayIdentMap(s);
+						s->displayIdentMap();
 #endif
 						man->bring_out_your_dead(s);
 						man->integer_wrap(s);
 #ifdef POLY_DEBUG			
 						cout << "AFTER CLEANUP: " << s << endl;
-						man->displayIdentMap(s);
+						s->displayIdentMap();
 						cout << "===============================================" << endl;
 						man->display_loc_vars(s);
 						cout << "===============================================" << endl << endl;
@@ -189,7 +189,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 				if (man->hasFilter()) {
 #ifdef POLY_DEBUG			
 					cout << "BEFORE FILTERING: " << endl;
-					man->displayIdentMap(edgeState);
+					edgeState->displayIdentMap();
 					fflush(stdout);
 					edgeState.print(cout); cout << endl;
 					fflush(stdout);
@@ -198,7 +198,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 					edgeState = man->filter(edgeState, e->isTaken());
 #ifdef POLY_DEBUG			
 					cout << "FILTERED STATE: " << endl;
-					man->displayIdentMap(edgeState);
+					edgeState->displayIdentMap();
 					fflush(stdout);
 					edgeState.print(cout); cout << endl;
 					fflush(stdout);
@@ -220,7 +220,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 	cout << "Ending abstract interpretation for CFG: " << cfg.name() << endl;	
 	if (do_init) {
 		cout << "FINAL STATE: " << endl;
-		man->displayIdentMap(s);
+		s.displayIdentMap();
 		fflush(stdout);
 		s.print(cout); cout << endl;
 		fflush(stdout);
@@ -267,10 +267,10 @@ void PPLManager::bring_out_your_dead(PPLManager::t &dom) {
 	}
 #endif
 	// displayIdentMap(dom);
-	RemoveMarked rm(PPLDomain::trash, dom.poly.space_dimension());
-	map_space_dimensions(rm, dom.poly);
+	PPLDomain::RemoveMarked rm(PPLDomain::trash, dom.poly.space_dimension());
+	dom.map_only_poly(rm);
 	dom.num_axis -= PPLDomain::trash.countOnes();
-	dom.map_identifiers(rm);
+	dom.map_only_idents(rm);
 	PPLDomain::trash.clear();
 	// displayIdentMap(dom);
 #ifdef POLY_DEBUG			
@@ -640,9 +640,9 @@ PPLManager::t PPLManager::update(t s_in, sem::inst si, int instaddr) {
 						map[v_reg_addr.id()] = 0;
 						map[v_frame.id()] = 1;
 						map[v_bound.id()] = 2;
-						PPL::C_Polyhedron tmp = s_out.poly;
-						map_space_dimensions(PPLManager::MapWithHash(map), tmp);
-						tmp.minimized_constraints().print();
+						PPLDomain tmp(s_out);
+						tmp.map_only_poly(PPLDomain::MapWithHash(map));
+						tmp.poly.minimized_constraints().print();
 						cout << endl;
 					}
 					if ((p.fst.getType() == Ident::ID_MEM_ADDR) && (p.fst != id_new_addr)) {

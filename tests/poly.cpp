@@ -12,8 +12,6 @@
 #include <otawa/proc/DynProcessor.h>  
 #include <otawa/cfg/Virtualizer.h>
 #include <otawa/prop/DynIdentifier.h>
-#include <otawa/display/CFGDrawer.h>
-#include <otawa/display/CFGOutput.h>
 
 using namespace otawa;
 using namespace elm::option;
@@ -31,8 +29,6 @@ int main(int argc, char **argv) {
 	ws = manager.load("./cible", props);
 	ws->require(COLLECTED_CFG_FEATURE, props);
 //	ws->require(VIRTUALIZED_CFG_FEATURE, props);
-	display::CFGOutput output;
-	output.process(ws, props);
 
 	ws->require(DynFeature("otawa::poly::POLY_ANALYSIS_FEATURE"), props);
 	ws->require(DynFeature("otawa::ipet::WCET_FEATURE"), props);
