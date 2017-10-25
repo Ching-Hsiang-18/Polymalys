@@ -8,6 +8,7 @@
 #include <otawa/cfg.h>
 #include <otawa/cfg/features.h>
 #include <otawa/prog/sem.h>
+#include <elm/util/BitVector.h>
 
 #include <ppl.hh>
 
@@ -619,7 +620,6 @@ public:
 #endif
 		collect_pointer_expr(mapl_ptr, mapl, axis, l1, l1.poly);
 		collect_pointer_expr(mapr_ptr, mapr, axis, r1, r1.poly);
-		
 
 		// mapl/mapr: on ajoute tout les pointeurs communs, on map vers une numerotation commune
 #ifdef POLY_DEBUG			
@@ -777,7 +777,7 @@ protected:
 	void configure(const PropList &props) ;
 private:
 	typedef PPLManager::t state_t;
-	void analyzeGraph(CFG &cfg, state_t &s, bool do_init);
+	void analyzeGraph(CFG &cfg, state_t &s, bool do_init); 
 
 };
 
@@ -809,7 +809,7 @@ inline Output& operator<<(Output& o, const PPLDomain &dom) {
 	dom.print(o);
 	return o;
 }
-
+// test
 Variable::Variable(const Ident &ident, const PPLDomain &dom) : PPL::Variable(dom.id2axis[ident]), _dom(dom), _ident(ident) { }
 Variable::Variable(int axis, const PPLDomain &dom) 	: PPL::Variable(axis), _dom(dom), _ident(dom.axis2id[axis]) { 
 	ASSERT(_ident.getType() != Ident::ID_INVALID);	

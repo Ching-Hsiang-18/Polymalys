@@ -1,23 +1,28 @@
 CC=clang
-CXX=clang
+CXX=clang++
 
 CXXFLAGS=`otawa-config --cflags`
 LIBS=`otawa-config --libs`
 LIBS+=-lppl
 
-CXXFLAGS+=-fPIC
+CXXFLAGS+=-fPIC -Wall -DUSE_CLANG_COMPLETER -std=c++11
 
 all: poly.so
 
 poly.so: poly_PolyAnalysis.o poly_PlugHook.o
 	$(CC) -shared -o poly.so poly_PolyAnalysis.o poly_PlugHook.o $(LIBS)
 	
-poly_PolyAnalysis.o: poly_PolyAnalysis.cpp PolyAnalysis.h
+
+PolyAnalysis.h.pch: PolyAnalysis.h
+	$(CXX) -x c++-header $(CXXFLAGS) PolyAnalysis.h -o PolyAnalysis.h.pch
+
+poly_PolyAnalysis.o: poly_PolyAnalysis.cpp PolyAnalysis.h PolyAnalysis.h.pch
+	$(CXX) $(CXXFLAGS) -include PolyAnalysis.h -c poly_PolyAnalysis.cpp -o poly_PolyAnalysis.o
 
 poly_PlugHook.o: poly_PlugHook.cpp
 
 clean:
-	rm -f *~ core* poly.so *.o
+	rm -f *~ core* poly.so *.o *.pch
 	make -C tests clean
 
 install: poly.so
@@ -36,4 +41,4 @@ uninstall:
 	rm -f $(HOME)/.otawa/proc/otawa/poly.eld
 	rm -f $(HOME)/.otawa/proc/otawa/poly.so
 
-.PHONY: clean install douter test tests
+.PHONY: clean install douter test tests compildb

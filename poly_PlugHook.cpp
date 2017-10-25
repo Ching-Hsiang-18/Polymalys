@@ -12,7 +12,7 @@ public:
 };
 
 } }
-        
+       
 otawa::poly::Plugin OTAWA_PROC_HOOK;
 otawa::poly::Plugin &otawa_poly = OTAWA_PROC_HOOK;
         
