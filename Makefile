@@ -13,16 +13,13 @@ poly.so: poly_PolyAnalysis.o poly_PlugHook.o
 	$(CC) -shared -o poly.so poly_PolyAnalysis.o poly_PlugHook.o $(LIBS)
 	
 
-PolyAnalysis.h.pch: PolyAnalysis.h
-	$(CXX) -x c++-header $(CXXFLAGS) PolyAnalysis.h -o PolyAnalysis.h.pch
-
-poly_PolyAnalysis.o: poly_PolyAnalysis.cpp PolyAnalysis.h PolyAnalysis.h.pch
-	$(CXX) $(CXXFLAGS) -include PolyAnalysis.h -c poly_PolyAnalysis.cpp -o poly_PolyAnalysis.o
+poly_PolyAnalysis.o: poly_PolyAnalysis.cpp PolyAnalysis.h
+	$(CXX) $(CXXFLAGS) -c poly_PolyAnalysis.cpp -o poly_PolyAnalysis.o
 
 poly_PlugHook.o: poly_PlugHook.cpp
 
 clean:
-	rm -f *~ core* poly.so *.o *.pch
+	rm -f *~ core* poly.so *.o
 	make -C tests clean
 
 install: poly.so
