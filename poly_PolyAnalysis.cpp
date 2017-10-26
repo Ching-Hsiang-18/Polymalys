@@ -162,11 +162,11 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 				if (LOOP_HEADER(e->sink())) {
 					if (Dominance::dominates(e->sink(), e->source())) {
 						/* is back-edge */
-						edgeState = man->loopIter(edgeState, e->sink()->id(), ENCLOSING_LOOP_HEADER(e->sink()));
+						edgeState = edgeState.loopIter(e->sink()->id(), ENCLOSING_LOOP_HEADER(e->sink()));
 						man->bring_out_your_dead(edgeState); // TODO PERF FIXME
 					} else {
 						/* is entry-edge */
-						edgeState = man->loopEntry(edgeState, e->sink()->id(), ENCLOSING_LOOP_HEADER(e->sink()));
+						edgeState = edgeState.loopEntry(e->sink()->id(), ENCLOSING_LOOP_HEADER(e->sink()));
 						headerState.remove(e->sink()->id());
 						/*
 						*/
@@ -178,7 +178,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 #ifdef POLY_DEBUG			
 						cout << "LOOPEXIT: " << bound << endl;
 #endif
-						edgeState = man->loopExit(edgeState, bb->id(), bound);
+						edgeState = edgeState.loopExit(bb->id(), bound);
 						man->bring_out_your_dead(edgeState); // TODO PERF FIXME
 				}
 
@@ -459,9 +459,8 @@ void PPLManager::binary_operation_helper(PPLManager::t &s, int op, PPL::Variable
 			break;
 	}
 }
-
-PPLManager::t PPLManager::loopExit(PPLManager::t s_in, int loop, int bound) {
-	PPLManager::t s_out = s_in;
+PPLDomain PPLDomain::loopExit(int loop, int bound) {
+	PPLManager::t s_out = *this;
 	Ident id(loop, Ident::ID_LOOP);
 	ASSERT(s_out.exists(id)); /* You are supposed to be already inside the loop when you call loopExit() */ 
 	Variable v = s_out.lookup(id);
@@ -472,14 +471,14 @@ PPLManager::t PPLManager::loopExit(PPLManager::t s_in, int loop, int bound) {
 #ifdef POLY_DEBUG			
 		cout << "is empty after loopExit!" << endl;
 #endif
-		return _bot;
+		return PPLDomain(); // bottom
 	}
 	return s_out;
 }
 
 
-PPLManager::t PPLManager::loopIter(PPLManager::t s_in, int loop, bool inner) {
-	PPLManager::t s_out = s_in;
+PPLDomain PPLDomain::loopIter(int loop, bool inner) {
+	PPLManager::t s_out = *this;
 	Ident id(loop, Ident::ID_LOOP);
 	ASSERT(s_out.exists(id)); /* You are supposed to be already inside the loop when you call loopIter() */ 
 	Variable v_old = s_out.lookup(id);
@@ -489,15 +488,15 @@ PPLManager::t PPLManager::loopIter(PPLManager::t s_in, int loop, bool inner) {
 	return s_out;
 }
 
-PPLManager::t PPLManager::loopEntry(PPLManager::t s_in, int loop, bool inner) {
-	PPLManager::t s_out = s_in;
+PPLDomain PPLDomain::loopEntry(int loop, bool inner) {
+	PPLManager::t s_out = *this;
 	Ident id(loop, Ident::ID_LOOP);
 	PPL::Variable v = s_out.create(id, true);
 	s_out.poly.add_constraint(v == 0);
 	return s_out;
 }
 
-PPLManager::t PPLManager::update(t s_in, sem::inst si, int instaddr) {
+PPLDomain PPLManager::update(t s_in, sem::inst si, int instaddr) {
         PPLManager::t s_out = s_in;
 		ASSERT(!hasFilter() || (si.op == sem::BRANCH));
 

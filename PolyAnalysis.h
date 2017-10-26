@@ -198,6 +198,10 @@ class PPLDomain {
 		~PPLDomain() { 
 			// TODO
 		}
+		PPLDomain loopEntry(int loop, bool inner=false);
+		PPLDomain loopIter(int loop, bool inner=false);
+		PPLDomain loopExit(int loop, int bound);
+		PPLDomain loopTotal(int loop, int bound);
 
 		void displayIdentMap() {
 			cout << "IDMAP: " ;
@@ -770,10 +774,6 @@ public:
 
 	// TODO migrer
 	t update(t s, sem::inst si, int instaddr);
-	t loopEntry(PPLManager::t s_in, int loop, bool inner=false);
-	t loopIter(PPLManager::t s_in, int loop, bool inner=false);
-	t loopExit(PPLManager::t s_in, int loop, int bound);
-	t loopTotal(PPLManager::t s_in, int loop, int bound);
 	PPL::Variable *make_var(Ident &id, PPLManager::t &dom);
 	void bring_out_your_dead(PPLManager::t &dom);
 	void binary_operation_helper(PPLManager::t &s, int op, PPL::Variable *v, PPL::Variable *vs1, PPL::Variable *vs2);
