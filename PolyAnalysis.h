@@ -467,7 +467,7 @@ class PPLDomain {
 		}
 	}
 	inline PPLDomain widening(const PPLDomain& r) {
-		return join_or_widening(r, false); 
+		return join_or_widening(r, true); 
 	}
 	inline PPLDomain join(const PPLDomain& r) {
 		return join_or_widening(r, false); 
@@ -737,6 +737,10 @@ class PPLDomain {
 		displayIdentMap(l1);
 		cerr << "=====================================" << endl;
 #endif
+
+		if (r1.hasFilter()) {
+			ASSERT(false);
+		}
 		return l1;
 	}
 	private:

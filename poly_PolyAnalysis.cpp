@@ -746,8 +746,8 @@ PPLDomain PPLDomain::update(sem::inst si, int instaddr) {
 				Ident id(si.sr(), Ident::ID_REG);
 				if (s_out.exists(id)) {
 					
-					compare_reg = id;
-					compare_op = si.cond();
+					s_out.compare_reg = id;
+					s_out.compare_op = si.cond();
 					ASSERT(si.jump() == 1);
 				}
 			}
