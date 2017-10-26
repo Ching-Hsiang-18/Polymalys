@@ -5,7 +5,7 @@ CXXFLAGS=`otawa-config --cflags`
 LIBS=`otawa-config --libs`
 LIBS+=-lppl
 
-CXXFLAGS+=-fPIC -Wall -DUSE_CLANG_COMPLETER -std=c++11
+CXXFLAGS+=-fPIC -Wall -DUSE_CLANG_COMPLETER -std=c++11 -g -O0
 
 all: poly.so
 

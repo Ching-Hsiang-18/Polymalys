@@ -20,9 +20,9 @@ namespace otawa { namespace poly {
 using namespace otawa;
 using namespace otawa::util;
 
-extern Identifier<int> MAX_AXIS;
 extern Identifier<int> NUM_LOC_VARS;
 extern Identifier<int> LOC_VAR_SIZE;
+extern Identifier<int> MAX_AXIS;
 extern p::feature POLY_ANALYSIS_FEATURE;
 
 class PPLManager;
@@ -165,28 +165,38 @@ class PPLDomain {
 			cons.print();
 			out << "";
 		}
-		PPLDomain() { 
+
+		/**
+		 * Builds a bottom state
+		 */
+		PPLDomain() {
+			num_axis = -1;
+			poly = PPL::C_Polyhedron(0, PPL::EMPTY);
+		}
+
+		/**
+		 * Builds a top state
+		 * @param maxAxis Maximum number of variables this state can hold
+		 */
+		PPLDomain(int maxAxis) { 
 			num_axis = 0;
 			mem_ref = 0;
+			trash = BitVector(maxAxis);
+			poly = PPL::C_Polyhedron(0, PPL::UNIVERSE);
+
 		}
+
 		PPLDomain (const PPLDomain &src)  {
 			poly = src.poly;
 			num_axis = src.num_axis;
 			id2axis = src.id2axis;
 			axis2id = src.axis2id;
 			mem_ref = src.mem_ref;
-		}
-		~PPLDomain() { 
-			// TODO
+			trash = src.trash;
 		}
 
-		inline void operator=(const PPLDomain& dom) {
-			poly = dom.poly;
-			num_axis = dom.num_axis;
-			id2axis = dom.id2axis;
-			axis2id = dom.axis2id;
-			mem_ref = dom.mem_ref;
-		
+		~PPLDomain() { 
+			// TODO
 		}
 
 		void displayIdentMap() {
@@ -296,6 +306,15 @@ class PPLDomain {
 
 		int mem_ref; /* number of pointerse in this domain object */
 
+		inline void operator=(const PPLDomain& dom) {
+			poly = dom.poly;
+			num_axis = dom.num_axis;
+			id2axis = dom.id2axis;
+			axis2id = dom.axis2id;
+			mem_ref = dom.mem_ref;
+			trash = dom.trash;
+		
+		}
 		bool isBottom() {
 			return num_axis == -1;
 		}
@@ -385,7 +404,17 @@ class PPLDomain {
 	};
 
 
-	/*
+
+	static void displayIdentMap(const PPLDomain &dom) {
+		cout << "IDMAP: " ;
+		for (elm::genstruct::HashTable<Ident, int,HashIdent>::PairIterator it(dom.id2axis); it; it++) {
+			const Ident &ident = (*it).fst;
+			cout << ident << ":" << PPL::Variable((*it).snd) << ", ";
+		}
+		cout << endl;
+	}
+
+	/**
 	 * Indexes the pointer in dom, by their expression in terms of registers referenced in map_regs. 
 	 * Stores the result in map_ptr.
 	 */
@@ -406,15 +435,12 @@ class PPLDomain {
 			}
 		}
 	}
-	// TODO migrer
 	inline PPLDomain widening(const PPLDomain& r) {
-		return join_or_widening(r, true); // FIXME TODO 
+		return join_or_widening(r, true); 
 	}
-	// TODO migrer
 	inline PPLDomain join(const PPLDomain& r) {
-		return join_or_widening(r, false); // FIXME TODO 
+		return join_or_widening(r, false); 
 	}
-	// TODO migrer
 	inline PPLDomain narrowing(const PPLDomain& src) {
 		PPLDomain s_out = src;
 		return s_out;
@@ -628,29 +654,18 @@ public:
 	private:
 
 public:
-
-	PPLManager(t &init) : _init(init) { 
-		_bot.num_axis = -1;
-		_top.num_axis = 0;
-		_bot.poly = PPL::C_Polyhedron(0, PPL::EMPTY);
-		_top.poly = PPL::C_Polyhedron(0, PPL::UNIVERSE);
+	/**
+	 * Create PPLManager for existing init state.
+	 */
+	PPLManager(t &init, const PropList &props) : _props(props), _init(init), _bot(), _top(MAX_AXIS(props)) {
 	} 
 
-	/*
-	 * Setup initial states.
-	 * TOP : universe poly (no constraints)
-	 * BOT : empty poly (unsolvable constraint set)
-	 * INIT : TOP + variables representing starting SP/FP/LR registers
-	 */
-	PPLManager() { 
-		PPL::Constraint_System initcons;
-		_init.num_axis = 0;
-		_bot.num_axis = -1;
-		_top.num_axis = 0;
 
-		_init.poly = PPL::C_Polyhedron(0, PPL::UNIVERSE);
-		_bot.poly = PPL::C_Polyhedron(0, PPL::EMPTY);
-		_top.poly = PPL::C_Polyhedron(0, PPL::UNIVERSE);
+	/**
+	 * Create PPLManager using a fresh init state.
+	 */
+	PPLManager(const PropList &props) : _props(props), _init(MAX_AXIS(props)), _bot(), _top(MAX_AXIS(props)) {
+		PPL::Constraint_System initcons;
 
 		Variable var_sp = _init.create(Ident(13, Ident::ID_REG));
 		Variable var_fp = _init.create(Ident(11, Ident::ID_REG));
@@ -669,6 +684,7 @@ public:
 	inline t& init(void) { return _init; }
 	inline t& bot(void) { return _bot; }
 	inline t& top(void) { return _top; }
+
 
 	inline bool hasFilter() {
 		return (compare_reg.getType() != Ident::ID_INVALID);
@@ -788,11 +804,13 @@ public:
 	// fin migrer
 
 private:
+	const PropList& _props;
 	Ident compare_reg;
 	sem::cond_t compare_op;
 	t _init;
 	t _bot;
 	t _top;
+
 };
 
 class PolyAnalysis: public Processor {
@@ -806,7 +824,7 @@ protected:
 private:
 	typedef PPLManager::t state_t;
 	void analyzeGraph(CFG &cfg, state_t &s, bool do_init); 
-
+	const PropList* _props;
 };
 
 bool operator==(const PPLDomain &a, const PPLDomain &b) {

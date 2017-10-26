@@ -4,7 +4,7 @@ LIBS=`otawa-config otawa/display otawa/poly --libs`
 all: poly
 
 poly: poly.cpp
-	c++ -o poly poly.cpp $(CXXFLAGS) $(LIBS) -g
+	c++ -o poly poly.cpp $(CXXFLAGS) $(LIBS) -g -O0
 	
 clean:
 	rm -f *~ core* cible poly *.o cible.ffx *.dot *.orange `cat tests.txt` tmp
