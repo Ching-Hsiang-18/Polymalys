@@ -216,6 +216,9 @@ class PPLDomain {
 		~PPLDomain() { 
 			// TODO
 		}
+
+		bool equals(const PPLDomain &) const;
+
 		PPLDomain loopEntry(int loop, bool inner=false);
 		PPLDomain loopIter(int loop, bool inner=false);
 		PPLDomain loopExit(int loop, int bound);
@@ -806,25 +809,13 @@ public:
 
 	inline t join(t& v1, const t& v2) { return v1.join(v2); }
 	inline t widening(t& v1, const t& v2) { return v1.widening(v2); }
-
-	inline bool equals(const t& v1, const t& v2) { 
-		return (v1 == v2);
-	}
-	inline void set(t& d, const t& s) {  }
-	inline void dump(io::Output& out, const t& v) {  }
-	inline void dump(io::Output& out, value_t v) {  }
-
-	// TODO migrer
-
-
-	// fin migrer
+	inline bool equals(const t& v1, const t& v2) { return (v1 == v2); }
 
 private:
 	const PropList& _props;
 	t _init;
 	t _bot;
 	t _top;
-
 };
 
 class PolyAnalysis: public Processor {
@@ -841,32 +832,8 @@ private:
 	const PropList* _props;
 };
 
-bool operator==(const PPLDomain &a, const PPLDomain &b) {
-	if (!((a.poly == b.poly) &&
-			(a.id2axis.count() == b.id2axis.count()))) {
-		return false;
-	}
-	/*
-	if (a.compare_reg != b.compare_reg)
-		return false;
-		*/
-
-	// FIXME TODO not correct because of same memory location having different names
-	for (elm::genstruct::HashTable<Ident, int,HashIdent>::PairIterator it(a.id2axis); it; it++) {
-		const Pair<Ident, int> &p = *it;
-		if ((p.fst.getType() == Ident::ID_MEM_VAL) || (p.fst.getType() == Ident::ID_MEM_ADDR))
-			continue;
-		if (!b.id2axis.hasKey(p.fst))
-			return false;
-		int b_axis = b.id2axis[p.fst];
-		if (b_axis != p.snd)
-			return false;
-	}
-	return true;
-}
-bool operator!=(const PPLDomain &a, const PPLDomain &b) {
-	return !(a == b);
-}
+bool operator==(const PPLDomain &a, const PPLDomain &b) { return a.equals(b); }
+bool operator!=(const PPLDomain &a, const PPLDomain &b) { return !(a == b); }
 
 
 inline Output& operator<<(Output& o, const PPLDomain &dom) { 

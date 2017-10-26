@@ -830,6 +830,29 @@ void PPLDomain::create_ptr(Ident &addr, Ident &val) {
 	mem_ref++;
 }
 
+bool PPLDomain::equals(const PPLDomain &b) const {
+	if (!((poly == b.poly) &&
+			(id2axis.count() == b.id2axis.count()))) {
+		return false;
+	}
+
+	if (compare_reg != b.compare_reg)
+		return false;
+
+	// FIXME TODO not correct because of same memory location having different names
+	for (elm::genstruct::HashTable<Ident, int,HashIdent>::PairIterator it(id2axis); it; it++) {
+		const Pair<Ident, int> &p = *it;
+		if ((p.fst.getType() == Ident::ID_MEM_VAL) || (p.fst.getType() == Ident::ID_MEM_ADDR))
+			continue;
+		if (!b.id2axis.hasKey(p.fst))
+			return false;
+		int b_axis = b.id2axis[p.fst];
+		if (b_axis != p.snd)
+			return false;
+	}
+	return true;
+}
+
 Variable PPLDomain::lookup(int axis) {
 	return Variable(axis, *this);
 }
