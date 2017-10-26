@@ -158,8 +158,24 @@ class HashCons {
 
 
 class PPLDomain {
-	public:
+		// TODO remove friend as much as possible
 		friend class PPLManager;
+		friend class Variable;
+		friend class PolyAnalysis; 
+
+	private:
+		PPL::C_Polyhedron poly;
+
+		genstruct::HashTable<Ident , int, HashIdent> id2axis; ///< Mapping from identifier (register/pointers) to polyhedron variable
+		genstruct::Vector<Ident> axis2id; ///< Reverse identifier mapping
+
+		Ident compare_reg; ///< Register holding the last comparison result
+		sem::cond_t compare_op; ///< Last comparison semantics
+
+		/* Not really part of the abstract state */
+		static BitVector trash; 
+
+	public:
 		inline void print(io::Output & out) const {
 			PPL::Constraint_System cons = poly.minimized_constraints();
 			cons.print();
@@ -192,6 +208,8 @@ class PPLDomain {
 			id2axis = src.id2axis;
 			axis2id = src.axis2id;
 			mem_ref = src.mem_ref;
+			compare_reg = src.compare_reg;
+			compare_op = src.compare_op;
 			trash = src.trash;
 		}
 
@@ -327,6 +345,8 @@ class PPLDomain {
 			num_axis = dom.num_axis;
 			id2axis = dom.id2axis;
 			axis2id = dom.axis2id;
+			compare_reg = dom.compare_reg;
+			compare_op = dom.compare_op;
 			mem_ref = dom.mem_ref;
 			trash = dom.trash;
 		
@@ -364,14 +384,9 @@ class PPLDomain {
 		}
 
 
-	// Mapping identifier <==> variables
-	genstruct::HashTable<Ident , int, HashIdent> id2axis;
-	genstruct::Vector<Ident> axis2id;
 
-	static BitVector trash;
 
 	friend bool operator==(const PPLDomain &a, const PPLDomain &b);
-		PPL::C_Polyhedron poly;
 
 	/* Partial mapping function that removes variables in set (bitvector) */
 	class RemoveMarked {
@@ -452,7 +467,7 @@ class PPLDomain {
 		}
 	}
 	inline PPLDomain widening(const PPLDomain& r) {
-		return join_or_widening(r, true); 
+		return join_or_widening(r, false); 
 	}
 	inline PPLDomain join(const PPLDomain& r) {
 		return join_or_widening(r, false); 
@@ -460,6 +475,91 @@ class PPLDomain {
 	inline PPLDomain narrowing(const PPLDomain& src) {
 		PPLDomain s_out = src;
 		return s_out;
+	}
+
+	inline bool hasFilter() {
+		return (compare_reg.getType() != Ident::ID_INVALID);
+	}
+	inline void removeFilter() {
+		compare_reg = Ident();
+	}
+
+	PPLDomain filter(bool taken) {
+		if (isBottom())
+			return *this;
+		sem::cond_t this_op;
+		ASSERT(hasFilter());
+		PPLDomain res = *this;
+		this_op = taken ? compare_op : sem::invert(compare_op);
+#ifdef POLY_DEBUG			
+		cout << "compare_reg is: " << compare_reg << endl;
+#endif
+		switch (this_op) {
+			case sem::NE: {
+				PPL::C_Polyhedron poly2 = res.poly;
+				res.poly.add_constraint(res.lookup(compare_reg) <= -1);
+				poly2.add_constraint(res.lookup(compare_reg) >= 1);
+				res.poly.poly_hull_assign(poly2);
+				break;
+#ifdef POLY_DEBUG			
+			cout << "NE!" << endl;
+#endif
+			}
+			case sem::EQ:
+#ifdef POLY_DEBUG			
+			cout << "EQ!" << endl;
+#endif
+				res.poly.add_constraint(res.lookup(compare_reg) == 0);
+				break;
+			case sem::GE:
+			case sem::UGE:
+				res.poly.add_constraint(res.lookup(compare_reg) >= 0);
+#ifdef POLY_DEBUG			
+			cout << "(U)GE!" << endl;
+#endif
+				break;
+			case sem::GT:
+			case sem::UGT:
+				res.poly.add_constraint(res.lookup(compare_reg) >= 1);
+#ifdef POLY_DEBUG			
+			cout << "(U)GT!" << endl;
+#endif
+				break;
+			case sem::LE:
+			case sem::ULE:
+				res.poly.add_constraint(res.lookup(compare_reg) <= 0);
+#ifdef POLY_DEBUG			
+			cout << "(U)LE!" << endl;
+#endif
+				break;
+			case sem::LT:
+			case sem::ULT:
+				res.poly.add_constraint(res.lookup(compare_reg) <= -1);
+#ifdef POLY_DEBUG			
+			cout << "(U)LT!" << endl;
+#endif
+				break;
+			default:
+				break;
+		};
+#ifdef POLY_DEBUG			
+		cout << "empty? " << res.poly.is_empty() << endl;
+#endif
+		return res;
+	}
+	PPLDomain update(sem::inst si, int instaddr);
+	PPL::Variable *make_var(Ident &id);
+	inline void poly_hull_helper(PPL::C_Polyhedron &poly1, PPL::C_Polyhedron &poly2) const {
+		PPL::C_Polyhedron *src = &poly2;
+		if (poly1.space_dimension() > poly2.space_dimension()) {
+			src = new PPL::C_Polyhedron(poly2);
+			src->add_space_dimensions_and_embed(poly1.space_dimension() - poly2.space_dimension());
+		} else if (poly2.space_dimension() > poly1.space_dimension()) {
+			poly1.add_space_dimensions_and_embed(poly2.space_dimension() - poly1.space_dimension());
+		}
+		poly1.poly_hull_assign(*src);
+		if (src != &poly2)
+			delete src;
 	}
 
 	/**
@@ -585,7 +685,6 @@ class PPLDomain {
 		l1.map_poly_and_idents(PPLDomain::MapWithHash(mapl));
 		r1.map_poly_and_idents(PPLDomain::MapWithHash(mapr)); 
 
-
 		// Fin preparation
 #ifdef POLY_DEBUG			
 		cerr << "=== prepare done ===" << endl;
@@ -701,79 +800,6 @@ public:
 	inline t& bot(void) { return _bot; }
 	inline t& top(void) { return _top; }
 
-
-	inline bool hasFilter() {
-		return (compare_reg.getType() != Ident::ID_INVALID);
-	}
-	inline void removeFilter() {
-		compare_reg = Ident();
-	}
-
-	t filter(t &before, bool taken) {
-		if (before.isBottom())
-			return _bot;
-		sem::cond_t this_op;
-		ASSERT(hasFilter());
-		t res = before;
-		this_op = taken ? compare_op : sem::invert(compare_op);
-#ifdef POLY_DEBUG			
-		cout << "compare_reg is: " << compare_reg << endl;
-#endif
-		switch (this_op) {
-			case sem::NE: {
-				PPL::C_Polyhedron poly2 = res.poly;
-				res.poly.add_constraint(res.lookup(compare_reg) <= -1);
-				poly2.add_constraint(res.lookup(compare_reg) >= 1);
-				res.poly.poly_hull_assign(poly2);
-				break;
-#ifdef POLY_DEBUG			
-			cout << "NE!" << endl;
-#endif
-			}
-			case sem::EQ:
-#ifdef POLY_DEBUG			
-			cout << "EQ!" << endl;
-#endif
-				res.poly.add_constraint(res.lookup(compare_reg) == 0);
-				break;
-			case sem::GE:
-			case sem::UGE:
-				res.poly.add_constraint(res.lookup(compare_reg) >= 0);
-#ifdef POLY_DEBUG			
-			cout << "(U)GE!" << endl;
-#endif
-				break;
-			case sem::GT:
-			case sem::UGT:
-				res.poly.add_constraint(res.lookup(compare_reg) >= 1);
-#ifdef POLY_DEBUG			
-			cout << "(U)GT!" << endl;
-#endif
-				break;
-			case sem::LE:
-			case sem::ULE:
-				res.poly.add_constraint(res.lookup(compare_reg) <= 0);
-#ifdef POLY_DEBUG			
-			cout << "(U)LE!" << endl;
-#endif
-				break;
-			case sem::LT:
-			case sem::ULT:
-				res.poly.add_constraint(res.lookup(compare_reg) <= -1);
-#ifdef POLY_DEBUG			
-			cout << "(U)LT!" << endl;
-#endif
-				break;
-			default:
-				break;
-		};
-#ifdef POLY_DEBUG			
-		cout << "empty? " << res.poly.is_empty() << endl;
-#endif
-		return res;
-	}
-
-
 	inline t join(t& v1, const t& v2) { return v1.join(v2); }
 	inline t widening(t& v1, const t& v2) { return v1.widening(v2); }
 
@@ -785,27 +811,12 @@ public:
 	inline void dump(io::Output& out, value_t v) {  }
 
 	// TODO migrer
-	t update(t s, sem::inst si, int instaddr);
-	PPL::Variable *make_var(Ident &id, PPLManager::t &dom);
-	inline void poly_hull_helper(PPL::C_Polyhedron &poly1, PPL::C_Polyhedron &poly2) const {
-		PPL::C_Polyhedron *src = &poly2;
-		if (poly1.space_dimension() > poly2.space_dimension()) {
-			src = new PPL::C_Polyhedron(poly2);
-			src->add_space_dimensions_and_embed(poly1.space_dimension() - poly2.space_dimension());
-		} else if (poly2.space_dimension() > poly1.space_dimension()) {
-			poly1.add_space_dimensions_and_embed(poly2.space_dimension() - poly1.space_dimension());
-		}
-		poly1.poly_hull_assign(*src);
-		if (src != &poly2)
-			delete src;
-	}
+
 
 	// fin migrer
 
 private:
 	const PropList& _props;
-	Ident compare_reg;
-	sem::cond_t compare_op;
 	t _init;
 	t _bot;
 	t _top;
@@ -831,6 +842,10 @@ bool operator==(const PPLDomain &a, const PPLDomain &b) {
 			(a.id2axis.count() == b.id2axis.count()))) {
 		return false;
 	}
+	/*
+	if (a.compare_reg != b.compare_reg)
+		return false;
+		*/
 
 	// FIXME TODO not correct because of same memory location having different names
 	for (elm::genstruct::HashTable<Ident, int,HashIdent>::PairIterator it(a.id2axis); it; it++) {
@@ -854,7 +869,7 @@ inline Output& operator<<(Output& o, const PPLDomain &dom) {
 	dom.print(o);
 	return o;
 }
-// test
+
 Variable::Variable(const Ident &ident, const PPLDomain &dom) : PPL::Variable(dom.id2axis[ident]), _dom(dom), _ident(ident) { }
 Variable::Variable(int axis, const PPLDomain &dom) 	: PPL::Variable(axis), _dom(dom), _ident(dom.axis2id[axis]) { 
 	ASSERT(_ident.getType() != Ident::ID_INVALID);	

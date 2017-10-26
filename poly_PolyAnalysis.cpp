@@ -129,7 +129,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 						cout << "+++ IR +++: " << *semi << endl;
 #endif
 						// man->display_loc_vars(s);
-						s = man->update(s, *semi, inst->address());
+						s = s.update(*semi, inst->address());
 						// man->display_loc_vars(s);
 #ifdef POLY_DEBUG			
 						cout << "AFTER IR: " << s << endl;
@@ -154,7 +154,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 #endif
 				bool hasEdgeState = false;
 				state_t edgeState;
-				if (LOOP_HEADER(e->sink()) || man->hasFilter() || LOOP_EXIT_EDGE(e)) {
+				if (LOOP_HEADER(e->sink()) || s.hasFilter() || LOOP_EXIT_EDGE(e)) {
 					hasEdgeState = true;
 					edgeState = s;
 				}
@@ -182,7 +182,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 						edgeState.bring_out_your_dead(); // TODO PERF FIXME
 				}
 
-				if (man->hasFilter()) {
+				if (edgeState.hasFilter()) {
 #ifdef POLY_DEBUG			
 					cout << "BEFORE FILTERING: " << endl;
 					edgeState->displayIdentMap();
@@ -191,7 +191,8 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 					fflush(stdout);
 					man->display_loc_vars(edgeState);
 #endif
-					edgeState = man->filter(edgeState, e->isTaken());
+					edgeState = edgeState.filter(e->isTaken());
+					edgeState.removeFilter();
 #ifdef POLY_DEBUG			
 					cout << "FILTERED STATE: " << endl;
 					edgeState->displayIdentMap();
@@ -206,7 +207,6 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 				} else ana.check(*e, s);
 
 			}
-			man->removeFilter();
 		}
 		ana++;
 	}
@@ -393,9 +393,9 @@ void PPLDomain::scratch(Ident &id) {
 #endif
 }
 
-PPL::Variable *PPLManager::make_var(Ident &id, PPLManager::t &dom) {
-		dom.allocAxis(id);
-		return new Variable(id, dom);
+PPL::Variable *PPLDomain::make_var(Ident &id) {
+		allocAxis(id);
+		return new Variable(id, *this);
 }
 
 bool PPLDomain::may_be_equal(PPL::Variable &v1, PPL::Variable &v2, int offset) {
@@ -497,9 +497,9 @@ PPLDomain PPLDomain::loopEntry(int loop, bool inner) {
 	return s_out;
 }
 
-PPLDomain PPLManager::update(t s_in, sem::inst si, int instaddr) {
-        PPLManager::t s_out = s_in;
-		ASSERT(!hasFilter() || (si.op == sem::BRANCH));
+PPLDomain PPLDomain::update(sem::inst si, int instaddr) {
+        PPLDomain s_out = *this;
+/* 		ASSERT(!hasFilter() || (si.op == sem::BRANCH)); */
 
 	switch(si.op) {
                 case sem::NOP:
@@ -596,7 +596,7 @@ PPLDomain PPLManager::update(t s_in, sem::inst si, int instaddr) {
 		        sem::reg_t addr = si.a();
 
 				/* collect union of states resulting from all possible writes */
-				PPL::C_Polyhedron all_writes = _bot.poly; 
+				PPL::C_Polyhedron all_writes = PPL::C_Polyhedron(0, PPL::EMPTY);
 
 				Ident id_new_addr, id_new_val;
 				s_out.create_ptr(id_new_addr, id_new_val);
@@ -711,7 +711,7 @@ PPLDomain PPLManager::update(t s_in, sem::inst si, int instaddr) {
 							cout << "Candidate: " << p.fst << endl;
 						}
 #endif
-						if (s_in.must_be_equal(vaddr, vsnd)) {
+						if (must_be_equal(vaddr, vsnd)) {
 #ifdef POLY_DEBUG			
 							cout << "Matched load source: " << p.fst << endl;
 #endif
@@ -721,7 +721,7 @@ PPLDomain PPLManager::update(t s_in, sem::inst si, int instaddr) {
 							break;
 
 						}
-						if (s_in.must_be_equal(vaddr, vsnd)) {
+						if (must_be_equal(vaddr, vsnd)) {
 							cout << "Exact!" << endl;
 						}
 					}
@@ -745,6 +745,7 @@ PPLDomain PPLManager::update(t s_in, sem::inst si, int instaddr) {
 		case sem:: IF: {
 				Ident id(si.sr(), Ident::ID_REG);
 				if (s_out.exists(id)) {
+					
 					compare_reg = id;
 					compare_op = si.cond();
 					ASSERT(si.jump() == 1);
