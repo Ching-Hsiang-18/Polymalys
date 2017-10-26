@@ -18,7 +18,7 @@ BASE_FLAGS = [
         '-xc++',
         '-I/usr/lib/',
         '-I/usr/include/',
-        '-I/home/clement/code/otawa/dist/linux-x86_64/otawa-core2/include'
+        '-I' + (os.popen("otawa-config --prefix").read().rstrip()) + '/include',
         ]
 
 SOURCE_EXTENSIONS = [
