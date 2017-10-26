@@ -20,10 +20,6 @@ namespace otawa { namespace poly {
  * TODO
  */
 
-#define BEURK_NUM_LOC_VARS 8
-#define BEURK_LOC_VAR_SIZE 4
-#define BEURK_MAX_AXIS 1024
-
 p::declare PolyAnalysis::reg = p::init("otawa::poly::PolyAnalysis", Version(1,0,0))
 	.require(COLLECTED_CFG_FEATURE)
 	.require(LOOP_INFO_FEATURE)
@@ -38,7 +34,9 @@ PolyAnalysis::PolyAnalysis(p::declare& r): Processor(r) { }
 /**
  */
 void PolyAnalysis::configure(const PropList &props) {
+
 	Processor::configure(props);
+	_props = &props;
 }
 
 
@@ -46,9 +44,9 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 	ai::CFGGraph graph(&cfg);
 	PPLManager *man;
     if (do_init) {
-		man = new PPLManager(); 
+		man = new PPLManager(*_props); 
 	} else {
-		man = new PPLManager(s);
+		man = new PPLManager(s, *_props);
 	}
 	ai::EdgeStore<PPLManager, ai::CFGGraph> store(*man, graph);
 	ai::OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph> > ana(*man, graph, store);
@@ -286,10 +284,10 @@ void PPLManager::display_loc_vars(PPLManager::t &dom) {
 	Ident id_ssp(Ident::ID_START_SP, Ident::ID_SPECIAL);
 	Variable ssp = dom.lookup(id_ssp);
 	cout << mcons.space_dimension() << " Local variables: " << endl;
-	for (int i = 0 ; i < BEURK_NUM_LOC_VARS*BEURK_LOC_VAR_SIZE; i += BEURK_LOC_VAR_SIZE) {
+	for (int i = 0 ; i < NUM_LOC_VARS(_props)*LOC_VAR_SIZE(_props); i += LOC_VAR_SIZE(_props)) {
 		PPL::Constraint_System cons = mcons;
 		PPL::Variable v(dom.num_axis);
-		cons.insert(v == ssp - i - BEURK_LOC_VAR_SIZE);
+		cons.insert(v == ssp - i - LOC_VAR_SIZE(_props));
 		cout << " [SP - " << hex(i) << "] == ";
 		bool found = false;
 		for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(dom.id2axis); it; it++)
@@ -778,7 +776,7 @@ const PPL::Variable &Ident::getVar() {
 }
 */
 
-BitVector PPLDomain::trash(BEURK_MAX_AXIS);
+BitVector PPLDomain::trash;
 
 void PPLDomain::freeAxis(int axis) {
 	ASSERT(axis2id[axis].getType() != Ident::ID_INVALID);
@@ -794,7 +792,7 @@ void PPLDomain::freeAxis(int axis) {
 }
 
 int PPLDomain::allocAxis(const Ident &ident, bool allow_replace) { 
-	ASSERT(num_axis < BEURK_MAX_AXIS);
+	ASSERT(num_axis < trash.size())
 	ASSERT(allow_replace || !id2axis.hasKey(ident));
 	if (id2axis.hasKey(ident)) {
 		int axis = id2axis[ident];
@@ -867,9 +865,9 @@ bool PPLDomain::exists(int axis) {
 }
 
 
-Identifier<int> MAX_AXIS("otawa::poly::MAX_AXIS", 512);
 Identifier<int> LOC_VAR_SIZE("otawa::poly::LOC_VAR_SIZE", 4);
 Identifier<int> NUM_LOC_VARS("otawa::poly::NUM_LOC_VARS", 8);
+Identifier<int> MAX_AXIS("otawa::poly::MAX_AXIS", 512);
 
 
 } }	// otawa::poly

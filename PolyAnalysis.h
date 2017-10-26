@@ -20,9 +20,9 @@ namespace otawa { namespace poly {
 using namespace otawa;
 using namespace otawa::util;
 
-extern Identifier<int> MAX_AXIS;
 extern Identifier<int> NUM_LOC_VARS;
 extern Identifier<int> LOC_VAR_SIZE;
+extern Identifier<int> MAX_AXIS;
 extern p::feature POLY_ANALYSIS_FEATURE;
 
 class PPLManager;
@@ -167,18 +167,36 @@ class PPLDomain {
 			cons.print();
 			out << "";
 		}
-		PPLDomain() { 
-//			cons.print();
+
+		/**
+		 * Builds a bottom state
+		 */
+		PPLDomain() {
+			num_axis = -1;
+			poly = PPL::C_Polyhedron(0, PPL::EMPTY);
+		}
+
+		/**
+		 * Builds a top state
+		 * @param maxAxis Maximum number of variables this state can hold
+		 */
+		PPLDomain(int maxAxis) { 
 			num_axis = 0;
 			mem_ref = 0;
+			trash = BitVector(maxAxis);
+			poly = PPL::C_Polyhedron(0, PPL::UNIVERSE);
+
 		}
+
 		PPLDomain (const PPLDomain &src)  {
 			poly = src.poly;
 			num_axis = src.num_axis;
 			id2axis = src.id2axis;
 			axis2id = src.axis2id;
 			mem_ref = src.mem_ref;
+			trash = src.trash;
 		}
+
 		~PPLDomain() { 
 			// TODO
 		}
@@ -235,6 +253,7 @@ class PPLDomain {
 			id2axis = dom.id2axis;
 			axis2id = dom.axis2id;
 			mem_ref = dom.mem_ref;
+			trash = dom.trash;
 		
 		}
 		bool isBottom() {
@@ -382,28 +401,20 @@ private:
 
 public:
 
-	PPLManager(t &init) : _init(init) { 
-		_bot.num_axis = -1;
-		_top.num_axis = 0;
-		_bot.poly = PPL::C_Polyhedron(0, PPL::EMPTY);
-		_top.poly = PPL::C_Polyhedron(0, PPL::UNIVERSE);
+	/**
+	 * Setup initial sates (version accepting init)
+	 */
+	PPLManager(t &init, const PropList &props) : _props(props), _init(init), _bot(), _top(MAX_AXIS(props)) {
 	} 
 
-	/*
+	/**
 	 * Setup initial states.
 	 * TOP : universe poly (no constraints)
 	 * BOT : empty poly (unsolvable constraint set)
 	 * INIT : TOP + variables representing starting SP/FP/LR registers
 	 */
-	PPLManager() { 
+	PPLManager(const PropList &props) : _props(props), _init(MAX_AXIS(props)), _bot(), _top(MAX_AXIS(props)) {
 		PPL::Constraint_System initcons;
-		_init.num_axis = 0;
-		_bot.num_axis = -1;
-		_top.num_axis = 0;
-
-		_init.poly = PPL::C_Polyhedron(0, PPL::UNIVERSE);
-		_bot.poly = PPL::C_Polyhedron(0, PPL::EMPTY);
-		_top.poly = PPL::C_Polyhedron(0, PPL::UNIVERSE);
 
 		Variable var_sp = _init.create(Ident(13, Ident::ID_REG));
 		Variable var_fp = _init.create(Ident(11, Ident::ID_REG));
@@ -761,11 +772,13 @@ public:
 	}
 
 private:
+	const PropList& _props;
 	Ident compare_reg;
 	sem::cond_t compare_op;
 	t _init;
 	t _bot;
 	t _top;
+
 };
 
 class PolyAnalysis: public Processor {
@@ -779,7 +792,7 @@ protected:
 private:
 	typedef PPLManager::t state_t;
 	void analyzeGraph(CFG &cfg, state_t &s, bool do_init); 
-
+	const PropList* _props;
 };
 
 bool operator==(const PPLDomain &a, const PPLDomain &b) {
