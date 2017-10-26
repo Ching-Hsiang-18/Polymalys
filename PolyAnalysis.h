@@ -8,6 +8,7 @@
 #include <otawa/cfg.h>
 #include <otawa/cfg/features.h>
 #include <otawa/prog/sem.h>
+#include <elm/util/BitVector.h>
 
 #include <ppl.hh>
 
@@ -803,7 +804,7 @@ protected:
 	void configure(const PropList &props) ;
 private:
 	typedef PPLManager::t state_t;
-	void analyzeGraph(CFG &cfg, state_t &s, bool do_init);
+	void analyzeGraph(CFG &cfg, state_t &s, bool do_init); 
 
 };
 
@@ -835,7 +836,7 @@ inline Output& operator<<(Output& o, const PPLDomain &dom) {
 	dom.print(o);
 	return o;
 }
-
+// test
 Variable::Variable(const Ident &ident, const PPLDomain &dom) : PPL::Variable(dom.id2axis[ident]), _dom(dom), _ident(ident) { }
 Variable::Variable(int axis, const PPLDomain &dom) 	: PPL::Variable(axis), _dom(dom), _ident(dom.axis2id[axis]) { 
 	ASSERT(_ident.getType() != Ident::ID_INVALID);	

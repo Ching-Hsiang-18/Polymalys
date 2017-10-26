@@ -54,8 +54,6 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 	ai::OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph> > ana(*man, graph, store);
 
 	genstruct::HashTable<int, state_t> headerState;
-	int first = 1;
-	
 
 	cout << "Starting abstract interpretation for CFG: " << cfg.name() << endl;	
 	while (ana) {
@@ -236,7 +234,6 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	cout << "CFG count: " << coll->count() << endl;
 	state_t dummy;
 	analyzeGraph(*entry, dummy, true);
-
 	cout << "LOOP BOUNDS: " << endl;
 	for (CFGCollection::Iterator iter2(coll); iter2; iter2++) {
 		for (CFG::BlockIter iter((*iter2)->blocks()); iter; iter++) {
