@@ -178,10 +178,10 @@ class PPLDomain {
 		 * Builds a top state
 		 * @param maxAxis Maximum number of variables this state can hold
 		 */
-		PPLDomain(int maxAxis) { 
+		PPLDomain(int max_axis) {
 			num_axis = 0;
 			mem_ref = 0;
-			trash = BitVector(maxAxis);
+			trash = BitVector(max_axis);
 			poly = PPL::C_Polyhedron(0, PPL::UNIVERSE);
 
 		}
@@ -202,6 +202,18 @@ class PPLDomain {
 		PPLDomain loopIter(int loop, bool inner=false);
 		PPLDomain loopExit(int loop, int bound);
 		PPLDomain loopTotal(int loop, int bound);
+
+		void binary_operation_helper(int op, PPL::Variable *v, PPL::Variable *vs1, PPL::Variable *vs2);
+		void integer_wrap();
+		void bring_out_your_dead();
+		bool may_be_equal(PPL::Variable &v1, PPL::Variable &v2, int offset = 0);
+		bool must_be_equal(PPL::Variable &v1, PPL::Variable &v2, int offset = 0);
+		void scratch(Ident &id);
+		void get_range(Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
+		void get_range(PPL::Variable &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
+		bool get_constant(Ident &id, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d, bool display = false);
+		bool get_constant(PPL::Variable &var, PPL::Coefficient &cst, PPL::Coefficient &cst_d, bool display = false);
+		void display_loc_vars();
 
 		void displayIdentMap() {
 			cout << "IDMAP: " ;
@@ -775,19 +787,6 @@ public:
 	// TODO migrer
 	t update(t s, sem::inst si, int instaddr);
 	PPL::Variable *make_var(Ident &id, PPLManager::t &dom);
-	void bring_out_your_dead(PPLManager::t &dom);
-	void binary_operation_helper(PPLManager::t &s, int op, PPL::Variable *v, PPL::Variable *vs1, PPL::Variable *vs2);
-	void integer_wrap(PPLManager::t &s);
-	bool may_be_equal(PPLManager::t &s, PPL::Variable &v1, PPL::Variable &v2, int offset = 0);
-	bool must_be_equal(PPLManager::t &s, PPL::Variable &v1, PPL::Variable &v2, int offset = 0);
-	void scratch(Ident &id, PPLManager::t &dom);
-	void get_range(Ident &id, PPLManager::t &dom, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
-	void get_range(PPL::Variable &var, PPLManager::t &dom, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
-	bool get_constant(Ident &id, PPLManager::t &dom, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d, bool display = false);
-	bool get_constant(PPL::Variable &var, PPLManager::t &dom, PPL::Coefficient &cst, PPL::Coefficient &cst_d, bool display = false);
-	bool is_constrained(Ident &id, PPLManager::t &dom);
-	bool is_constrained(PPL::Variable &var, PPLManager::t &dom);
-	void display_loc_vars(PPLManager::t &dom);
 	inline void poly_hull_helper(PPL::C_Polyhedron &poly1, PPL::C_Polyhedron &poly2) const {
 		PPL::C_Polyhedron *src = &poly2;
 		if (poly1.space_dimension() > poly2.space_dimension()) {
