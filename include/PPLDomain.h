@@ -189,6 +189,8 @@ public:
 	inline PPLDomain() {
 		num_axis = -1;
 		poly = PPL::C_Polyhedron(0, PPL::EMPTY);
+		compare_reg = Ident();
+		compare_op = sem::EQ;
 	}
 
 	/**
@@ -200,7 +202,8 @@ public:
 		mem_ref = 0;
 		trash = BitVector(max_axis);
 		poly = PPL::C_Polyhedron(0, PPL::UNIVERSE);
-
+		compare_reg = Ident();
+		compare_op = sem::EQ;
 	}
 
 	inline PPLDomain (const PPLDomain &src)  {
