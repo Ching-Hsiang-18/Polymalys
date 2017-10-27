@@ -1275,7 +1275,7 @@ Variable PPLDomain::lookup(const Ident &ident, bool allow_create) {
 	if (allow_create && !exists(ident)) {
 		return create(ident, false);
 	}
-	return Variable(id2axis[ident], *this);
+	return Variable(id2axis[ident]);
 }
 
 void PPLDomain::create_ptr(Ident &addr, Ident &val) {
@@ -1308,11 +1308,11 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 }
 
 Variable PPLDomain::lookup(int axis) {
-	return Variable(axis, *this);
+	return Variable(axis);
 }
 
 Variable PPLDomain::create(const Ident &ident, bool allow_replace) {
-	return Variable(allocAxis(ident, allow_replace), *this);
+	return Variable(allocAxis(ident, allow_replace));
 }
 
 void PPLDomain::rename(const Ident &ident, const Ident &newident, bool allow_replace) {

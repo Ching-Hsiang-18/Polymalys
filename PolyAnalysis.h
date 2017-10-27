@@ -14,9 +14,11 @@
 
 namespace otawa { namespace poly {
 
-namespace PPL = Parma_Polyhedra_Library;
 using namespace otawa;
 using namespace otawa::util;
+
+namespace PPL = Parma_Polyhedra_Library;
+using Variable = PPL::Variable;
 
 extern Identifier<int> NUM_LOC_VARS;
 extern Identifier<int> LOC_VAR_SIZE;
@@ -27,12 +29,6 @@ class PPLManager;
 class HashIdent;
 class PPLDomain;
 class Ident;
-
-class Variable : public PPL::Variable {
-	public:
-		inline Variable(int axis, const PPLDomain &dom) : PPL::Variable(axis) {}
-/*		inline Variable(const Ident &ident, const PPLDomain &dom) : PPL::Variable(; */
-};
 
 class Ident {
 
@@ -129,7 +125,6 @@ class HashCons {
 
 class PPLDomain {
 	friend class PPLManager;
-	friend class Variable;
 
 private:
 	PPL::C_Polyhedron poly;
@@ -329,7 +324,7 @@ public:
 
 class PPLManager {
 public:
-	typedef PPLDomain t;
+	using t = PPLDomain;
 	private:
 
 public:
@@ -370,7 +365,7 @@ protected:
 	void processWorkSpace(WorkSpace*) ;
 	void configure(const PropList &props) ;
 private:
-	typedef PPLManager::t state_t;
+	using state_t = PPLManager::t;
 	void analyzeGraph(CFG &cfg, state_t &s, bool do_init); 
 	const PropList* _props;
 };
