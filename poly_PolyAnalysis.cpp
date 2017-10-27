@@ -11,6 +11,8 @@
 #include <time.h>
 #include <ppl.hh>
 
+#include "PPLDomain.h"
+#include "PPLManager.h"
 #include "PolyAnalysis.h"
 
 namespace otawa { namespace poly {
