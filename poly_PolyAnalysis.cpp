@@ -250,7 +250,6 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 					man->display_loc_vars(edgeState);
 #endif
 					edgeState = edgeState.filter(e->isTaken());
-					edgeState.removeFilter();
 #ifdef POLY_DEBUG			
 					cout << "FILTERED STATE: " << endl;
 					edgeState->displayIdentMap();
@@ -762,6 +761,7 @@ PPLDomain PPLDomain::filter(bool taken) {
 #ifdef POLY_DEBUG			
 	cout << "empty? " << res.poly.is_empty() << endl;
 #endif
+	res.compare_reg = Ident();
 	return res;
 }
 inline void PPLDomain::poly_hull_helper(PPL::C_Polyhedron &poly1, PPL::C_Polyhedron &poly2) const {

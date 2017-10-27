@@ -127,6 +127,7 @@ class PPLDomain {
 	friend class PPLManager;
 
 private:
+	/* Abstract state */
 	PPL::C_Polyhedron poly;
 
 	genstruct::HashTable<Ident , int, HashIdent> id2axis; ///< Mapping from identifier (register/pointers) to polyhedron variable
@@ -141,12 +142,54 @@ private:
 	/* Not really part of the abstract state */
 	static BitVector trash; 
 
+	/* Nested classes */
+	template <class F> class MapHelper {
+		public:
+			MapHelper(F &pfunc, int max_in_domain);
+			inline PPL::dimension_type max_in_codomain() const { return _max_in_codomain; }
+			inline bool maps(PPL::dimension_type i, PPL::dimension_type &j) const { return _pfunc.maps(i, j); }
+			inline bool has_empty_codomain() const { return _empty; }
+		private:
+			F &_pfunc;
+			PPL::dimension_type _max_in_domain;
+			PPL::dimension_type _max_in_codomain;
+			bool _empty;
+	};
+
+	/* Partial mapping function that removes variables in set (bitvector) */
+	class RemoveMarked {
+		public:
+			inline ~RemoveMarked() { }
+			inline RemoveMarked(BitVector &bv, int size) : _bv(bv), _size(size) { }
+			inline bool has_empty_codomain() const { return _bv.countBits() == _size; }
+			inline PPL::dimension_type max_in_codomain() const { 
+				return _size - _bv.countBits() - 1;
+				/* FIXME not always correct due to PPL weirdness */ 
+			}
+			bool maps(PPL::dimension_type i, PPL::dimension_type &j) const;
+		private:
+			BitVector &_bv;
+			int _size;
+	};
+
+	class MapWithHash {
+		public:
+			inline MapWithHash(genstruct::HashTable<int,int> &map) : _map(map) { }
+			inline bool has_empty_codomain() const { return false; }
+			inline PPL::dimension_type max_in_codomain() const { return 0; } 
+			inline bool maps(PPL::dimension_type i, PPL::dimension_type &j) const {
+				if (_map.hasKey(i)) {
+					j = _map[i];
+					return true;
+				} else return false;
+			}
+		private:
+			genstruct::HashTable<int,int> &_map;
+	};
+
 public:
-	inline void print(io::Output & out) const {
-		PPL::Constraint_System cons = poly.minimized_constraints();
-		cons.print();
-		out << "";
-	}
+
+	/* Basic operations (constructor, destructor, copy, comparison) */
 
 	/**
 	 * Builds a bottom state
@@ -195,102 +238,54 @@ public:
 	
 	}
 
-	inline int getVarCount() { return poly.space_dimension(); }
-
-	inline bool isBottom() {
-		return num_axis == -1;
-	}
-
-	inline PPLDomain narrowing(const PPLDomain& src) { return src; /* TODO Implement the narrowing */ }
-	inline bool hasFilter() { return (compare_reg.getType() != Ident::ID_INVALID); }
-	inline void removeFilter() { compare_reg = Ident(); }
-
-	/* 
-	 * Wrapper around partial mapping functions (for PPL poly map), i
-	 * computes max-in-domain & empty automatically 
-	 */
-	template <class F> class MapHelper {
-		public:
-			MapHelper(F &pfunc, int max_in_domain);
-			inline PPL::dimension_type max_in_codomain() const { return _max_in_codomain; }
-			inline bool maps(PPL::dimension_type i, PPL::dimension_type &j) const { return _pfunc.maps(i, j); }
-			inline bool has_empty_codomain() const { return _empty; }
-		private:
-			F &_pfunc;
-			PPL::dimension_type _max_in_domain;
-			PPL::dimension_type _max_in_codomain;
-			bool _empty;
-	};
-
-	/* Partial mapping function that removes variables in set (bitvector) */
-	class RemoveMarked {
-		public:
-			inline ~RemoveMarked() { }
-			inline RemoveMarked(BitVector &bv, int size) : _bv(bv), _size(size) { }
-			inline bool has_empty_codomain() const { return _bv.countBits() == _size; }
-			inline PPL::dimension_type max_in_codomain() const { 
-				return _size - _bv.countBits() - 1;
-				/* FIXME not always correct due to PPL weirdness */ 
-			}
-			bool maps(PPL::dimension_type i, PPL::dimension_type &j) const;
-		private:
-			BitVector &_bv;
-			int _size;
-	};
-
-	class MapWithHash {
-		public:
-			inline MapWithHash(genstruct::HashTable<int,int> &map) : _map(map) { }
-			inline bool has_empty_codomain() const { return false; }
-			inline PPL::dimension_type max_in_codomain() const { return 0; } 
-			inline bool maps(PPL::dimension_type i, PPL::dimension_type &j) const {
-				if (_map.hasKey(i)) {
-					j = _map[i];
-					return true;
-				} else return false;
-			}
-		private:
-			genstruct::HashTable<int,int> &_map;
-	};
-
-	template <class F> void map_only_poly(F pfunc);
-	template <class F> void map_only_idents(F pfunc);
-	template <class F> void map_poly_and_idents(F pfunc);
-
-
 	bool equals(const PPLDomain &) const;
 
-	PPLDomain loopEntry(int loop, bool inner=false);
-	PPLDomain loopIter(int loop, bool inner=false);
-	PPLDomain loopExit(int loop, int bound);
-	PPLDomain loopTotal(int loop, int bound);
+	/* Operations that reads the state and returns information about it */
+	inline void print(io::Output & out) const {
+		PPL::Constraint_System cons = poly.minimized_constraints();
+		cons.print();
+		out << "";
+	}
 
-	void binary_operation_helper(int op, PPL::Variable *v, PPL::Variable *vs1, PPL::Variable *vs2);
-	void integer_wrap();
-	void bring_out_your_dead();
+	inline int getVarCount() { return poly.space_dimension(); }
+	inline bool isBottom() { return num_axis == -1; }
+	inline bool hasFilter() { return (compare_reg.getType() != Ident::ID_INVALID); }
 	bool may_be_equal(PPL::Variable &v1, PPL::Variable &v2, int offset = 0);
 	bool must_be_equal(PPL::Variable &v1, PPL::Variable &v2, int offset = 0);
-	void scratch(Ident &id);
 	void get_range(Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
 	void get_range(PPL::Variable &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
 	bool get_constant(Ident &id, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d, bool display = false);
 	bool get_constant(PPL::Variable &var, PPL::Coefficient &cst, PPL::Coefficient &cst_d, bool display = false);
 	void display_loc_vars();
-
-	int allocAxis(const Ident&, bool allow_replace = false);
-	void freeAxis(int axis);
 	bool exists(int);
-
-	void destroy(const Ident&);
-	void destroy(PPL::Variable&);
 	Variable lookup(const Ident&, bool allow_create = false);
-	void rename(const Ident &ident, const Ident &newident, bool allow_replace);
 	Variable lookup(int);
 	bool exists(const Ident&);
 	bool exists(PPL::Variable&);
+
+	/* Update-like operations, that returns a modified new state */
+	PPLDomain loopEntry(int loop, bool inner=false);
+	PPLDomain loopIter(int loop, bool inner=false);
+	PPLDomain loopExit(int loop, int bound);
+	PPLDomain loopTotal(int loop, int bound);
+	PPLDomain update(sem::inst si, int instaddr);
+	PPLDomain merge(const PPLDomain& r, bool widen=false);
+
+	/* Operations that modify the state in-place */
+	template <class F> void map_only_poly(F pfunc);
+	template <class F> void map_only_idents(F pfunc);
+	template <class F> void map_poly_and_idents(F pfunc);
+	void binary_operation_helper(int op, PPL::Variable *v, PPL::Variable *vs1, PPL::Variable *vs2);
+	void integer_wrap();
+	void bring_out_your_dead();
+	void scratch(Ident &id);
+	int allocAxis(const Ident&, bool allow_replace = false);
+	void freeAxis(int axis);
+	void destroy(const Ident&);
+	void destroy(PPL::Variable&);
+	void rename(const Ident &ident, const Ident &newident, bool allow_replace);
 	Variable create(const Ident&, bool allow_replace = false);
 	void create_ptr(Ident&, Ident&);
-	PPLDomain update(sem::inst si, int instaddr);
 	PPL::Variable *make_var(Ident &id);
 
 #ifdef POLY_DEBUG
@@ -316,7 +311,6 @@ public:
 	 * @param r The second abstract state (will not be modified)
 	 * @return Join or widening result
 	 */
-	inline PPLDomain merge(const PPLDomain& r, bool widen=false);
 	private:
 
 };
