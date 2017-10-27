@@ -281,9 +281,9 @@ public:
 	void doScratch(Ident &id);
 	void doDestroy(const Ident&);
 	void doDestroy(Variable&);
-	void rename(const Ident &ident, const Ident &newident, bool allow_replace);
+	void doRename(const Ident &ident, const Ident &newident, bool allow_replace);
 	Variable create(const Ident&, bool allow_replace = false);
-	void create_ptr(Ident&, Ident&);
+	void doCreatePtr(Ident&, Ident&);
 	Variable *make_var(Ident &id);
 	void doFinalizeUpdate();
 

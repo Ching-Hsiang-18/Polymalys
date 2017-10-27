@@ -1053,7 +1053,7 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 				PPL::C_Polyhedron all_writes = PPL::C_Polyhedron(0, PPL::EMPTY);
 
 				Ident id_new_addr, id_new_val;
-				s_out.create_ptr(id_new_addr, id_new_val);
+				s_out.doCreatePtr(id_new_addr, id_new_val);
 
 				Variable v_new_addr = s_out.create(id_new_addr);
 				Variable v_new_val = s_out.create(id_new_val);
@@ -1186,7 +1186,7 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 					cout << "Not found, creating new unconstrained ptr..." << endl;
 #endif
 					Ident addr, val;
-					s_out.create_ptr(addr, val);
+					s_out.doCreatePtr(addr, val);
 					Variable dummy_addr = s_out.create(addr);
 					Variable dummy_val = s_out.create(val);
 					s_out.poly.add_constraint(vdst == dummy_val);
@@ -1266,7 +1266,7 @@ Variable PPLDomain::lookup(const Ident &ident, bool allow_create) {
 	return Variable(id2axis[ident]);
 }
 
-void PPLDomain::create_ptr(Ident &addr, Ident &val) {
+void PPLDomain::doCreatePtr(Ident &addr, Ident &val) {
 	addr = Ident(mem_ref, Ident::ID_MEM_ADDR);
 	val = Ident(mem_ref, Ident::ID_MEM_VAL);
 	mem_ref++;
@@ -1303,7 +1303,7 @@ Variable PPLDomain::create(const Ident &ident, bool allow_replace) {
 	return Variable(doAllocAxis(ident, allow_replace));
 }
 
-void PPLDomain::rename(const Ident &ident, const Ident &newident, bool allow_replace) {
+void PPLDomain::doRename(const Ident &ident, const Ident &newident, bool allow_replace) {
 	int axis;
 	ASSERT(allow_replace || !id2axis.hasKey(newident));
 	if (id2axis.hasKey(newident)) {
