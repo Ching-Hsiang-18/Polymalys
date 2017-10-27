@@ -779,29 +779,15 @@ public:
 	/**
 	 * Create PPLManager for existing init state.
 	 */
-	PPLManager(t &init, const PropList &props) : _props(props), _init(init), _bot(), _top(MAX_AXIS(props)) {
-	} 
+	PPLManager(t &init, const PropList &props);
 
 
 	/**
 	 * Create PPLManager using a fresh init state.
 	 */
-	PPLManager(const PropList &props) : _props(props), _init(MAX_AXIS(props)), _bot(), _top(MAX_AXIS(props)) {
-		PPL::Constraint_System initcons;
+	PPLManager(const PropList &props);
 
-		Variable var_sp = _init.create(Ident(13, Ident::ID_REG));
-		Variable var_fp = _init.create(Ident(11, Ident::ID_REG));
-		Variable var_lr = _init.create(Ident(14, Ident::ID_REG));
-		Variable var_ssp = _init.create(Ident(Ident::ID_START_SP, Ident::ID_SPECIAL));
-		Variable var_sfp = _init.create(Ident(Ident::ID_START_FP, Ident::ID_SPECIAL));
-		Variable var_slr = _init.create(Ident(Ident::ID_START_LR, Ident::ID_SPECIAL));
-
-		_init.poly.add_constraint(var_ssp == var_sp);
-		_init.poly.add_constraint(var_sfp == var_fp);
-		_init.poly.add_constraint(var_slr == var_lr);
-
-	} 
-	~PPLManager() { }
+	inline ~PPLManager() { }
 
 	inline t& init(void) { return _init; }
 	inline t& bot(void) { return _bot; }

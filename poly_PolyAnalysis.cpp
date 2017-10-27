@@ -14,6 +14,31 @@
 #include "PolyAnalysis.h"
 
 namespace otawa { namespace poly {
+/**
+ * Create PPLManager for existing init state.
+ */
+PPLManager::PPLManager(t &init, const PropList &props) : _props(props), _init(init), _bot(), _top(MAX_AXIS(props)) {
+} 
+
+
+/**
+ * Create PPLManager using a fresh init state.
+ */
+PPLManager::PPLManager(const PropList &props) : _props(props), _init(MAX_AXIS(props)), _bot(), _top(MAX_AXIS(props)) {
+	PPL::Constraint_System initcons;
+
+	Variable var_sp = _init.create(Ident(13, Ident::ID_REG));
+	Variable var_fp = _init.create(Ident(11, Ident::ID_REG));
+	Variable var_lr = _init.create(Ident(14, Ident::ID_REG));
+	Variable var_ssp = _init.create(Ident(Ident::ID_START_SP, Ident::ID_SPECIAL));
+	Variable var_sfp = _init.create(Ident(Ident::ID_START_FP, Ident::ID_SPECIAL));
+	Variable var_slr = _init.create(Ident(Ident::ID_START_LR, Ident::ID_SPECIAL));
+
+	_init.poly.add_constraint(var_ssp == var_sp);
+	_init.poly.add_constraint(var_sfp == var_fp);
+	_init.poly.add_constraint(var_slr == var_lr);
+
+} 
 
 /**
  * @class PolyAnalysis
