@@ -57,7 +57,7 @@ Output& operator<<(Output& o, const PPL::Variable pv) {
 /**
  * Create PPLManager using a fresh init state.
  */
-PPLManager::PPLManager(const PropList &props) : _props(props), _init(MAX_AXIS(props)), _bot(), _top(MAX_AXIS(props)) {
+PPLManager::PPLManager(const PropList &props) : _init(MAX_AXIS(props)), _bot(), _top(MAX_AXIS(props)) {
 	PPL::Constraint_System initcons;
 
 	Variable var_sp = _init.create(Ident(13, Ident::ID_REG));
@@ -549,11 +549,11 @@ PPL::Variable *PPLDomain::make_var(Ident &id) {
 		return new PPL::Variable(id2axis[id]);
 }
 
-bool PPLDomain::may_be_equal(PPL::Variable &v1, PPL::Variable &v2, int offset) {
+bool PPLDomain::mayEqual(PPL::Variable &v1, PPL::Variable &v2, int offset) {
 	return !poly.relation_with(v1 == v2 + offset).implies(PPL::Poly_Con_Relation::is_disjoint()); 
 }
 
-bool PPLDomain::must_be_equal(PPL::Variable &v1, PPL::Variable &v2, int offset) {
+bool PPLDomain::mustEqual(PPL::Variable &v1, PPL::Variable &v2, int offset) {
 	return poly.relation_with(v1 == v2 + offset).implies(PPL::Poly_Con_Relation::is_included()); 
 }
 
@@ -1070,7 +1070,7 @@ PPLDomain PPLDomain::update(sem::inst si, int instaddr) {
 
 				Ident id_frame(Ident::ID_START_SP, Ident::ID_SPECIAL);
 				Variable var_ssp = s_out.lookup(id_frame);
-				if (s_out.may_be_equal(v_reg_addr, var_ssp, 4)) {
+				if (s_out.mayEqual(v_reg_addr, var_ssp, 4)) {
 					cout << "warning: unsafe write at EIP=0x" << hex(instaddr) << endl;
 				}
 
@@ -1097,11 +1097,11 @@ PPLDomain PPLDomain::update(sem::inst si, int instaddr) {
 					if ((p.fst.getType() == Ident::ID_MEM_ADDR) && (p.fst != id_new_addr)) {
 						PPL::Variable v_ex_addr = s_out.lookup(p.snd);
 						/* Store address may overlap with existing pointer */
-						if (s_out.may_be_equal(v_reg_addr, v_ex_addr)) {
+						if (s_out.mayEqual(v_reg_addr, v_ex_addr)) {
 							had_potential_match = true;
 							Ident id_ex_val(p.fst.getId(), Ident::ID_MEM_VAL);
 							Variable v_ex_val = s_out.lookup(id_ex_val);
-							if (s_out.must_be_equal(v_reg_addr, v_ex_addr)) {
+							if (s_out.mustEqual(v_reg_addr, v_ex_addr)) {
 #ifdef POLY_DEBUG
 								 /* Our abstract domain should not have aliases, therefore an 
 								 * exact match should not happen more than once. */
@@ -1165,7 +1165,7 @@ PPLDomain PPLDomain::update(sem::inst si, int instaddr) {
 							cout << "Candidate: " << p.fst << endl;
 						}
 #endif
-						if (must_be_equal(vaddr, vsnd)) {
+						if (mustEqual(vaddr, vsnd)) {
 #ifdef POLY_DEBUG			
 							cout << "Matched load source: " << p.fst << endl;
 #endif
@@ -1175,7 +1175,7 @@ PPLDomain PPLDomain::update(sem::inst si, int instaddr) {
 							break;
 
 						}
-						if (must_be_equal(vaddr, vsnd)) {
+						if (mustEqual(vaddr, vsnd)) {
 							cout << "Exact!" << endl;
 						}
 					}

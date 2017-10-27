@@ -250,8 +250,8 @@ public:
 	inline int getVarCount() { return poly.space_dimension(); }
 	inline bool isBottom() { return num_axis == -1; }
 	inline bool hasFilter() { return (compare_reg.getType() != Ident::ID_INVALID); }
-	bool may_be_equal(PPL::Variable &v1, PPL::Variable &v2, int offset = 0);
-	bool must_be_equal(PPL::Variable &v1, PPL::Variable &v2, int offset = 0);
+	bool mayEqual(PPL::Variable &v1, PPL::Variable &v2, int offset = 0);
+	bool mustEqual(PPL::Variable &v1, PPL::Variable &v2, int offset = 0);
 	void get_range(Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
 	void get_range(PPL::Variable &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
 	bool get_constant(Ident &id, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d, bool display = false);
@@ -325,7 +325,7 @@ public:
 	/**
 	 * Create PPLManager for existing init state.
 	 */
-	inline PPLManager(t &init, const PropList &props) : _props(props), _init(init), _bot(), _top(MAX_AXIS(props)) { }
+	inline PPLManager(t &init, const PropList &props) :  _init(init), _bot(), _top(MAX_AXIS(props)) { }
 
 
 	/**
@@ -344,7 +344,6 @@ public:
 	inline bool equals(const t& v1, const t& v2) { return v1.equals(v2); }
 
 private:
-	const PropList& _props;
 	t _init;
 	t _bot;
 	t _top;
