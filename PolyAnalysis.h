@@ -11,10 +11,10 @@
 #include <elm/util/BitVector.h>
 #include <ppl.hh>
 
-namespace PPL = Parma_Polyhedra_Library;
 
 namespace otawa { namespace poly {
 
+namespace PPL = Parma_Polyhedra_Library;
 using namespace otawa;
 using namespace otawa::util;
 
@@ -27,8 +27,6 @@ class PPLManager;
 class HashIdent;
 class PPLDomain;
 class Ident;
-
-inline Output& operator<<(Output& o, const PPL::Variable pv);
 
 class Variable : public PPL::Variable {
 	public:
@@ -298,7 +296,7 @@ public:
 	void destroy(PPL::Variable&);
 	Variable lookup(const Ident&, bool allow_create = false);
 	void rename(const Ident &ident, const Ident &newident, bool allow_replace);
-	Variable lookup(int);
+	PPL::Variable lookup(int);
 	bool exists(const Ident&);
 	bool exists(PPL::Variable&);
 	Variable create(const Ident&, bool allow_replace = false);
