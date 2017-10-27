@@ -1214,7 +1214,6 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 
 p::feature POLY_ANALYSIS_FEATURE("otawa::poly::POLY_ANALYSIS_FEATURE", new Maker<PolyAnalysis>());
 
-BitVector PPLDomain::trash;
 
 void PPLDomain::_doFreeAxis(int axis) {
 	ASSERT(axis2id[axis].getType() != Ident::ID_INVALID);
@@ -1268,6 +1267,8 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 			(id2axis.count() == b.id2axis.count()))) {
 		return false;
 	}
+	if (trash != b.trash)
+		return false;
 
 	if (compare_reg != b.compare_reg)
 		return false;

@@ -142,7 +142,7 @@ private:
 	int num_axis; ///<Highest poly variable ID + 1
 
 	/* Not really part of the abstract state */
-	static BitVector trash; 
+	BitVector trash; 
 
 	/* Nested classes */
 	template <class F> class MapHelper {
