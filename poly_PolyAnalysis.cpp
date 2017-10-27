@@ -15,6 +15,25 @@
 
 namespace otawa { namespace poly {
 
+t::hash HashCons::hash(const PPL::Constraint& key) { 
+	int kind;
+	unsigned int prime = 16777619;
+	t::hash result = 2166136261;
+	for (PPL::dimension_type i = 0; i < key.space_dimension(); i++) {
+		result ^= key.coefficient(PPL::Variable(i)).get_ui();
+		result *= prime;
+	}
+	result ^= key.inhomogeneous_term().get_ui();
+	result *= prime;
+	if (key.is_equality()) {
+		kind = 0;
+	} else if (key.is_strict_inequality()) {
+		kind = 1; 
+	} else kind = 2;
+	result ^= kind;
+	return result;
+}
+
 Variable::Variable(const Ident &ident, const PPLDomain &dom) : PPL::Variable(dom.id2axis[ident]), _dom(dom), _ident(ident) { }
 Variable::Variable(int axis, const PPLDomain &dom) 	: PPL::Variable(axis), _dom(dom), _ident(dom.axis2id[axis]) { 
 	ASSERT(_ident.getType() != Ident::ID_INVALID);	
@@ -139,7 +158,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 
 			}
 
-			cout << "BB: " << bl << " dimension=" << s.poly.space_dimension() << endl;
+			cout << "BB: " << bl << " dimension=" << s.getVarCount() << endl;
 #ifdef POLY_DEBUG			
 			cout << "inst! bb= ";
 			cout << bl << endl;

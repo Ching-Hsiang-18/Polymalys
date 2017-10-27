@@ -9,8 +9,6 @@
 #include <otawa/cfg/features.h>
 #include <otawa/prog/sem.h>
 #include <elm/util/BitVector.h>
-
-// test
 #include <ppl.hh>
 
 namespace PPL = Parma_Polyhedra_Library;
@@ -34,12 +32,11 @@ inline Output& operator<<(Output& o, const PPL::Variable pv);
 
 class Variable : public PPL::Variable {
 	public:
-		inline 
 		Variable(int axis, const PPLDomain &dom);
 		Variable(const Ident &ident, const PPLDomain &dom);
 
-		const PPLDomain &getDom() const { return _dom; }
-		const Ident &getIdent() const { return _ident; }
+		inline const PPLDomain &getDom() const { return _dom; }
+		inline const Ident &getIdent() const { return _ident; }
 	private:
 		const PPLDomain &_dom;
 		const Ident &_ident;
@@ -49,7 +46,6 @@ class Ident {
 
 	public:
 		friend class HashIdent;
-		friend class PPLManager;
 		enum IdentType {
 			ID_REG=0,
 			ID_MEM_ADDR,
@@ -64,9 +60,9 @@ class Ident {
 			ID_START_FP=1,
 			ID_START_LR=2,
 		};
-		Ident() : _type(ID_INVALID) { }
-		Ident(int id, IdentType typ, const PPLDomain *dom = NULL) : _id(id), _type(typ) { }
-		~Ident() { } 
+		inline Ident() : _type(ID_INVALID) { }
+		inline Ident(int id, IdentType typ, const PPLDomain *dom = NULL) : _id(id), _type(typ) { }
+		inline ~Ident() { } 
 		inline int getId() const { return _id; }
 		inline IdentType getType() const { return _type; }
 
@@ -123,7 +119,7 @@ class Ident {
 
 class HashIdent {
 	public:
-		static t::hash hash(const Ident& key) { 
+		static inline t::hash hash(const Ident& key) { 
 			return key._id;
 		};
 		static inline bool equals(const Ident& key1, const Ident& key2) {   
@@ -133,34 +129,15 @@ class HashIdent {
 
 class HashCons {
 	public:
-		static t::hash hash(const PPL::Constraint& key) { 
-			int kind;
-			unsigned int prime = 16777619;
-			t::hash result = 2166136261;
-			for (PPL::dimension_type i = 0; i < key.space_dimension(); i++) {
-				result ^= key.coefficient(PPL::Variable(i)).get_ui();
-				result *= prime;
-			}
-			result ^= key.inhomogeneous_term().get_ui();
-			result *= prime;
-			if (key.is_equality()) {
-				kind = 0;
-			} else if (key.is_strict_inequality()) {
-				kind = 1; 
-			} else kind = 2;
-			result ^= kind;
-			return result;
-		}
+		static t::hash hash(const PPL::Constraint& key);
 		static inline bool equals(const PPL::Constraint& key1, const PPL::Constraint& key2) { 
 			return key1.is_equivalent_to(key2);
 		}
 };
 
 class PPLDomain {
-	// TODO remove friend as much as possible
 	friend class PPLManager;
 	friend class Variable;
-	friend class PolyAnalysis; 
 
 private:
 	PPL::C_Polyhedron poly;
@@ -230,6 +207,9 @@ public:
 		trash = dom.trash;
 	
 	}
+
+	inline int getVarCount() { return poly.space_dimension(); }
+
 	inline bool isBottom() {
 		return num_axis == -1;
 	}
