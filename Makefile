@@ -45,4 +45,10 @@ uninstall:
 	rm -f $(HOME)/.otawa/proc/otawa/poly.eld
 	rm -f $(HOME)/.otawa/proc/otawa/poly.so
 
+clang-tidy:
+	rm -f tidy.txt
+	clang-tidy -header-filter='.*' -checks='*' poly_PolyAnalysis.cpp >> tidy.txt
+	clang-tidy -header-filter='.*' -checks='*' poly_PlugHook.cpp >> tidy.txt
+	clang-tidy -header-filter='.*' -checks='*' poly_PPLDomain.cpp >> tidy.txt
+	clang-tidy -header-filter='.*' -checks='*' poly_PPLManager.cpp >> tidy.txt
 .PHONY: clean install douter test tests compildb
