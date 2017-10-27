@@ -13,13 +13,13 @@ poly.so: poly_PolyAnalysis.o poly_PlugHook.o poly_PPLDomain.o poly_PPLManager.o
 	$(CC) -shared -o poly.so poly_PolyAnalysis.o poly_PlugHook.o poly_PPLDomain.o poly_PPLManager.o $(LIBS)
 	
 
-poly_PolyAnalysis.o: poly_PolyAnalysis.cpp PolyAnalysis.h PPLDomain.h PPLManager.h PolyCommon.h
+poly_PolyAnalysis.o: poly_PolyAnalysis.cpp include/PolyAnalysis.h include/PPLDomain.h include/PPLManager.h include/PolyCommon.h
 	$(CXX) $(CXXFLAGS) -c poly_PolyAnalysis.cpp -o poly_PolyAnalysis.o
 
-poly_PPLManager.o: poly_PPLManager.cpp PolyAnalysis.h PPLDomain.h PPLManager.h PolyCommon.h
+poly_PPLManager.o: poly_PPLManager.cpp include/PolyAnalysis.h include/PPLDomain.h include/PPLManager.h include/PolyCommon.h
 	$(CXX) $(CXXFLAGS) -c poly_PPLManager.cpp -o poly_PPLManager.o
 
-poly_PPLDomain.o: poly_PPLDomain.cpp PolyAnalysis.h PPLDomain.h PPLManager.h PolyCommon.h
+poly_PPLDomain.o: poly_PPLDomain.cpp include/PolyAnalysis.h include/PPLDomain.h include/PPLManager.h include/PolyCommon.h
 	$(CXX) $(CXXFLAGS) -c poly_PPLDomain.cpp -o poly_PPLDomain.o
 
 poly_PlugHook.o: poly_PlugHook.cpp
@@ -47,8 +47,8 @@ uninstall:
 
 clang-tidy:
 	rm -f tidy.txt
-	clang-tidy -header-filter='.*' -checks='*' poly_PolyAnalysis.cpp >> tidy.txt
-	clang-tidy -header-filter='.*' -checks='*' poly_PlugHook.cpp >> tidy.txt
-	clang-tidy -header-filter='.*' -checks='*' poly_PPLDomain.cpp >> tidy.txt
-	clang-tidy -header-filter='.*' -checks='*' poly_PPLManager.cpp >> tidy.txt
+	clang-tidy -header-filter=./ -checks='*' poly_PolyAnalysis.cpp >> tidy.txt
+	clang-tidy -header-filter=./ -checks='*' poly_PlugHook.cpp >> tidy.txt
+	clang-tidy -header-filter=./ -checks='*' poly_PPLDomain.cpp >> tidy.txt
+	clang-tidy -header-filter=./ -checks='*' poly_PPLManager.cpp >> tidy.txt
 .PHONY: clean install douter test tests compildb
