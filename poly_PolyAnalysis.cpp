@@ -14,12 +14,24 @@
 #include "PolyAnalysis.h"
 
 namespace otawa { namespace poly {
-/**
- * Create PPLManager for existing init state.
- */
-PPLManager::PPLManager(t &init, const PropList &props) : _props(props), _init(init), _bot(), _top(MAX_AXIS(props)) {
-} 
 
+Variable::Variable(const Ident &ident, const PPLDomain &dom) : PPL::Variable(dom.id2axis[ident]), _dom(dom), _ident(ident) { }
+Variable::Variable(int axis, const PPLDomain &dom) 	: PPL::Variable(axis), _dom(dom), _ident(dom.axis2id[axis]) { 
+	ASSERT(_ident.getType() != Ident::ID_INVALID);	
+}
+
+Output& operator<<(Output& o, const PPL::Variable pv) { 
+		char letter = (pv.id() % 26) + 'A';
+		int number = pv.id() / 26;
+		char name[32];
+		if (number) {
+			snprintf(name, sizeof(name), "%c%u", letter, number);
+		} else {
+			snprintf(name, sizeof(name), "%c", letter);
+		}
+		o << name;
+		return o;
+}  
 
 /**
  * Create PPLManager using a fresh init state.
@@ -267,9 +279,60 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 			}
 		}
 	}
-
-	
 }
+
+// PPLDOMAIN
+
+
+template <class F> PPLDomain::MapHelper<F>::MapHelper(F &pfunc, int max_in_domain) : _pfunc(pfunc), _max_in_domain(max_in_domain), _empty(true) {
+	for (PPL::dimension_type i = 0; i <= _max_in_domain; i++) {
+		PPL::dimension_type j;
+		if (_pfunc.maps(i, j) && (_empty || (_max_in_codomain < j)))  {
+			_max_in_codomain = j;
+			_empty = false;
+		}
+	}
+}
+template <class F> void PPLDomain::map_only_poly(F pfunc) {
+	MapHelper<F> a(pfunc, poly.space_dimension() - 1);
+	poly.map_space_dimensions(a);
+}
+
+template <class F> void PPLDomain::map_only_idents(F pfunc) {
+	genstruct::Vector<Ident> todel;
+	int old_length = axis2id.length();
+	axis2id.clear();
+	axis2id.setLength(old_length);
+	// cout << "trash bitvector:" << PPLDomain::trash << endl;
+#ifdef POLY_DEBUG			
+	cout << "REMAP: ";
+#endif
+	for (elm::genstruct::HashTable<Ident, int, HashIdent>::MutableIter it(id2axis); it; it++) {
+		int &n = it.item();
+		PPL::dimension_type old_axis = n;
+		PPL::dimension_type new_axis = n;
+		if (pfunc.maps(old_axis, new_axis)) {
+			if (old_axis != new_axis) {
+#ifdef POLY_DEBUG			
+				cout << it.key() << "[" << PPL::Variable(old_axis) << "->" << PPL::Variable(new_axis) << "] ";
+#endif
+				n = new_axis;
+			}
+			axis2id[new_axis] = it.key();
+		} else todel.add(it.key());
+	}
+#ifdef POLY_DEBUG			
+	cout << endl;
+#endif
+	for (genstruct::Vector<Ident>::Iterator it(todel); it; it++) {
+		id2axis.remove(*it);
+	}
+}
+template <class F> void PPLDomain::map_poly_and_idents(F pfunc) {
+	map_only_poly(pfunc);
+	map_only_idents(pfunc);
+}
+
 typedef PPL::Variable* PVAR;
 
 void PPLDomain::integer_wrap() {

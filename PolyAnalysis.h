@@ -34,6 +34,7 @@ inline Output& operator<<(Output& o, const PPL::Variable pv);
 
 class Variable : public PPL::Variable {
 	public:
+		inline 
 		Variable(int axis, const PPLDomain &dom);
 		Variable(const Ident &ident, const PPLDomain &dom);
 
@@ -185,7 +186,7 @@ class PPLDomain {
 		/**
 		 * Builds a bottom state
 		 */
-		PPLDomain() {
+		inline PPLDomain() {
 			num_axis = -1;
 			poly = PPL::C_Polyhedron(0, PPL::EMPTY);
 		}
@@ -194,7 +195,7 @@ class PPLDomain {
 		 * Builds a top state
 		 * @param maxAxis Maximum number of variables this state can hold
 		 */
-		PPLDomain(int max_axis) {
+		inline PPLDomain(int max_axis) {
 			num_axis = 0;
 			mem_ref = 0;
 			trash = BitVector(max_axis);
@@ -202,7 +203,7 @@ class PPLDomain {
 
 		}
 
-		PPLDomain (const PPLDomain &src)  {
+		inline PPLDomain (const PPLDomain &src)  {
 			poly = src.poly;
 			num_axis = src.num_axis;
 			id2axis = src.id2axis;
@@ -213,9 +214,27 @@ class PPLDomain {
 			trash = src.trash;
 		}
 
-		~PPLDomain() { 
+		inline ~PPLDomain() { 
 			// TODO
 		}
+
+		/* 
+		 * Wrapper around partial mapping functions (for PPL poly map), i
+		 * computes max-in-domain & empty automatically 
+		 */
+		template <class F> class MapHelper {
+			public:
+				MapHelper(F &pfunc, int max_in_domain);
+				inline PPL::dimension_type max_in_codomain() const { return _max_in_codomain; }
+				inline bool maps(PPL::dimension_type i, PPL::dimension_type &j) const { return _pfunc.maps(i, j); }
+				inline bool has_empty_codomain() const { return _empty; }
+			private:
+				F &_pfunc;
+				PPL::dimension_type _max_in_domain;
+				PPL::dimension_type _max_in_codomain;
+				bool _empty;
+		};
+
 
 		bool equals(const PPLDomain &) const;
 
@@ -236,97 +255,6 @@ class PPLDomain {
 		bool get_constant(PPL::Variable &var, PPL::Coefficient &cst, PPL::Coefficient &cst_d, bool display = false);
 		void display_loc_vars();
 
-		void displayIdentMap() {
-			cout << "IDMAP: " ;
-			for (elm::genstruct::HashTable<Ident, int,HashIdent>::PairIterator it(id2axis); it; it++) {
-				const Ident &ident = (*it).fst;
-				cout << ident << ":" << PPL::Variable((*it).snd) << ", ";
-			}
-			cout << endl;
-		}
-
-
-		/* 
-		 * Wrapper around partial mapping functions (for PPL poly map), i
-		 * computes max-in-domain & empty automatically 
-		 */
-		template <class F> class MapHelper {
-			public:
-				MapHelper(F &pfunc, int max_in_domain) : _pfunc(pfunc), _max_in_domain(max_in_domain), _empty(true) {
-					for (PPL::dimension_type i = 0; i <= _max_in_domain; i++) {
-						PPL::dimension_type j;
-						if (_pfunc.maps(i, j) && (_empty || (_max_in_codomain < j)))  {
-							_max_in_codomain = j;
-							_empty = false;
-						}
-					}
-				}
-				PPL::dimension_type max_in_codomain() const { return _max_in_codomain; }
-				bool maps(PPL::dimension_type i, PPL::dimension_type &j) const { return _pfunc.maps(i, j); }
-				bool has_empty_codomain() const { return _empty; }
-			private:
-				F &_pfunc;
-				PPL::dimension_type _max_in_domain;
-				PPL::dimension_type _max_in_codomain;
-				bool _empty;
-		};
-
-		template <class F> void map_only_poly(F pfunc) {
-			MapHelper<F> a(pfunc, poly.space_dimension() - 1);
-			poly.map_space_dimensions(a);
-		}
-
-		template <class F> void map_only_idents(F pfunc) {
-			genstruct::Vector<Ident> todel;
-			int old_length = axis2id.length();
-			axis2id.clear();
-			axis2id.setLength(old_length);
-			// cout << "trash bitvector:" << PPLDomain::trash << endl;
-#ifdef POLY_DEBUG			
-			cout << "REMAP: ";
-#endif
-			for (elm::genstruct::HashTable<Ident, int, HashIdent>::MutableIter it(id2axis); it; it++) {
-				int &n = it.item();
-				PPL::dimension_type old_axis = n;
-				PPL::dimension_type new_axis = n;
-				if (pfunc.maps(old_axis, new_axis)) {
-				   	if (old_axis != new_axis) {
-#ifdef POLY_DEBUG			
-						cout << it.key() << "[" << PPL::Variable(old_axis) << "->" << PPL::Variable(new_axis) << "] ";
-#endif
-						n = new_axis;
-					}
-					axis2id[new_axis] = it.key();
-				} else todel.add(it.key());
-			}
-#ifdef POLY_DEBUG			
-			cout << endl;
-#endif
-			for (genstruct::Vector<Ident>::Iterator it(todel); it; it++) {
-				id2axis.remove(*it);
-			}
-		}
-		template <class F> void map_poly_and_idents(F pfunc) {
-			map_only_poly(pfunc);
-			map_only_idents(pfunc);
-		}
-
-		// Return the first constraint in poly for which the coef of specified variable axis is non-zero
-		const PPL::Constraint *getConstraintFor(int axis) {
-			PPL::Constraint *cons = NULL;
-			PPL::Constraint_System cons_sys = poly.minimized_constraints();
-			for (PPL::Constraint_System::const_iterator it = cons_sys.begin(); it != cons_sys.end(); it++) {
-				const PPL::Constraint &c = *it;
-				if (!c.is_equality())
-					continue;
-				if (c.coefficient(PPL::Variable(axis)) != 0) {
-					return new PPL::Constraint(c);
-				}
-			}
-			return NULL;
-		}
-
-		/* Variable manipulations */
 		int allocAxis(const Ident&, bool allow_replace = false);
 		void freeAxis(int axis);
 		bool exists(int);
@@ -340,6 +268,37 @@ class PPLDomain {
 		bool exists(PPL::Variable&);
 		Variable create(const Ident&, bool allow_replace = false);
 		void create_ptr(Ident&, Ident&);
+		PPLDomain update(sem::inst si, int instaddr);
+		PPL::Variable *make_var(Ident &id);
+
+
+		void displayIdentMap() {
+			cout << "IDMAP: " ;
+			for (elm::genstruct::HashTable<Ident, int,HashIdent>::PairIterator it(id2axis); it; it++) {
+				const Ident &ident = (*it).fst;
+				cout << ident << ":" << PPL::Variable((*it).snd) << ", ";
+			}
+			cout << endl;
+		}
+
+		template <class F> void map_only_poly(F pfunc);
+		template <class F> void map_only_idents(F pfunc);
+		template <class F> void map_poly_and_idents(F pfunc);
+
+		// Return the first constraint in poly for which the coef of specified variable axis is non-zero
+		const PPL::Constraint *getConstraintFor(int axis) {
+			PPL::Constraint_System cons_sys = poly.minimized_constraints();
+			for (PPL::Constraint_System::const_iterator it = cons_sys.begin(); it != cons_sys.end(); it++) {
+				const PPL::Constraint &c = *it;
+				if (!c.is_equality())
+					continue;
+				if (c.coefficient(PPL::Variable(axis)) != 0) {
+					return new PPL::Constraint(c);
+				}
+			}
+			return NULL;
+		}
+
 
 		int mem_ref; /* number of pointerse in this domain object */
 
@@ -385,11 +344,6 @@ class PPLDomain {
 			ASSERT(trash.countOnes() <= num_axis);
 #endif
 		}
-
-
-
-
-	friend bool operator==(const PPLDomain &a, const PPLDomain &b);
 
 	/* Partial mapping function that removes variables in set (bitvector) */
 	class RemoveMarked {
@@ -550,8 +504,6 @@ class PPLDomain {
 #endif
 		return res;
 	}
-	PPLDomain update(sem::inst si, int instaddr);
-	PPL::Variable *make_var(Ident &id);
 	inline void poly_hull_helper(PPL::C_Polyhedron &poly1, PPL::C_Polyhedron &poly2) const {
 		PPL::C_Polyhedron *src = &poly2;
 		if (poly1.space_dimension() > poly2.space_dimension()) {
@@ -751,24 +703,6 @@ class PPLDomain {
 
 };
 
-inline Output& operator<<(Output& o, const Ident &i) {
-	i.print(o);
-	return o;
-}
-
-inline Output& operator<<(Output& o, const PPL::Variable pv) { 
-		char letter = (pv.id() % 26) + 'A';
-		int number = pv.id() / 26;
-		char name[32];
-		if (number) {
-			snprintf(name, sizeof(name), "%c%u", letter, number);
-		} else {
-			snprintf(name, sizeof(name), "%c", letter);
-		}
-		o << name;
-		return o;
-}  
-
 
 class PPLManager {
 public:
@@ -779,7 +713,7 @@ public:
 	/**
 	 * Create PPLManager for existing init state.
 	 */
-	PPLManager(t &init, const PropList &props);
+	inline PPLManager(t &init, const PropList &props) : _props(props), _init(init), _bot(), _top(MAX_AXIS(props)) { }
 
 
 	/**
@@ -795,7 +729,7 @@ public:
 
 	inline t join(t& v1, const t& v2) { return v1.join(v2); }
 	inline t widening(t& v1, const t& v2) { return v1.widening(v2); }
-	inline bool equals(const t& v1, const t& v2) { return (v1 == v2); }
+	inline bool equals(const t& v1, const t& v2) { return v1.equals(v2); }
 
 private:
 	const PropList& _props;
@@ -818,19 +752,16 @@ private:
 	const PropList* _props;
 };
 
-bool operator==(const PPLDomain &a, const PPLDomain &b) { return a.equals(b); }
-bool operator!=(const PPLDomain &a, const PPLDomain &b) { return !(a == b); }
+inline bool operator==(const PPLDomain &a, const PPLDomain &b) { return a.equals(b); }
+inline bool operator!=(const PPLDomain &a, const PPLDomain &b) { return !(a == b); }
 
 
-inline Output& operator<<(Output& o, const PPLDomain &dom) { 
-	dom.print(o);
-	return o;
-}
+inline Output& operator<<(Output& o, const PPLDomain &dom) { dom.print(o); return o; }
+inline Output& operator<<(Output& o, const Ident &i) { i.print(o); return o; }
 
-Variable::Variable(const Ident &ident, const PPLDomain &dom) : PPL::Variable(dom.id2axis[ident]), _dom(dom), _ident(ident) { }
-Variable::Variable(int axis, const PPLDomain &dom) 	: PPL::Variable(axis), _dom(dom), _ident(dom.axis2id[axis]) { 
-	ASSERT(_ident.getType() != Ident::ID_INVALID);	
-}
+Output& operator<<(Output& o, const PPL::Variable pv);
+
+
 
 } } // namespace otawa::poly
 #endif	// OTAWA_POLY_ANALYSIS_FEATURE_H
