@@ -20,7 +20,7 @@ t::hash HashCons::hash(const PPL::Constraint& key) {
 	unsigned int prime = 16777619;
 	t::hash result = 2166136261;
 	for (PPL::dimension_type i = 0; i < key.space_dimension(); i++) {
-		result ^= key.coefficient(PPL::Variable(i)).get_ui();
+		result ^= key.coefficient(Variable(i)).get_ui();
 		result *= prime;
 	}
 	result ^= key.inhomogeneous_term().get_ui();
@@ -35,13 +35,13 @@ t::hash HashCons::hash(const PPL::Constraint& key) {
 }
 
 /*
-Variable::Variable(const Ident &ident, const PPLDomain &dom) : PPL::Variable(dom.id2axis[ident]), _dom(dom), _ident(ident) { }
-Variable::Variable(int axis, const PPLDomain &dom) 	: PPL::Variable(axis), _dom(dom), _ident(dom.axis2id[axis]) { 
+Variable::Variable(const Ident &ident, const PPLDomain &dom) : Variable(dom.id2axis[ident]), _dom(dom), _ident(ident) { }
+Variable::Variable(int axis, const PPLDomain &dom) 	: Variable(axis), _dom(dom), _ident(dom.axis2id[axis]) { 
 	ASSERT(_ident.getType() != Ident::ID_INVALID);	
 } 
 */
 
-Output& operator<<(Output& o, const PPL::Variable pv) { 
+Output& operator<<(Output& o, const Variable pv) { 
 		char letter = (pv.id() % 26) + 'A';
 		int number = pv.id() / 26;
 		char name[32];
@@ -133,7 +133,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 #endif
 				Ident id(bl->id(), Ident::ID_LOOP);
 				PPL::Coefficient binf_n, binf_d, bsup_n, bsup_d;
-				s.get_range(id, binf_n, binf_d, bsup_n, bsup_d);
+				s.getRange(id, binf_n, binf_d, bsup_n, bsup_d);
 				int bound = -2;
 				if ( PPL::raw_value(bsup_d).get_ui() != 0) {
 					bound = PPL::raw_value(bsup_n).get_ui() / PPL::raw_value(bsup_d).get_ui();
@@ -187,7 +187,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 						cout << "+++ IR +++: " << *semi << endl;
 #endif
 						// man->display_loc_vars(s);
-						s = s.update(*semi, inst->address());
+						s = s.onSemInst(*semi, inst->address());
 						// man->display_loc_vars(s);
 #ifdef POLY_DEBUG			
 						cout << "AFTER IR: " << s << endl;
@@ -220,11 +220,11 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 				if (LOOP_HEADER(e->sink())) {
 					if (Dominance::dominates(e->sink(), e->source())) {
 						/* is back-edge */
-						edgeState = edgeState.loopIter(e->sink()->id(), ENCLOSING_LOOP_HEADER(e->sink()));
+						edgeState = edgeState.onLoopIter(e->sink()->id(), ENCLOSING_LOOP_HEADER(e->sink()));
 						edgeState.bring_out_your_dead(); // TODO PERF FIXME
 					} else {
 						/* is entry-edge */
-						edgeState = edgeState.loopEntry(e->sink()->id(), ENCLOSING_LOOP_HEADER(e->sink()));
+						edgeState = edgeState.onLoopEntry(e->sink()->id(), ENCLOSING_LOOP_HEADER(e->sink()));
 						headerState.remove(e->sink()->id());
 						/*
 						*/
@@ -236,7 +236,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 #ifdef POLY_DEBUG			
 						cout << "LOOPEXIT: " << bound << endl;
 #endif
-						edgeState = edgeState.loopExit(bb->id(), bound);
+						edgeState = edgeState.onLoopExit(bb->id(), bound);
 						edgeState.bring_out_your_dead(); // TODO PERF FIXME
 				}
 
@@ -277,7 +277,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 		fflush(stdout);
 		s.print(cout); cout << endl;
 		fflush(stdout);
-		s.display_loc_vars();
+		s.displayLocVars();
 		cout << endl;
 	}
 }
@@ -351,7 +351,7 @@ template <class F> void PPLDomain::map_only_idents(F pfunc) {
 		if (pfunc.maps(old_axis, new_axis)) {
 			if (old_axis != new_axis) {
 #ifdef POLY_DEBUG			
-				cout << it.key() << "[" << PPL::Variable(old_axis) << "->" << PPL::Variable(new_axis) << "] ";
+				cout << it.key() << "[" << Variable(old_axis) << "->" << Variable(new_axis) << "] ";
 #endif
 				n = new_axis;
 			}
@@ -399,7 +399,7 @@ void PPLDomain::sanity_checks() {
 }
 #endif
 
-typedef PPL::Variable* PVAR;
+typedef Variable* PVAR;
 
 void PPLDomain::integer_wrap() {
 	return; // TODO integer wrap not supported yet
@@ -426,7 +426,7 @@ void PPLDomain::bring_out_your_dead() {
 	return; 
 }
 
-void PPLDomain::display_loc_vars() {
+void PPLDomain::displayLocVars() {
 	const PropList _props;
 	PPL::Constraint_System mcons = poly.minimized_constraints();
 	if (isBottom()) {
@@ -438,14 +438,14 @@ void PPLDomain::display_loc_vars() {
 	cout << mcons.space_dimension() << " Local variables: " << endl;
 	for (int i = 0 ; i < NUM_LOC_VARS(_props)*LOC_VAR_SIZE(_props); i += LOC_VAR_SIZE(_props)) {
 		PPL::Constraint_System cons = mcons;
-		PPL::Variable v(num_axis);
+		Variable v(num_axis);
 		cons.insert(v == ssp - i - LOC_VAR_SIZE(_props));
 		cout << " [SP - " << hex(i) << "] == ";
 		bool found = false;
 		for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++)
 		{
 			elm::Pair<Ident, int> p = *it;
-			Variable vsnd = lookup(p.snd);
+			Variable vsnd = getVar(p.snd);
 			if (p.fst.getType() == Ident::ID_MEM_ADDR) {
 				PPL::C_Polyhedron poly(cons);
 				PPL::Coefficient bsup_n, bsup_d;
@@ -458,7 +458,7 @@ void PPLDomain::display_loc_vars() {
 					Ident idval(p.fst.getId(), Ident::ID_MEM_VAL);
 					bool cst; 
 					PPL::Coefficient num, den;
-					cst = get_constant(idval, num, den, true);
+					cst = getConstant(idval, num, den, true);
 					cout <<  " (aka " << idval << ")";
 					break;
 				}
@@ -471,9 +471,9 @@ void PPLDomain::display_loc_vars() {
 
 }
 
-bool PPLDomain::get_constant(PPL::Variable &var, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d, bool display) {
+bool PPLDomain::getConstant(Variable &var, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d, bool display) {
 	PPL::Coefficient binf_d, binf_n, bsup_d, bsup_n;
-	get_range(var, bsup_n, bsup_d, binf_n, binf_d, display); 
+	getRange(var, bsup_n, bsup_d, binf_n, binf_d, display); 
 	if ((binf_d == bsup_d) && (binf_n == bsup_n) && (binf_d != 0)) {
 		cst_n = binf_n;
 		cst_d = binf_d;
@@ -481,20 +481,20 @@ bool PPLDomain::get_constant(PPL::Variable &var, PPL::Coefficient &cst_n, PPL::C
 	}
 	return false;
 }
-bool PPLDomain::get_constant(Ident &id, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d, bool display) {
+bool PPLDomain::getConstant(Ident &id, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d, bool display) {
 	Variable v = lookup(id);
-	return get_constant(v, cst_n, cst_d, display);
+	return getConstant(v, cst_n, cst_d, display);
 }
-void PPLDomain::get_range(Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display) {
+void PPLDomain::getRange(Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display) {
 #ifdef POLY_DEBUG			
 	cout << "get_range(" << id << ") = ";
 #endif
 	Variable v = lookup(id);
-	get_range(v, binf_n, binf_d, bsup_n, bsup_d, display);
+	getRange(v, binf_n, binf_d, bsup_n, bsup_d, display);
 }
 
 
-void PPLDomain::get_range(PPL::Variable &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display) {
+void PPLDomain::getRange(Variable &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display) {
 	bool maximum, minimum;
 	if (var.id() >= poly.space_dimension()) {
 		bsup_n = 0;
@@ -530,13 +530,13 @@ void PPLDomain::get_range(PPL::Variable &var, PPL::Coefficient &binf_n, PPL::Coe
 }
 
 void PPLDomain::scratch(Ident &id) {
-	if (exists(id)) 
+	if (hasIdent(id)) 
 		return;
 	
 #ifdef POLY_DEBUG			
 	cout << "Before cylindrification: " << dom << endl;
 #endif
-	PPL::Variable v = lookup(id);
+	Variable v = lookup(id);
 	poly.unconstrain(v);
 #ifdef POLY_DEBUG			
 	cout << "Scratch " << id << " (axis " << v << ")" << endl;
@@ -544,20 +544,20 @@ void PPLDomain::scratch(Ident &id) {
 #endif
 }
 
-PPL::Variable *PPLDomain::make_var(Ident &id) {
+Variable *PPLDomain::make_var(Ident &id) {
 		allocAxis(id);
-		return new PPL::Variable(id2axis[id]);
+		return new Variable(id2axis[id]);
 }
 
-bool PPLDomain::mayEqual(PPL::Variable &v1, PPL::Variable &v2, int offset) {
+bool PPLDomain::mayEqual(Variable &v1, Variable &v2, int offset) {
 	return !poly.relation_with(v1 == v2 + offset).implies(PPL::Poly_Con_Relation::is_disjoint()); 
 }
 
-bool PPLDomain::mustEqual(PPL::Variable &v1, PPL::Variable &v2, int offset) {
+bool PPLDomain::mustEqual(Variable &v1, Variable &v2, int offset) {
 	return poly.relation_with(v1 == v2 + offset).implies(PPL::Poly_Con_Relation::is_included()); 
 }
 
-void PPLDomain::binary_operation_helper(int op, PPL::Variable *v, PPL::Variable *vs1, PPL::Variable *vs2) {
+void PPLDomain::binary_operation_helper(int op, Variable *v, Variable *vs1, Variable *vs2) {
 	bool b;
 	PPL::Coefficient cst_n, cst_d;
 #ifdef POLY_DEBUG			
@@ -568,7 +568,7 @@ void PPLDomain::binary_operation_helper(int op, PPL::Variable *v, PPL::Variable 
 			poly.add_constraint(*v == *vs1 + *vs2);
 			break;
 		case sem::SHL:          // d <- unsigned(a) << b
-			b = get_constant(*vs2, cst_n, cst_d);
+			b = getConstant(*vs2, cst_n, cst_d);
 			if (b && (cst_d == 1))  {
 				poly.add_constraint(*v == *vs1 * (1 << PPL::raw_value(cst_n).get_ui()));
 			} else {
@@ -582,7 +582,7 @@ void PPLDomain::binary_operation_helper(int op, PPL::Variable *v, PPL::Variable 
 			break;
 		case sem::SHR:          // d <- unsigned(a) >> b
 		case sem::ASR:          // d <- a >> b
-			b = get_constant(*vs2, cst_n, cst_d);
+			b = getConstant(*vs2, cst_n, cst_d);
 			if (b && (cst_d == 1))  {
 				poly.add_constraint(*vs1 == *v * (1 << PPL::raw_value(cst_n).get_ui()));
 			} else {
@@ -590,20 +590,20 @@ void PPLDomain::binary_operation_helper(int op, PPL::Variable *v, PPL::Variable 
 			}
 			break;
 		case sem::MUL:
-			b = get_constant(*vs1,cst_n, cst_d);
+			b = getConstant(*vs1,cst_n, cst_d);
 			if (b) {
 				poly.add_constraint(*v * cst_d == *vs2 * cst_n);
 			} else {
-				b = get_constant(*vs2, cst_n, cst_d);
+				b = getConstant(*vs2, cst_n, cst_d);
 				poly.add_constraint(*v * cst_d == *vs1 * cst_n);
 			} 
 			break;
 		case sem::MULH: // d <- (a * b) >> bitlength(d)
-			b = get_constant(*vs1, cst_n, cst_d);
+			b = getConstant(*vs1, cst_n, cst_d);
 			if (b) {
 				poly.add_constraint(*v * cst_d == *vs2 * cst_n);
 			} else {
-				b = get_constant(*vs2, cst_n, cst_d);
+				b = getConstant(*vs2, cst_n, cst_d);
 				poly.add_constraint(*v * cst_d == *vs1 * cst_n);
 			}
 			break;
@@ -611,17 +611,17 @@ void PPLDomain::binary_operation_helper(int op, PPL::Variable *v, PPL::Variable 
 			break;
 	}
 }
-PPLDomain PPLDomain::loopExit(int loop, int bound) {
+PPLDomain PPLDomain::onLoopExit(int loop, int bound) {
 	PPLManager::t s_out = *this;
 	Ident id(loop, Ident::ID_LOOP);
-	ASSERT(s_out.exists(id)); /* You are supposed to be already inside the loop when you call loopExit() */ 
+	ASSERT(s_out.hasIdent(id)); /* You are supposed to be already inside the loop when you call onLoopExit() */ 
 	Variable v = s_out.lookup(id);
 	if (bound >= 0)
 		s_out.poly.add_constraint(v <= bound);
     s_out.freeAxis(v.id());
 	if (s_out.poly.is_empty()) {
 #ifdef POLY_DEBUG			
-		cout << "is empty after loopExit!" << endl;
+		cout << "is empty after onLoopExit!" << endl;
 #endif
 		return PPLDomain(); // bottom
 	}
@@ -629,10 +629,10 @@ PPLDomain PPLDomain::loopExit(int loop, int bound) {
 }
 
 
-PPLDomain PPLDomain::loopIter(int loop, bool inner) {
+PPLDomain PPLDomain::onLoopIter(int loop, bool inner) {
 	PPLManager::t s_out = *this;
 	Ident id(loop, Ident::ID_LOOP);
-	ASSERT(s_out.exists(id)); /* You are supposed to be already inside the loop when you call loopIter() */ 
+	ASSERT(s_out.hasIdent(id)); /* You are supposed to be already inside the loop when you call onLoopIter() */ 
 	Variable v_old = s_out.lookup(id);
 	Variable v_new = s_out.create(id, true);
 	s_out.poly.add_constraint(v_new == v_old + 1);
@@ -640,10 +640,10 @@ PPLDomain PPLDomain::loopIter(int loop, bool inner) {
 	return s_out;
 }
 
-PPLDomain PPLDomain::loopEntry(int loop, bool inner) {
+PPLDomain PPLDomain::onLoopEntry(int loop, bool inner) {
 	PPLManager::t s_out = *this;
 	Ident id(loop, Ident::ID_LOOP);
-	PPL::Variable v = s_out.create(id, true);
+	Variable v = s_out.create(id, true);
 	s_out.poly.add_constraint(v == 0);
 	return s_out;
 }
@@ -654,7 +654,7 @@ void PPLDomain::displayIdentMap() {
 	cout << "IDMAP: " ;
 	for (elm::genstruct::HashTable<Ident, int,HashIdent>::PairIterator it(id2axis); it; it++) {
 		const Ident &ident = (*it).fst;
-		cout << ident << ":" << PPL::Variable((*it).snd) << ", ";
+		cout << ident << ":" << Variable((*it).snd) << ", ";
 	}
 	cout << endl;
 }
@@ -667,7 +667,7 @@ const PPL::Constraint *PPLDomain::getConstraintFor(int axis) {
 		const PPL::Constraint &c = *it;
 		if (!c.is_equality())
 			continue;
-		if (c.coefficient(PPL::Variable(axis)) != 0) {
+		if (c.coefficient(Variable(axis)) != 0) {
 			return new PPL::Constraint(c);
 		}
 	}
@@ -777,7 +777,7 @@ inline void PPLDomain::poly_hull_helper(PPL::C_Polyhedron &poly1, PPL::C_Polyhed
 		delete src;
 }
 
-PPLDomain PPLDomain::merge(const PPLDomain& r, bool widen) {
+PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) {
 	PPLDomain &l = *this;
 	int axis = 0;
 	ASSERT(!l.trash.countOnes());
@@ -951,7 +951,7 @@ PPLDomain PPLDomain::merge(const PPLDomain& r, bool widen) {
 	return l1;
 }
 
-PPLDomain PPLDomain::update(sem::inst si, int instaddr) {
+PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
         PPLDomain s_out = *this;
 /* 		ASSERT(!hasFilter() || (si.op == sem::BRANCH)); */
 
@@ -977,7 +977,7 @@ PPLDomain PPLDomain::update(sem::inst si, int instaddr) {
 		{  
 				sem::reg_t dest = si.d();
 				Ident id(dest, Ident::ID_REG);
-				PPL::Variable v = s_out.create(id, true);
+				Variable v = s_out.create(id, true);
 				int32_t cst = si.cst(); // FIXME TODO
 				s_out.poly.add_constraint(v == cst);
 				break;
@@ -989,9 +989,9 @@ PPLDomain PPLDomain::update(sem::inst si, int instaddr) {
 				Ident id(dest, Ident::ID_REG);
 				sem::reg_t source = si.a();
 				Ident id2(source, Ident::ID_REG);
-				PPL::Variable v = s_out.create(id, true);
+				Variable v = s_out.create(id, true);
 				bool setToTop = false;
-				if (!s_out.exists(id2)) {
+				if (!s_out.hasIdent(id2)) {
 					cout << "[WARN] Identifier " << id2 << " used, but not defined! Set to TOP." << endl;
 					setToTop = true;
 				}
@@ -1022,10 +1022,10 @@ PPLDomain PPLDomain::update(sem::inst si, int instaddr) {
 				Ident id2(op2, Ident::ID_REG);
 				Ident id(dest, Ident::ID_REG);
 				bool setToTop = false;
-		        if (!s_out.exists(id1)) {
+		        if (!s_out.hasIdent(id1)) {
 					cout << "[WARN] Identifier " << id1 << " used, but not defined! Set to TOP" << endl;
 					setToTop = true;
-		        } else if (!s_out.exists(id2)) {
+		        } else if (!s_out.hasIdent(id2)) {
 					cout << "[WARN] Identifier " << id2 << " used, but not defined! Set to TOP" << endl;
 					setToTop = true;
 		        } 
@@ -1033,7 +1033,7 @@ PPLDomain PPLDomain::update(sem::inst si, int instaddr) {
 					Variable vs1 = s_out.lookup(id1);
 					Variable vs2 = s_out.lookup(id2);
 
-					PPL::Variable v = s_out.create(id, true);
+					Variable v = s_out.create(id, true);
 					s_out.binary_operation_helper(si.op, &v, &vs1, &vs2);
 				} else s_out.create(id, true);
 		        break;
@@ -1095,7 +1095,7 @@ PPLDomain PPLDomain::update(sem::inst si, int instaddr) {
 						cout << endl;
 					}
 					if ((p.fst.getType() == Ident::ID_MEM_ADDR) && (p.fst != id_new_addr)) {
-						PPL::Variable v_ex_addr = s_out.lookup(p.snd);
+						Variable v_ex_addr = s_out.getVar(p.snd);
 						/* Store address may overlap with existing pointer */
 						if (s_out.mayEqual(v_reg_addr, v_ex_addr)) {
 							had_potential_match = true;
@@ -1150,14 +1150,14 @@ PPLDomain PPLDomain::update(sem::inst si, int instaddr) {
 				Ident id_dst(dst, Ident::ID_REG);
 				Ident id_addr(addr, Ident::ID_REG);
 				Variable vaddr = s_out.lookup(id_addr);
-				PPL::Variable vdst = s_out.create(id_dst, true);
+				Variable vdst = s_out.create(id_dst, true);
 				bool found = false;
 				
 				// Look for matching ID_MEM_ADDR identifier 
 				for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++)
 				{
 					elm::Pair<Ident, int> p = *it;
-					Variable vsnd = s_out.lookup(p.snd);
+					Variable vsnd = s_out.getVar(p.snd);
 					Ident id_val(p.fst.getId(), Ident::ID_MEM_VAL);
 					if (p.fst.getType() == Ident::ID_MEM_ADDR) {
 #ifdef POLY_DEBUG			
@@ -1198,7 +1198,7 @@ PPLDomain PPLDomain::update(sem::inst si, int instaddr) {
 			break;
 		case sem:: IF: {
 				Ident id(si.sr(), Ident::ID_REG);
-				if (s_out.exists(id)) {
+				if (s_out.hasIdent(id)) {
 					
 					s_out.compare_reg = id;
 					s_out.compare_op = si.cond();
@@ -1219,18 +1219,6 @@ PPLDomain PPLDomain::update(sem::inst si, int instaddr) {
 
 p::feature POLY_ANALYSIS_FEATURE("otawa::poly::POLY_ANALYSIS_FEATURE", new Maker<PolyAnalysis>());
 
-/*
-Output& operator<<(Output& o) {
-	o << "lala";
-}
-*/
-/*
-const PPL::Variable &Ident::getVar() {
-	PPL::Variable *tmp = _dom->ids[*this];
-	return *tmp;
-}
-*/
-
 BitVector PPLDomain::trash;
 
 void PPLDomain::freeAxis(int axis) {
@@ -1241,7 +1229,7 @@ void PPLDomain::freeAxis(int axis) {
 	id2axis.remove(old);
 	*/
 #ifdef POLY_DEBUG			
-	cout << "L'axe " << PPL::Variable(axis) << ", qui etait alloue a l'identificateur " << old << ", est marque pour etre supprime. " << endl;
+	cout << "L'axe " << Variable(axis) << ", qui etait alloue a l'identificateur " << old << ", est marque pour etre supprime. " << endl;
 #endif
 	trash.set(axis);
 }
@@ -1252,7 +1240,7 @@ int PPLDomain::allocAxis(const Ident &ident, bool allow_replace) {
 	if (id2axis.hasKey(ident)) {
 		int axis = id2axis[ident];
 #ifdef POLY_DEBUG			
-		cout << "L'identificateur " << ident << " etait deja associe a l'axe " << PPL::Variable(axis) << endl;
+		cout << "L'identificateur " << ident << " etait deja associe a l'axe " << Variable(axis) << endl;
 #endif
 		freeAxis(axis);
 	}
@@ -1262,7 +1250,7 @@ int PPLDomain::allocAxis(const Ident &ident, bool allow_replace) {
 	}
 	axis2id[num_axis] = ident;
 #ifdef POLY_DEBUG			
-	cout << "Nouvel axe " << PPL::Variable(num_axis) << " alloue pour l'identificateur " << ident << endl;
+	cout << "Nouvel axe " << Variable(num_axis) << " alloue pour l'identificateur " << ident << endl;
 #endif
 	num_axis++;
 	if (poly.space_dimension() < num_axis) {
@@ -1272,7 +1260,7 @@ int PPLDomain::allocAxis(const Ident &ident, bool allow_replace) {
 }
 
 Variable PPLDomain::lookup(const Ident &ident, bool allow_create) {
-	if (allow_create && !exists(ident)) {
+	if (allow_create && !hasIdent(ident)) {
 		return create(ident, false);
 	}
 	return Variable(id2axis[ident]);
@@ -1307,7 +1295,7 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 	return true;
 }
 
-Variable PPLDomain::lookup(int axis) {
+Variable PPLDomain::getVar(int axis) {
 	return Variable(axis);
 }
 
@@ -1321,7 +1309,7 @@ void PPLDomain::rename(const Ident &ident, const Ident &newident, bool allow_rep
 	if (id2axis.hasKey(newident)) {
 		axis = id2axis[newident];
 #ifdef POLY_DEBUG			
-		cout << "L'identificateur " << ident << " etait deja associe a l'axe " << PPL::Variable(axis) << endl;
+		cout << "L'identificateur " << ident << " etait deja associe a l'axe " << Variable(axis) << endl;
 #endif
 		freeAxis(axis);
 	}
@@ -1331,14 +1319,14 @@ void PPLDomain::rename(const Ident &ident, const Ident &newident, bool allow_rep
 	id2axis[newident] = axis;
 	id2axis.remove(ident);
 #ifdef POLY_DEBUG			
-	cout << "Renommage de l'identificateur " << ident << " en " << newident << " sur l'axe " << PPL::Variable(axis) << endl;
+	cout << "Renommage de l'identificateur " << ident << " en " << newident << " sur l'axe " << Variable(axis) << endl;
 #endif
 }
 
-bool PPLDomain::exists(const Ident &ident) {
+bool PPLDomain::hasIdent(const Ident &ident) {
 	return id2axis.hasKey(ident);
 }
-bool PPLDomain::exists(int axis) {
+bool PPLDomain::hasVar(int axis) {
 	return axis2id[axis].getType() != Ident::ID_INVALID;
 }
 

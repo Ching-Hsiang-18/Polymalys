@@ -246,47 +246,46 @@ public:
 		cons.print();
 		out << "";
 	}
+	void displayLocVars();
+	void getRange(Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
+	void getRange(Variable &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
 
 	inline int getVarCount() { return poly.space_dimension(); }
 	inline bool isBottom() { return num_axis == -1; }
 	inline bool hasFilter() { return (compare_reg.getType() != Ident::ID_INVALID); }
-	bool mayEqual(PPL::Variable &v1, PPL::Variable &v2, int offset = 0);
-	bool mustEqual(PPL::Variable &v1, PPL::Variable &v2, int offset = 0);
-	void get_range(Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
-	void get_range(PPL::Variable &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
-	bool get_constant(Ident &id, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d, bool display = false);
-	bool get_constant(PPL::Variable &var, PPL::Coefficient &cst, PPL::Coefficient &cst_d, bool display = false);
-	void display_loc_vars();
-	bool exists(int);
+	bool mayEqual(Variable &v1, Variable &v2, int offset = 0);
+	bool mustEqual(Variable &v1, Variable &v2, int offset = 0);
+	bool getConstant(Ident &id, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d, bool display = false);
+	bool getConstant(Variable &var, PPL::Coefficient &cst, PPL::Coefficient &cst_d, bool display = false);
+	bool hasVar(int);
 	Variable lookup(const Ident&, bool allow_create = false);
-	Variable lookup(int);
-	bool exists(const Ident&);
-	bool exists(PPL::Variable&);
+	Variable getVar(int);
+	bool hasIdent(const Ident&);
+	bool exists(Variable&);
 
 	/* Update-like operations, that returns a modified new state */
-	PPLDomain loopEntry(int loop, bool inner=false);
-	PPLDomain loopIter(int loop, bool inner=false);
-	PPLDomain loopExit(int loop, int bound);
-	PPLDomain loopTotal(int loop, int bound);
-	PPLDomain update(sem::inst si, int instaddr);
-	PPLDomain merge(const PPLDomain& r, bool widen=false);
+	PPLDomain onLoopEntry(int loop, bool inner=false);
+	PPLDomain onLoopIter(int loop, bool inner=false);
+	PPLDomain onLoopExit(int loop, int bound);
+	PPLDomain onSemInst(sem::inst si, int instaddr);
+	PPLDomain onMerge(const PPLDomain& r, bool widen=false);
 
 	/* Operations that modify the state in-place */
 	template <class F> void map_only_poly(F pfunc);
 	template <class F> void map_only_idents(F pfunc);
 	template <class F> void map_poly_and_idents(F pfunc);
-	void binary_operation_helper(int op, PPL::Variable *v, PPL::Variable *vs1, PPL::Variable *vs2);
+	void binary_operation_helper(int op, Variable *v, Variable *vs1, Variable *vs2);
 	void integer_wrap();
 	void bring_out_your_dead();
 	void scratch(Ident &id);
 	int allocAxis(const Ident&, bool allow_replace = false);
 	void freeAxis(int axis);
 	void destroy(const Ident&);
-	void destroy(PPL::Variable&);
+	void destroy(Variable&);
 	void rename(const Ident &ident, const Ident &newident, bool allow_replace);
 	Variable create(const Ident&, bool allow_replace = false);
 	void create_ptr(Ident&, Ident&);
-	PPL::Variable *make_var(Ident &id);
+	Variable *make_var(Ident &id);
 
 #ifdef POLY_DEBUG
 	void sanity_checks();
@@ -339,8 +338,8 @@ public:
 	inline t& bot(void) { return _bot; }
 	inline t& top(void) { return _top; }
 
-	inline t join(t& v1, const t& v2) { return v1.merge(v2, false); }
-	inline t widening(t& v1, const t& v2) { return v1.merge(v2, true); }
+	inline t join(t& v1, const t& v2) { return v1.onMerge(v2, false); }
+	inline t widening(t& v1, const t& v2) { return v1.onMerge(v2, true); }
 	inline bool equals(const t& v1, const t& v2) { return v1.equals(v2); }
 
 private:
@@ -370,7 +369,7 @@ inline bool operator!=(const PPLDomain &a, const PPLDomain &b) { return !(a == b
 inline Output& operator<<(Output& o, const PPLDomain &dom) { dom.print(o); return o; }
 inline Output& operator<<(Output& o, const Ident &i) { i.print(o); return o; }
 
-Output& operator<<(Output& o, const PPL::Variable pv);
+Output& operator<<(Output& o, const Variable pv);
 
 
 
