@@ -247,6 +247,7 @@ public:
 		out << "";
 	}
 	void displayLocVars();
+	void displayIdentMap();
 	void getRange(Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
 	void getRange(Variable &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
 
@@ -264,53 +265,53 @@ public:
 	bool exists(Variable&);
 
 	/* Update-like operations, that returns a modified new state */
+	PPLDomain onSemInst(sem::inst si, int instaddr);
+	PPLDomain onBranch(bool taken);
+	PPLDomain onMerge(const PPLDomain& r, bool widen=false);
+
 	PPLDomain onLoopEntry(int loop, bool inner=false);
 	PPLDomain onLoopIter(int loop, bool inner=false);
 	PPLDomain onLoopExit(int loop, int bound);
-	PPLDomain onSemInst(sem::inst si, int instaddr);
-	PPLDomain onMerge(const PPLDomain& r, bool widen=false);
 
 	/* Operations that modify the state in-place */
-	template <class F> void map_only_poly(F pfunc);
-	template <class F> void map_only_idents(F pfunc);
-	template <class F> void map_poly_and_idents(F pfunc);
-	void binary_operation_helper(int op, Variable *v, Variable *vs1, Variable *vs2);
-	void integer_wrap();
-	void bring_out_your_dead();
-	void scratch(Ident &id);
-	int allocAxis(const Ident&, bool allow_replace = false);
-	void freeAxis(int axis);
-	void destroy(const Ident&);
-	void destroy(Variable&);
+	template <class F> void doMapPoly(F pfunc);
+	template <class F> void doMapIdents(F pfunc);
+	template <class F> void doMap(F pfunc);
+	void doIntegerWrap();
+	void doScratch(Ident &id);
+	void doDestroy(const Ident&);
+	void doDestroy(Variable&);
 	void rename(const Ident &ident, const Ident &newident, bool allow_replace);
 	Variable create(const Ident&, bool allow_replace = false);
 	void create_ptr(Ident&, Ident&);
 	Variable *make_var(Ident &id);
+	void doFinalizeUpdate();
 
+
+	int doAllocAxis(const Ident&, bool allow_replace = false);
+	void doFreeAxis(int axis);
+private: /* Private helper functions */
 #ifdef POLY_DEBUG
-	void sanity_checks();
+	void _sanityChecks();
 #else
-	inline void sanity_checks() { }
+	inline void _sanityChecks() { }
 #endif
 
-	void displayIdentMap();
-	const PPL::Constraint *getConstraintFor(int axis);
-	static void displayIdentMap(const PPLDomain &dom);
+	const PPL::Constraint *_getConstraintFor(int axis);
 	/**
 	 * Indexes the pointer in dom, by their expression in terms of registers referenced in map_regs. 
 	 * Stores the result in map_ptr.
 	 */
-	void indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, HashCons> &map_ptr, genstruct::HashTable<int, int> map_regs);
+	void _indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, HashCons> &map_ptr, genstruct::HashTable<int, int> map_regs);
 
-	PPLDomain filter(bool taken);
-	void poly_hull_helper(PPL::C_Polyhedron &poly1, PPL::C_Polyhedron &poly2) const;
+	void _partialMerge(PPL::C_Polyhedron &poly1, PPL::C_Polyhedron &poly2) const;
 	/**
 	 * Computes the join or widening of two abstract states
 	 * @param this The first abstract state (will not be modified)
 	 * @param r The second abstract state (will not be modified)
 	 * @return Join or widening result
 	 */
-	private:
+	void _doBinaryOp(int op, Variable *v, Variable *vs1, Variable *vs2);
 
 };
 

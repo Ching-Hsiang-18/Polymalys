@@ -181,7 +181,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 				for(sem::Block::InstIter semi(block); semi; semi++) {
 #ifdef POLY_DEBUG			
 						cout << "===============================================" << endl;
-						s.sanity_checks();
+						s._sanityChecks();
 						cout << "BEFORE: " << s << endl;
 						s->displayIdentMap();
 						cout << "+++ IR +++: " << *semi << endl;
@@ -193,8 +193,8 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 						cout << "AFTER IR: " << s << endl;
 						s->displayIdentMap();
 #endif
-						s.bring_out_your_dead();
-						s.integer_wrap();
+						s.doFinalizeUpdate();
+						s.doIntegerWrap();
 #ifdef POLY_DEBUG			
 						cout << "AFTER CLEANUP: " << s << endl;
 						s->displayIdentMap();
@@ -221,7 +221,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 					if (Dominance::dominates(e->sink(), e->source())) {
 						/* is back-edge */
 						edgeState = edgeState.onLoopIter(e->sink()->id(), ENCLOSING_LOOP_HEADER(e->sink()));
-						edgeState.bring_out_your_dead(); // TODO PERF FIXME
+						edgeState.doFinalizeUpdate(); // TODO PERF FIXME
 					} else {
 						/* is entry-edge */
 						edgeState = edgeState.onLoopEntry(e->sink()->id(), ENCLOSING_LOOP_HEADER(e->sink()));
@@ -237,7 +237,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 						cout << "LOOPEXIT: " << bound << endl;
 #endif
 						edgeState = edgeState.onLoopExit(bb->id(), bound);
-						edgeState.bring_out_your_dead(); // TODO PERF FIXME
+						edgeState.doFinalizeUpdate(); // TODO PERF FIXME
 				}
 
 				if (edgeState.hasFilter()) {
@@ -249,7 +249,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 					fflush(stdout);
 					man->display_loc_vars(edgeState);
 #endif
-					edgeState = edgeState.filter(e->isTaken());
+					edgeState = edgeState.onBranch(e->isTaken());
 #ifdef POLY_DEBUG			
 					cout << "FILTERED STATE: " << endl;
 					edgeState->displayIdentMap();
@@ -330,12 +330,12 @@ bool PPLDomain::RemoveMarked::maps(PPL::dimension_type i, PPL::dimension_type &j
 }
 
 
-template <class F> void PPLDomain::map_only_poly(F pfunc) {
+template <class F> void PPLDomain::doMapPoly(F pfunc) {
 	MapHelper<F> a(pfunc, poly.space_dimension() - 1);
 	poly.map_space_dimensions(a);
 }
 
-template <class F> void PPLDomain::map_only_idents(F pfunc) {
+template <class F> void PPLDomain::doMapIdents(F pfunc) {
 	genstruct::Vector<Ident> todel;
 	int old_length = axis2id.length();
 	axis2id.clear();
@@ -365,13 +365,13 @@ template <class F> void PPLDomain::map_only_idents(F pfunc) {
 		id2axis.remove(*it);
 	}
 }
-template <class F> void PPLDomain::map_poly_and_idents(F pfunc) {
-	map_only_poly(pfunc);
-	map_only_idents(pfunc);
+template <class F> void PPLDomain::doMap(F pfunc) {
+	doMapPoly(pfunc);
+	doMapIdents(pfunc);
 }
 
 #ifdef POLY_DEBUG
-void PPLDomain::sanity_checks() {
+void PPLDomain::_sanityChecks() {
 	int max_axis = -1;
 	if (isBottom())  {
 		ASSERT(poly.is_empty());
@@ -401,28 +401,28 @@ void PPLDomain::sanity_checks() {
 
 typedef Variable* PVAR;
 
-void PPLDomain::integer_wrap() {
+void PPLDomain::doIntegerWrap() {
 	return; // TODO integer wrap not supported yet
 	
 }
 
-void PPLDomain::bring_out_your_dead() {
-	sanity_checks();
+void PPLDomain::doFinalizeUpdate() {
+	_sanityChecks();
 #ifdef POLY_DEBUG			
 	if (PPLDomain::trash.countOnes() == 0) {
 		cout << "Nothing to clean" << endl;
-		dom.sanity_checks();
+		dom._sanityChecks();
 		return;
 	}
 #endif
 	// displayIdentMap(dom);
 	PPLDomain::RemoveMarked rm(PPLDomain::trash, poly.space_dimension());
-	map_only_poly(rm);
+	doMapPoly(rm);
 	num_axis -= PPLDomain::trash.countOnes();
-	map_only_idents(rm);
+	doMapIdents(rm);
 	PPLDomain::trash.clear();
 	// displayIdentMap(dom);
-	sanity_checks();
+	_sanityChecks();
 	return; 
 }
 
@@ -529,7 +529,7 @@ void PPLDomain::getRange(Variable &var, PPL::Coefficient &binf_n, PPL::Coefficie
 	return;
 }
 
-void PPLDomain::scratch(Ident &id) {
+void PPLDomain::doScratch(Ident &id) {
 	if (hasIdent(id)) 
 		return;
 	
@@ -545,7 +545,7 @@ void PPLDomain::scratch(Ident &id) {
 }
 
 Variable *PPLDomain::make_var(Ident &id) {
-		allocAxis(id);
+		doAllocAxis(id);
 		return new Variable(id2axis[id]);
 }
 
@@ -557,7 +557,7 @@ bool PPLDomain::mustEqual(Variable &v1, Variable &v2, int offset) {
 	return poly.relation_with(v1 == v2 + offset).implies(PPL::Poly_Con_Relation::is_included()); 
 }
 
-void PPLDomain::binary_operation_helper(int op, Variable *v, Variable *vs1, Variable *vs2) {
+void PPLDomain::_doBinaryOp(int op, Variable *v, Variable *vs1, Variable *vs2) {
 	bool b;
 	PPL::Coefficient cst_n, cst_d;
 #ifdef POLY_DEBUG			
@@ -618,7 +618,7 @@ PPLDomain PPLDomain::onLoopExit(int loop, int bound) {
 	Variable v = s_out.lookup(id);
 	if (bound >= 0)
 		s_out.poly.add_constraint(v <= bound);
-    s_out.freeAxis(v.id());
+    s_out.doFreeAxis(v.id());
 	if (s_out.poly.is_empty()) {
 #ifdef POLY_DEBUG			
 		cout << "is empty after onLoopExit!" << endl;
@@ -661,7 +661,7 @@ void PPLDomain::displayIdentMap() {
 
 
 // Return the first constraint in poly for which the coef of specified variable axis is non-zero
-const PPL::Constraint *PPLDomain::getConstraintFor(int axis) {
+const PPL::Constraint *PPLDomain::_getConstraintFor(int axis) {
 	PPL::Constraint_System cons_sys = poly.minimized_constraints();
 	for (PPL::Constraint_System::const_iterator it = cons_sys.begin(); it != cons_sys.end(); it++) {
 		const PPL::Constraint &c = *it;
@@ -682,15 +682,15 @@ const PPL::Constraint *PPLDomain::getConstraintFor(int axis) {
 * Indexes the pointer in dom, by their expression in terms of registers referenced in map_regs. 
 * Stores the result in map_ptr.
 */
-void PPLDomain::indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, HashCons> &map_ptr, genstruct::HashTable<int, int> map_regs) {
+void PPLDomain::_indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, HashCons> &map_ptr, genstruct::HashTable<int, int> map_regs) {
 int axis = map_regs.count();
 for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
 	if ((*it).fst.getType() == Ident::ID_MEM_ADDR) {
 		map_regs.put((*it).snd, axis);
 		PPLDomain dom(*this); /* make a working copy to do the projections */
-		dom.map_only_poly(MapWithHash(map_regs));
+		dom.doMapPoly(MapWithHash(map_regs));
 
-		const PPL::Constraint *cons = dom.getConstraintFor(axis);
+		const PPL::Constraint *cons = dom._getConstraintFor(axis);
 		if (cons) {
 			map_ptr[*cons] = (*it).fst.getId();
 			delete cons;
@@ -700,7 +700,7 @@ for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis);
 }
 }
 
-PPLDomain PPLDomain::filter(bool taken) {
+PPLDomain PPLDomain::onBranch(bool taken) {
 	if (isBottom())
 		return *this;
 	sem::cond_t this_op;
@@ -764,7 +764,7 @@ PPLDomain PPLDomain::filter(bool taken) {
 	res.compare_reg = Ident();
 	return res;
 }
-inline void PPLDomain::poly_hull_helper(PPL::C_Polyhedron &poly1, PPL::C_Polyhedron &poly2) const {
+inline void PPLDomain::_partialMerge(PPL::C_Polyhedron &poly1, PPL::C_Polyhedron &poly2) const {
 	PPL::C_Polyhedron *src = &poly2;
 	if (poly1.space_dimension() > poly2.space_dimension()) {
 		src = new PPL::C_Polyhedron(poly2);
@@ -847,8 +847,8 @@ PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) {
 #ifdef POLY_DEBUG			
 	cerr << "Identifying address expressions appearing on both sides\n";	
 #endif
-	l1.indexPointersByExpr(mapl_ptr, mapl);
-	r1.indexPointersByExpr(mapr_ptr, mapr);
+	l1._indexPointersByExpr(mapl_ptr, mapl);
+	r1._indexPointersByExpr(mapr_ptr, mapr);
 
 	// mapl/mapr: on ajoute tout les pointeurs communs, on map vers une numerotation commune
 #ifdef POLY_DEBUG			
@@ -889,8 +889,8 @@ PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) {
 		}
 	}
 
-	l1.map_poly_and_idents(PPLDomain::MapWithHash(mapl));
-	r1.map_poly_and_idents(PPLDomain::MapWithHash(mapr)); 
+	l1.doMap(PPLDomain::MapWithHash(mapl));
+	r1.doMap(PPLDomain::MapWithHash(mapr)); 
 
 	// Fin preparation
 #ifdef POLY_DEBUG			
@@ -968,7 +968,7 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 				{
 					sem::reg_t dest = si.d();
 					Ident id(dest, Ident::ID_REG);
-					s_out.scratch(id);
+					s_out.doScratch(id);
 				}
 		        break;
 		case sem::SETP:         // page(d) <- cst
@@ -1034,7 +1034,7 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 					Variable vs2 = s_out.lookup(id2);
 
 					Variable v = s_out.create(id, true);
-					s_out.binary_operation_helper(si.op, &v, &vs1, &vs2);
+					s_out._doBinaryOp(si.op, &v, &vs1, &vs2);
 				} else s_out.create(id, true);
 		        break;
 
@@ -1090,7 +1090,7 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 						map[v_frame.id()] = 1;
 						map[v_bound.id()] = 2;
 						PPLDomain tmp(s_out);
-						tmp.map_only_poly(PPLDomain::MapWithHash(map));
+						tmp.doMapPoly(PPLDomain::MapWithHash(map));
 						tmp.poly.minimized_constraints().print();
 						cout << endl;
 					}
@@ -1109,8 +1109,8 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 								cout << "Address " << p.fst << " and " << id_reg_addr << " are equal (replacing)." << endl;
 #endif								
 								had_exact_match = true;
-								s_out.freeAxis(v_ex_addr.id());
-								s_out.freeAxis(v_ex_val.id());
+								s_out.doFreeAxis(v_ex_addr.id());
+								s_out.doFreeAxis(v_ex_val.id());
 							} else {
 #ifdef POLY_DEBUG
 								cout << "Address " << p.fst << " and " << id_reg_addr << " maybe equal (joining)." << endl;
@@ -1119,7 +1119,7 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 								this_write.unconstrain(v_ex_val);
 								this_write.add_constraint(v_reg_addr == v_ex_addr);
 								this_write.add_constraint(v_reg_src == v_ex_val);
-								poly_hull_helper(all_writes, this_write);
+								_partialMerge(all_writes, this_write);
 								need_join = true;
 #ifdef POLY_DEBUG
 								cout << "This write: " << endl;
@@ -1137,7 +1137,7 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 #ifdef POLY_DEBUG
 					cout << "Dynamic store!" << endl;
 #endif
-					poly_hull_helper(s_out.poly, all_writes);
+					_partialMerge(s_out.poly, all_writes);
 				}
 				s_out.poly.add_constraint(v_reg_addr == v_new_addr);
 				s_out.poly.add_constraint(v_reg_src == v_new_val);
@@ -1212,7 +1212,7 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 			break;
 	}
 	// cout << "avant wrap" << s_out << endl;
-	s_out.integer_wrap();
+	s_out.doIntegerWrap();
 	// cout << "apres wrap" << s_out << endl;
 	return s_out;
 }
@@ -1221,7 +1221,7 @@ p::feature POLY_ANALYSIS_FEATURE("otawa::poly::POLY_ANALYSIS_FEATURE", new Maker
 
 BitVector PPLDomain::trash;
 
-void PPLDomain::freeAxis(int axis) {
+void PPLDomain::doFreeAxis(int axis) {
 	ASSERT(axis2id[axis].getType() != Ident::ID_INVALID);
 	Ident old = axis2id[axis];
 	/*
@@ -1234,7 +1234,7 @@ void PPLDomain::freeAxis(int axis) {
 	trash.set(axis);
 }
 
-int PPLDomain::allocAxis(const Ident &ident, bool allow_replace) { 
+int PPLDomain::doAllocAxis(const Ident &ident, bool allow_replace) { 
 	ASSERT(num_axis < trash.size())
 	ASSERT(allow_replace || !id2axis.hasKey(ident));
 	if (id2axis.hasKey(ident)) {
@@ -1242,7 +1242,7 @@ int PPLDomain::allocAxis(const Ident &ident, bool allow_replace) {
 #ifdef POLY_DEBUG			
 		cout << "L'identificateur " << ident << " etait deja associe a l'axe " << Variable(axis) << endl;
 #endif
-		freeAxis(axis);
+		doFreeAxis(axis);
 	}
 	id2axis[ident] = num_axis;
 	if (axis2id.length() <= num_axis) {
@@ -1300,7 +1300,7 @@ Variable PPLDomain::getVar(int axis) {
 }
 
 Variable PPLDomain::create(const Ident &ident, bool allow_replace) {
-	return Variable(allocAxis(ident, allow_replace));
+	return Variable(doAllocAxis(ident, allow_replace));
 }
 
 void PPLDomain::rename(const Ident &ident, const Ident &newident, bool allow_replace) {
@@ -1311,7 +1311,7 @@ void PPLDomain::rename(const Ident &ident, const Ident &newident, bool allow_rep
 #ifdef POLY_DEBUG			
 		cout << "L'identificateur " << ident << " etait deja associe a l'axe " << Variable(axis) << endl;
 #endif
-		freeAxis(axis);
+		doFreeAxis(axis);
 	}
 	axis = id2axis[ident];
 
