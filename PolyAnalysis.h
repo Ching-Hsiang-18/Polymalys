@@ -296,7 +296,7 @@ public:
 	void destroy(PPL::Variable&);
 	Variable lookup(const Ident&, bool allow_create = false);
 	void rename(const Ident &ident, const Ident &newident, bool allow_replace);
-	PPL::Variable lookup(int);
+	Variable lookup(int);
 	bool exists(const Ident&);
 	bool exists(PPL::Variable&);
 	Variable create(const Ident&, bool allow_replace = false);

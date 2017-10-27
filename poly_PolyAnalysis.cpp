@@ -1305,7 +1305,7 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 	return true;
 }
 
-PPL::Variable PPLDomain::lookup(int axis) {
+Variable PPLDomain::lookup(int axis) {
 	return Variable(axis, *this);
 }
 
