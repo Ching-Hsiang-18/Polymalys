@@ -19,6 +19,7 @@ using namespace otawa::util;
 
 namespace PPL = Parma_Polyhedra_Library;
 using Variable = PPL::Variable;
+Output& operator<<(Output& o, const Variable pv);
 
 extern Identifier<int> NUM_LOC_VARS;
 extern Identifier<int> LOC_VAR_SIZE;
@@ -104,6 +105,7 @@ class Ident {
 		int _id;
 		IdentType _type;
 };
+inline Output& operator<<(Output& o, const Ident &i) { i.print(o); return o; }
 
 class HashIdent {
 	public:
@@ -259,7 +261,7 @@ public:
 	bool getConstant(Ident &id, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d, bool display = false);
 	bool getConstant(Variable &var, PPL::Coefficient &cst, PPL::Coefficient &cst_d, bool display = false);
 	bool hasVar(int);
-	Variable lookup(const Ident&, bool allow_create = false);
+	Variable lookup(const Ident&, bool allow_varNew = false);
 	Variable getVar(int);
 	bool hasIdent(const Ident&);
 	bool exists(Variable&);
@@ -279,18 +281,19 @@ public:
 	template <class F> void doMap(F pfunc);
 	void doIntegerWrap();
 	void doScratch(Ident &id);
-	void doDestroy(const Ident&);
-	void doDestroy(Variable&);
-	void doRename(const Ident &ident, const Ident &newident, bool allow_replace);
-	Variable create(const Ident&, bool allow_replace = false);
-	void doCreatePtr(Ident&, Ident&);
-	Variable *make_var(Ident &id);
+
+	/* Variable/Idents handling operations */
+	Variable varNew(const Ident&, bool allow_replace = false);
+	inline void varKill(const Ident& id) { return _doFreeAxis(id2axis[id]); }
+	inline void varKill(Variable& v) { return _doFreeAxis(v.id()); }
+	void varRename(const Ident &ident, const Ident &newident, bool allow_replace);
+	void varCreatePtr(Ident&, Ident&);
 	void doFinalizeUpdate();
 
 
-	int doAllocAxis(const Ident&, bool allow_replace = false);
-	void doFreeAxis(int axis);
 private: /* Private helper functions */
+	int _doAllocAxis(const Ident&, bool allow_replace = false);
+	void _doFreeAxis(int axis); 
 #ifdef POLY_DEBUG
 	void _sanityChecks();
 #else
@@ -314,6 +317,10 @@ private: /* Private helper functions */
 	void _doBinaryOp(int op, Variable *v, Variable *vs1, Variable *vs2);
 
 };
+
+inline bool operator==(const PPLDomain &a, const PPLDomain &b) { return a.equals(b); }
+inline bool operator!=(const PPLDomain &a, const PPLDomain &b) { return !(a == b); }
+inline Output& operator<<(Output& o, const PPLDomain &dom) { dom.print(o); return o; }
 
 
 class PPLManager {
@@ -363,14 +370,6 @@ private:
 	const PropList* _props;
 };
 
-inline bool operator==(const PPLDomain &a, const PPLDomain &b) { return a.equals(b); }
-inline bool operator!=(const PPLDomain &a, const PPLDomain &b) { return !(a == b); }
-
-
-inline Output& operator<<(Output& o, const PPLDomain &dom) { dom.print(o); return o; }
-inline Output& operator<<(Output& o, const Ident &i) { i.print(o); return o; }
-
-Output& operator<<(Output& o, const Variable pv);
 
 
 
