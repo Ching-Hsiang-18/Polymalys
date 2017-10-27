@@ -34,10 +34,12 @@ t::hash HashCons::hash(const PPL::Constraint& key) {
 	return result;
 }
 
+/*
 Variable::Variable(const Ident &ident, const PPLDomain &dom) : PPL::Variable(dom.id2axis[ident]), _dom(dom), _ident(ident) { }
 Variable::Variable(int axis, const PPLDomain &dom) 	: PPL::Variable(axis), _dom(dom), _ident(dom.axis2id[axis]) { 
 	ASSERT(_ident.getType() != Ident::ID_INVALID);	
-}
+} 
+*/
 
 Output& operator<<(Output& o, const PPL::Variable pv) { 
 		char letter = (pv.id() % 26) + 'A';
@@ -545,7 +547,7 @@ void PPLDomain::scratch(Ident &id) {
 
 PPL::Variable *PPLDomain::make_var(Ident &id) {
 		allocAxis(id);
-		return new Variable(id, *this);
+		return new PPL::Variable(id2axis[id]);
 }
 
 bool PPLDomain::may_be_equal(PPL::Variable &v1, PPL::Variable &v2, int offset) {
@@ -1273,7 +1275,7 @@ Variable PPLDomain::lookup(const Ident &ident, bool allow_create) {
 	if (allow_create && !exists(ident)) {
 		return create(ident, false);
 	}
-	return Variable(ident, *this);
+	return Variable(id2axis[ident], *this);
 }
 
 void PPLDomain::create_ptr(Ident &addr, Ident &val) {

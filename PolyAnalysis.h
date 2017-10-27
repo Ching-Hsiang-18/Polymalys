@@ -30,14 +30,8 @@ class Ident;
 
 class Variable : public PPL::Variable {
 	public:
-		Variable(int axis, const PPLDomain &dom);
-		Variable(const Ident &ident, const PPLDomain &dom);
-
-		inline const PPLDomain &getDom() const { return _dom; }
-		inline const Ident &getIdent() const { return _ident; }
-	private:
-		const PPLDomain &_dom;
-		const Ident &_ident;
+		inline Variable(int axis, const PPLDomain &dom) : PPL::Variable(axis) {}
+/*		inline Variable(const Ident &ident, const PPLDomain &dom) : PPL::Variable(; */
 };
 
 class Ident {
