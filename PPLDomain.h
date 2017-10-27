@@ -11,6 +11,8 @@
 #include <elm/util/BitVector.h>
 #include <ppl.hh>
 
+#include "PolyCommon.h"
+
 namespace otawa { namespace poly {
 
 using namespace otawa;
@@ -19,21 +21,8 @@ using namespace otawa::util;
 namespace PPL = Parma_Polyhedra_Library;
 using Variable = PPL::Variable;
 
-extern Identifier<int> NUM_LOC_VARS;
-extern Identifier<int> LOC_VAR_SIZE;
-extern Identifier<int> MAX_AXIS;
-extern p::feature POLY_ANALYSIS_FEATURE;
-
-
-class PPLManager;
-class HashIdent;
-class PPLDomain;
-class Ident;
-
 class Ident {
-
 	public:
-		friend class HashIdent;
 		enum IdentType {
 			ID_REG=0,
 			ID_MEM_ADDR,
@@ -49,10 +38,13 @@ class Ident {
 			ID_START_LR=2,
 		};
 		inline Ident() : _type(ID_INVALID) { }
-		inline Ident(int id, IdentType typ, const PPLDomain *dom = NULL) : _id(id), _type(typ) { }
+		inline Ident(int id, IdentType typ) : _id(id), _type(typ) { }
 		inline ~Ident() { } 
 		inline int getId() const { return _id; }
 		inline IdentType getType() const { return _type; }
+		inline bool equals(const Ident &b) const {
+			return (_id == b._id) && (_type == b._type);  
+		}
 
 		inline void print(io::Output &out) const {
 			switch(_type) {
@@ -109,10 +101,10 @@ inline Output& operator<<(Output& o, const Ident &i) { i.print(o); return o; }
 class HashIdent {
 	public:
 		static inline t::hash hash(const Ident& key) { 
-			return key._id;
+			return key.getId();
 		};
-		static inline bool equals(const Ident& key1, const Ident& key2) {   
-			return (key1._id == key2._id) && (key1._type == key2._type);  
+		static inline bool equals(const Ident& key1, const Ident& key2) {
+			return key1.equals(key2);	
 		}
 };
 
@@ -125,7 +117,6 @@ class HashCons {
 };
 
 class PPLDomain {
-	friend class PPLManager;
 
 private:
 	/* Abstract state */
@@ -280,6 +271,7 @@ public:
 	template <class F> void doMap(F pfunc);
 	void doIntegerWrap();
 	void doScratch(Ident &id);
+	void doNewConstraint(const PPL::Constraint &c) { poly.add_constraint(c); }
 
 	/* Variable/Idents handling operations */
 	Variable varNew(const Ident&, bool allow_replace = false);

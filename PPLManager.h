@@ -10,11 +10,10 @@
 #include <elm/util/BitVector.h>
 #include <ppl.hh>
 
+#include "PolyCommon.h"
 #include "PPLDomain.h"
 
 namespace otawa { namespace poly {
-
-class PPLDomain;
 
 class PPLManager {
 public:

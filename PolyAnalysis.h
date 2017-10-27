@@ -17,14 +17,6 @@ namespace otawa { namespace poly {
 using namespace otawa;
 using namespace otawa::util;
 
-namespace PPL = Parma_Polyhedra_Library;
-using Variable = PPL::Variable;
-
-class PPLManager;
-class HashIdent;
-class PPLDomain;
-class Ident;
-
 class PolyAnalysis: public Processor {
 public:
 	static p::declare reg;

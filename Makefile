@@ -9,14 +9,21 @@ CXXFLAGS+=-fPIC -Wall -DUSE_CLANG_COMPLETER -std=c++11 -g -O0
 
 all: poly.so
 
-poly.so: poly_PolyAnalysis.o poly_PlugHook.o
-	$(CC) -shared -o poly.so poly_PolyAnalysis.o poly_PlugHook.o $(LIBS)
+poly.so: poly_PolyAnalysis.o poly_PlugHook.o poly_PPLDomain.o poly_PPLManager.o
+	$(CC) -shared -o poly.so poly_PolyAnalysis.o poly_PlugHook.o poly_PPLDomain.o poly_PPLManager.o $(LIBS)
 	
 
-poly_PolyAnalysis.o: poly_PolyAnalysis.cpp PolyAnalysis.h
+poly_PolyAnalysis.o: poly_PolyAnalysis.cpp PolyAnalysis.h PPLDomain.h PPLManager.h PolyCommon.h
 	$(CXX) $(CXXFLAGS) -c poly_PolyAnalysis.cpp -o poly_PolyAnalysis.o
 
+poly_PPLManager.o: poly_PPLManager.cpp PolyAnalysis.h PPLDomain.h PPLManager.h PolyCommon.h
+	$(CXX) $(CXXFLAGS) -c poly_PPLManager.cpp -o poly_PPLManager.o
+
+poly_PPLDomain.o: poly_PPLDomain.cpp PolyAnalysis.h PPLDomain.h PPLManager.h PolyCommon.h
+	$(CXX) $(CXXFLAGS) -c poly_PPLDomain.cpp -o poly_PPLDomain.o
+
 poly_PlugHook.o: poly_PlugHook.cpp
+	$(CXX) $(CXXFLAGS) -c poly_PlugHook.cpp -o poly_PlugHook.o
 
 clean:
 	rm -f *~ core* poly.so *.o
