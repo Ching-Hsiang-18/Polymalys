@@ -40,12 +40,8 @@ void PolyAnalysis::configure(const PropList &props) {
 
 void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 	ai::CFGGraph graph(&cfg);
-	PPLManager *man;
-    if (do_init) {
-		man = new PPLManager(*_props); 
-	} else {
-		man = new PPLManager(s, *_props);
-	}
+	PPLManager *man = do_init ? (new PPLManager(*_props)) : (new PPLManager(s, *_props));;
+
 	ai::EdgeStore<PPLManager, ai::CFGGraph> store(*man, graph);
 	ai::OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph> > ana(*man, graph, store);
 
