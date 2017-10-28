@@ -121,9 +121,8 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 				for(sem::Block::InstIter semi(block); semi; semi++) {
 #ifdef POLY_DEBUG			
 						cout << "===============================================" << endl;
-						s._sanityChecks();
 						cout << "BEFORE: " << s << endl;
-						s->displayIdentMap();
+						s.displayIdentMap();
 						cout << "+++ IR +++: " << *semi << endl;
 #endif
 						// man->display_loc_vars(s);
@@ -131,15 +130,15 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 						// man->display_loc_vars(s);
 #ifdef POLY_DEBUG			
 						cout << "AFTER IR: " << s << endl;
-						s->displayIdentMap();
+						s.displayIdentMap();
 #endif
 						s.doFinalizeUpdate();
 						s.doIntegerWrap();
 #ifdef POLY_DEBUG			
 						cout << "AFTER CLEANUP: " << s << endl;
-						s->displayIdentMap();
+						s.displayIdentMap();
 						cout << "===============================================" << endl;
-						man->display_loc_vars(s);
+						s.displayLocVars();
 						cout << "===============================================" << endl << endl;
 #endif
 				}
@@ -183,20 +182,20 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 				if (edgeState.hasFilter()) {
 #ifdef POLY_DEBUG			
 					cout << "BEFORE FILTERING: " << endl;
-					edgeState->displayIdentMap();
+					edgeState.displayIdentMap();
 					fflush(stdout);
 					edgeState.print(cout); cout << endl;
 					fflush(stdout);
-					man->display_loc_vars(edgeState);
+					edgeState.displayLocVars();
 #endif
 					edgeState = edgeState.onBranch(e->isTaken());
 #ifdef POLY_DEBUG			
 					cout << "FILTERED STATE: " << endl;
-					edgeState->displayIdentMap();
+					edgeState.displayIdentMap();
 					fflush(stdout);
 					edgeState.print(cout); cout << endl;
 					fflush(stdout);
-					man->display_loc_vars(edgeState);
+					edgeState.displayLocVars();
 #endif
 				}
 				if (hasEdgeState) {

@@ -249,8 +249,8 @@ public:
 	inline int getVarIDCount() { return poly.space_dimension(); }
 	inline bool isBottom() { return num_axis == -1; }
 	inline bool hasFilter() { return (compare_reg.getType() != Ident::ID_INVALID); }
-	bool mayEqual(Variable &v1, Variable &v2, int offset = 0);
-	bool mustEqual(Variable &v1, Variable &v2, int offset = 0);
+	bool mayAlias(const Variable &v1, const Variable &v2, int offset = 0) const;
+	bool mustAlias(const Variable &v1, const Variable &v2, int offset = 0) const;
 	bool getConstant(Ident &id, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d, bool display = false);
 	bool getConstant(Variable &var, PPL::Coefficient &cst, PPL::Coefficient &cst_d, bool display = false);
 
@@ -303,6 +303,15 @@ public:
 	 * @return new address variable
 	 */
 	Variable memReplace(const Variable& /* address */, const Variable& /* newValue */);
+
+	/**
+	 * Create a new abstract memory location at specified address, with the specified value.
+	 *
+	 * @param address A variable representing the memory address.
+	 * @param value A variable representing the memory value.
+	 * @return new address variable
+	 */
+	Variable memCreate(const Variable& /* address */, const Variable& /* newValue */);
 
 	/**
 	 * Associate a new value to the address variable, merging with existing value.

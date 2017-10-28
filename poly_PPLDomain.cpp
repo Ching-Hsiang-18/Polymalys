@@ -165,7 +165,7 @@ void PPLDomain::doFinalizeUpdate() {
 #ifdef POLY_DEBUG			
 	if (PPLDomain::trash.countOnes() == 0) {
 		cout << "Nothing to clean" << endl;
-		dom._sanityChecks();
+		_sanityChecks();
 		return;
 	}
 #endif
@@ -210,6 +210,7 @@ void PPLDomain::displayLocVars() {
 					found = true;
 					Ident idval(p.fst.getId(), Ident::ID_MEM_VAL);
 					PPL::Coefficient num, den;
+					getConstant(idval, num, den, true);
 					cout <<  " (aka " << idval << ")";
 					break;
 				}
@@ -290,21 +291,21 @@ void PPLDomain::doScratch(Ident &id) {
 }
 	
 #ifdef POLY_DEBUG			
-	cout << "Before cylindrification: " << dom << endl;
+	cout << "Before cylindrification: " << *this << endl;
 #endif
 	Variable v = getVar(id);
 	poly.unconstrain(v);
 #ifdef POLY_DEBUG			
 	cout << "Scratch " << id << " (axis " << v << ")" << endl;
-	cout << "After cylindrification: " << dom << endl;
+	cout << "After cylindrification: " << *this << endl;
 #endif
 }
 
-bool PPLDomain::mayEqual(Variable &v1, Variable &v2, int offset) {
+bool PPLDomain::mayAlias(const Variable &v1, const Variable &v2, int offset) const {
 	return !poly.relation_with(v1 == v2 + offset).implies(PPL::Poly_Con_Relation::is_disjoint()); 
 }
 
-bool PPLDomain::mustEqual(Variable &v1, Variable &v2, int offset) {
+bool PPLDomain::mustAlias(const Variable &v1, const Variable &v2, int offset) const {
 	return poly.relation_with(v1 == v2 + offset).implies(PPL::Poly_Con_Relation::is_included()); 
 }
 
@@ -558,17 +559,17 @@ PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) {
 		cerr << "================= WIDENING ==================" << endl;
 	} else cerr << "=================== JOIN ====================" << endl;
 	cerr << "=== prepare phase ===" << endl;
-	cerr "left hand term dimension: " << l.poly.space_dimension() << endl;
+	cerr << "left hand term dimension: " << l.poly.space_dimension() << endl;
 	l.poly.minimized_constraints().print();
 	cerr << endl;
-	display_loc_vars((PPLManager::t&)l);
-	displayIdentMap(l);
+	displayLocVars();
+	displayIdentMap();
 	cout << endl;
-	cerr "right hand term dimension: " << r.poly.space_dimension() << endl;
+	cerr << "right hand term dimension: " << r.poly.space_dimension() << endl;
 	r.poly.minimized_constraints().print();
 	cerr << endl;
-	display_loc_vars((PPLManager::t&)r);
-	displayIdentMap(r);
+	displayLocVars();
+	displayIdentMap();
 #endif
 
 	genstruct::HashTable<PPL::Constraint, elm::Pair<int,int>, HashCons> map;
@@ -658,14 +659,14 @@ PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) {
 	cerr << "left hand term dimension: " << l1.poly.space_dimension() << endl;
 	l1.poly.minimized_constraints().print();
 	cerr << endl;
-	display_loc_vars((PPLManager::t&)l1);
-	displayIdentMap(l1);
+	displayLocVars();
+	displayIdentMap();
 	cout << endl;
 	cerr << "right hand term dimension: " << r1.poly.space_dimension() << endl;
 	r1.poly.minimized_constraints().print();
 	cerr << endl;
-	display_loc_vars((PPLManager::t&)r1);
-	displayIdentMap(r1);
+	displayLocVars();
+	displayIdentMap();
 
 	cerr << "=== convex-hull phase ===" << endl;
 #endif
@@ -677,14 +678,14 @@ PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) {
 	cerr << "left hand term dimension: " << l1.poly.space_dimension() << endl;
 	l1.poly.minimized_constraints().print();
 	cerr << endl;
-	display_loc_vars((PPLManager::t&)l1);
-	displayIdentMap(l1);
+	displayLocVars();
+	displayIdentMap();
 	cout << endl;
 	cerr << "right hand term dimension: " << r1.poly.space_dimension() << endl;
 	r1.poly.minimized_constraints().print();
 	cerr << endl;
-	display_loc_vars((PPLManager::t&)r1);
-	displayIdentMap(r1);
+	displayLocVars();
+	displayIdentMap();
 	cerr << endl;
 	cerr << "---" << endl;
 #endif
@@ -700,8 +701,8 @@ PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) {
 	cerr << "result dimension: " << l1.poly.space_dimension() << endl;
 	l1.poly.minimized_constraints().print();
 	cerr << endl;
-	display_loc_vars((PPLManager::t&)l1);
-	displayIdentMap(l1);
+	displayLocVars();
+	displayIdentMap();
 	cerr << "=====================================" << endl;
 #endif
 
@@ -719,14 +720,25 @@ Variable PPLDomain::memReplace(const Variable& address , const Variable& valueSo
 
 	Ident idNewAddress, idNewValue;
 	varCreatePtr(idNewAddress, idNewValue);
-	const Variable &newAddress = getVar(idNewAddress);
-	const Variable &newValue = getVar(idNewValue);
+	const Variable &newAddress = varNew(idNewAddress);
+	const Variable &newValue = varNew(idNewValue);
 
 	doNewConstraint(address == newAddress);
 	doNewConstraint(newValue == valueSource);
 
 	varKill(oldValue);
 	varKill(address);
+	return newAddress;
+}
+
+Variable PPLDomain::memCreate(const Variable& address, const Variable& valueSource) {
+	Ident idNewAddress, idNewValue;
+	varCreatePtr(idNewAddress, idNewValue);
+	const Variable &newAddress = varNew(idNewAddress);
+	const Variable &newValue = varNew(idNewValue);
+
+	doNewConstraint(newValue == valueSource);
+	doNewConstraint(newAddress == address);
 	return newAddress;
 }
 
@@ -839,79 +851,55 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 		}
 		case sem::STORE:                // MEMb(a) <- d
 		{
-				bool had_exact_match = false;
-				bool had_potential_match = false;
-				bool need_join = false;
+
+				sem::reg_t addr = si.a();
+				Ident idStoreAddr(addr, Ident::ID_REG);
+				Variable storeAddr = s_out.getVar(idStoreAddr, true);
+
 		        sem::reg_t src = si.d();
-		        sem::reg_t addr = si.a();
+				Ident idStoreValue(src, Ident::ID_REG);
+				Variable storeValue = s_out.getVar(idStoreValue, true);
 
-				/* collect union of states resulting from all possible writes */
-				PPL::C_Polyhedron all_writes = PPL::C_Polyhedron(0, PPL::EMPTY);
+				Ident idEquiv; /* Identifier equivalent to the store addr, if any. */
+				elm::genstruct::Vector<Ident> overlaps; /* List of identifiers overlapping the store addr. */
 
-				/* This represents the new pair for memory address and value for the store destination */
-				Ident id_new_addr, id_new_val;
-				s_out.varCreatePtr(id_new_addr, id_new_val);
-				Variable v_new_addr = s_out.varNew(id_new_addr);
-				Variable v_new_val = s_out.varNew(id_new_val);
-
-				/* source register */
-				Ident id_reg_src(src, Ident::ID_REG);
-				Variable v_reg_src = s_out.getVar(id_reg_src, true);
-
-				/* destination address */
-				Ident id_reg_addr(addr, Ident::ID_REG);
-				Variable v_reg_addr = s_out.getVar(id_reg_addr, true);
-
-				for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++)
-				{
-					elm::Pair<Ident, int> p = *it;
-					if ((p.fst.getType() == Ident::ID_MEM_ADDR) && (p.fst != id_new_addr)) {
-						Variable v_ex_addr = Variable(p.snd);
-						/* Store address may overlap with existing pointer */
-						if (s_out.mayEqual(v_reg_addr, v_ex_addr)) {
-							had_potential_match = true;
-							Ident id_ex_val(p.fst.getId(), Ident::ID_MEM_VAL);
-							Variable v_ex_val = s_out.getVar(id_ex_val);
-							if (s_out.mustEqual(v_reg_addr, v_ex_addr)) {
-#ifdef POLY_DEBUG
-								 /* Our abstract domain should not have aliases, therefore an 
-								 * exact match should not happen more than once. */
-								ASSERT(!had_exact_match); 
-								cout << "Address " << p.fst << " and " << id_reg_addr << " are equal (replacing)." << endl;
-#endif								
-								had_exact_match = true;
-								s_out.varKill(v_ex_addr);
-								s_out.varKill(v_ex_val);
-							} else {
-#ifdef POLY_DEBUG
-								cout << "Address " << p.fst << " and " << id_reg_addr << " maybe equal (joining)." << endl;
-#endif								
-								PPL::C_Polyhedron this_write = s_out.poly;
-								this_write.unconstrain(v_ex_val);
-								this_write.add_constraint(v_reg_addr == v_ex_addr);
-								this_write.add_constraint(v_reg_src == v_ex_val);
-								_extendAndHull(all_writes, this_write);
-								need_join = true;
-#ifdef POLY_DEBUG
-								cout << "This write: " << endl;
-								this_write.minimized_constraints().print();
-								cout << "----" << endl;;
-#endif
-							}
+				for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++) {
+					const Ident &idCurrent = (*it).fst;
+					if (idCurrent.getType() == Ident::ID_MEM_ADDR) {
+						const Variable &current = Variable((*it).snd);
+						if (s_out.mustAlias(current, storeAddr)) {
+							ASSERT(idEquiv.getType() == Ident::ID_INVALID); /* must be unique */
+							idEquiv = idCurrent;
+						} else if (s_out.mayAlias(current, storeAddr)) {
+							overlaps.add(idCurrent);
 						}
 					}
 				}
+
+				if (idEquiv.getType() != Ident::ID_INVALID) {
+					/* Replace existing equivalent abstract location */
+					const Variable &equiv = s_out.getVar(idEquiv);
 #ifdef POLY_DEBUG
-				ASSERT(!had_exact_match || had_potential_match);
-#endif
-				if (need_join) {
+					cout << "MEMORY: Replacing existing location " << equiv << " with new value." << endl;
+#endif					
+					s_out.memReplace(equiv, storeValue);
+				} else {
+					/* No exact match: Create new abstract location */
 #ifdef POLY_DEBUG
-					cout << "Dynamic store!" << endl;
-#endif
-					_extendAndHull(s_out.poly, all_writes);
+					cout << "MEMORY: Creating new memory location. " << endl;
+#endif					
+					s_out.memCreate(storeAddr, storeValue);
 				}
-				s_out.poly.add_constraint(v_reg_addr == v_new_addr);
-				s_out.poly.add_constraint(v_reg_src == v_new_val);
+
+				/* Merge with overlapping abstract locations */
+				for (elm::genstruct::Vector<Ident>::Iterator it(overlaps); it; it++) {
+					const Variable &overlap = s_out.getVar((*it));
+#ifdef POLY_DEBUG
+					cout << "MEMORY: Merging existing location " << (*it) << " with new value." << endl;
+#endif					
+					s_out.memMerge(overlap, storeValue);
+				}
+
 			break;
 		}
 		case sem::LOAD:         // d <- MEMb(a)
@@ -932,11 +920,11 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 					Ident id_val(p.fst.getId(), Ident::ID_MEM_VAL);
 					if (p.fst.getType() == Ident::ID_MEM_ADDR) {
 #ifdef POLY_DEBUG			
-						if (may_be_equal(s_in, vaddr, vsnd)) {
+						if (mayAlias(vaddr, vsnd)) {
 							cout << "Candidate: " << p.fst << endl;
 						}
 #endif
-						if (mustEqual(vaddr, vsnd)) {
+						if (mustAlias(vaddr, vsnd)) {
 #ifdef POLY_DEBUG			
 							cout << "Matched load source: " << p.fst << endl;
 #endif
@@ -946,7 +934,7 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 							break;
 
 						}
-						if (mustEqual(vaddr, vsnd)) {
+						if (mustAlias(vaddr, vsnd)) {
 							cout << "Exact!" << endl;
 						}
 					}
@@ -994,7 +982,7 @@ p::feature POLY_ANALYSIS_FEATURE("otawa::poly::POLY_ANALYSIS_FEATURE", new Maker
 void PPLDomain::_doFreeAxis(int axis) {
 	ASSERT(axis2id[axis].getType() != Ident::ID_INVALID);
 #ifdef POLY_DEBUG			
-	cout << "L'axe " << Variable(axis) << ", qui etait alloue a l'identificateur " << old << ", est marque pour etre supprime. " << endl;
+	cout << "L'axe " << Variable(axis) << ", qui etait alloue a l'identificateur " << axis2id[axis] << ", est marque pour etre supprime. " << endl;
 #endif
 	trash.set(axis);
 }
