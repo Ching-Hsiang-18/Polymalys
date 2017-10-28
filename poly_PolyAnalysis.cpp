@@ -100,7 +100,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 
 			}
 
-			cout << "BB: " << bl << " dimension=" << s.getVarCount() << endl;
+			cout << "BB: " << bl << " dimension=" << s.getVarIDCount() << endl;
 #ifdef POLY_DEBUG			
 			cout << "inst! bb= ";
 			cout << bl << endl;
@@ -161,7 +161,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 					if (Dominance::dominates(e->sink(), e->source())) {
 						/* is back-edge */
 						edgeState = edgeState.onLoopIter(e->sink()->id(), ENCLOSING_LOOP_HEADER(e->sink()));
-						edgeState.doFinalizeUpdate(); // TODO PERF FIXME
+						edgeState.doFinalizeUpdate(); // TODO avoid unnecessary doFinalizeUpdate()
 					} else {
 						/* is entry-edge */
 						edgeState = edgeState.onLoopEntry(e->sink()->id(), ENCLOSING_LOOP_HEADER(e->sink()));
@@ -177,7 +177,7 @@ void PolyAnalysis::analyzeGraph(CFG &cfg, state_t &s, bool do_init) {
 						cout << "LOOPEXIT: " << bound << endl;
 #endif
 						edgeState = edgeState.onLoopExit(bb->id(), bound);
-						edgeState.doFinalizeUpdate(); // TODO PERF FIXME
+						edgeState.doFinalizeUpdate(); // TODO void unnecessary doFinalizeUpdate()
 				}
 
 				if (edgeState.hasFilter()) {

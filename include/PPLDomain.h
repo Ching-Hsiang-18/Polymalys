@@ -246,27 +246,21 @@ public:
 	void getRange(Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
 	void getRange(Variable &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
 
-	inline int getVarCount() { return poly.space_dimension(); }
+	inline int getVarIDCount() { return poly.space_dimension(); }
 	inline bool isBottom() { return num_axis == -1; }
 	inline bool hasFilter() { return (compare_reg.getType() != Ident::ID_INVALID); }
 	bool mayEqual(Variable &v1, Variable &v2, int offset = 0);
 	bool mustEqual(Variable &v1, Variable &v2, int offset = 0);
 	bool getConstant(Ident &id, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d, bool display = false);
 	bool getConstant(Variable &var, PPL::Coefficient &cst, PPL::Coefficient &cst_d, bool display = false);
-	bool hasVar(int);
-	Variable lookup(const Ident&, bool allow_varNew = false);
-	Variable getVar(int);
-	bool hasIdent(const Ident&);
-	bool exists(Variable&);
 
-	/* Update-like operations, that returns a modified new state */
-	PPLDomain onSemInst(sem::inst si, int instaddr);
-	PPLDomain onBranch(bool taken);
-	PPLDomain onMerge(const PPLDomain& r, bool widen=false);
-
-	PPLDomain onLoopEntry(int loop, bool inner=false);
-	PPLDomain onLoopIter(int loop, bool inner=false);
-	PPLDomain onLoopExit(int loop, int bound);
+	/* High-level update operations. They return the modified state. */
+	PPLDomain onSemInst(sem::inst si, int instaddr); ///< Process an OTAWA semantic instruction
+	PPLDomain onBranch(bool taken); ///< Process a branch, taking care of filtering
+	PPLDomain onMerge(const PPLDomain& r, bool widen=false); ///< Process join and widening
+	PPLDomain onLoopEntry(int loop, bool inner=false); ///< Process loop entry edge
+	PPLDomain onLoopIter(int loop, bool inner=false); ///< Process loop back-edge
+	PPLDomain onLoopExit(int loop, int bound); ///< Process loop exit-edge
 
 	/* Operations that modify the state in-place */
 	template <class F> void doMapPoly(F pfunc);
@@ -279,11 +273,48 @@ public:
 	/* Variable/Idents handling operations */
 	Variable varNew(const Ident&, bool allow_replace = false);
 	inline void varKill(const Ident& id) { return _doFreeAxis(id2axis[id]); }
-	inline void varKill(Variable& v) { return _doFreeAxis(v.id()); }
+	inline void varKill(const Variable& v) { return _doFreeAxis(v.id()); }
 	void varRename(const Ident &ident, const Ident &newident, bool allow_replace);
-	void varCreatePtr(Ident&, Ident&);
+	Variable getVar(const Ident&, bool allow_varNew = false);
+	inline bool isVarMapped(const Variable& v) { return axis2id[v.id()].getType() != Ident::ID_INVALID; }
+	inline Ident& getIdent(const Variable& v) { return axis2id[v.id()]; }
+	bool hasIdent(const Ident&);
+	bool hasVar(Variable&);
 	void doFinalizeUpdate();
 
+	/* Pointers/Memory-related operations */
+
+	/**
+	 * Create new memory address/value variable and identifiers.
+	 */
+	void varCreatePtr(Ident&, Ident&);
+
+
+	/**
+	 * Associate a new value to the address variable, replacing existing value.
+	 *
+	 * The variable representing the address is scheduled to be destroyed. It is replaced by another variable representing
+	 * the same address, but associated with another value.
+	 *
+	 * The variable representing the old value is scheduled to be destroyed.
+	 *
+	 * @param address A variable representing a memory address. 
+	 * @param newValue A variable representing the new memory value.
+	 * @return new address variable
+	 */
+	Variable memReplace(const Variable& /* address */, const Variable& /* newValue */);
+
+	/**
+	 * Associate a new value to the address variable, merging with existing value.
+	 *
+	 * The variable representing the address is scheduled to be destroyed. It is replaced by another variable representing
+	 * the same address, but associated with another value.
+	 *
+	 * @param address A variable representing a memory address. 
+	 * @param newValue A variable representing the new memory value.
+	 * @return new address variable
+	 */
+	Variable memMerge(const Variable& /* address */, const Variable& /* newValue */);
 
 private: /* Private helper functions */
 	int _doAllocAxis(const Ident&, bool allow_replace = false);
@@ -301,7 +332,10 @@ private: /* Private helper functions */
 	 */
 	void _indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, HashCons> &map_ptr, genstruct::HashTable<int, int> map_regs);
 
-	void _partialMerge(PPL::C_Polyhedron &poly1, PPL::C_Polyhedron &poly2) const;
+	/**
+	 * Computes the convex hull of two polyhedron of different space dimension, extending the smaller if needed.
+	 */
+	void _extendAndHull(PPL::C_Polyhedron &poly1, PPL::C_Polyhedron &poly2) const;
 	/**
 	 * Computes the join or widening of two abstract states
 	 * @param this The first abstract state (will not be modified)

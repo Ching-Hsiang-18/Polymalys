@@ -187,7 +187,7 @@ void PPLDomain::displayLocVars() {
 		return;
 	}
 	Ident id_ssp(Ident::ID_START_SP, Ident::ID_SPECIAL);
-	Variable ssp = lookup(id_ssp);
+	Variable ssp = getVar(id_ssp);
 	cout << mcons.space_dimension() << " Local variables: " << endl;
 	for (int i = 0 ; i < NUM_LOC_VARS(_props)*LOC_VAR_SIZE(_props); i += LOC_VAR_SIZE(_props)) {
 		PPL::Constraint_System cons = mcons;
@@ -198,7 +198,7 @@ void PPLDomain::displayLocVars() {
 		for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++)
 		{
 			elm::Pair<Ident, int> p = *it;
-			Variable vsnd = getVar(p.snd);
+			Variable vsnd = Variable(p.snd);
 			if (p.fst.getType() == Ident::ID_MEM_ADDR) {
 				PPL::C_Polyhedron poly(cons);
 				PPL::Coefficient bsup_n, bsup_d;
@@ -234,14 +234,14 @@ bool PPLDomain::getConstant(Variable &var, PPL::Coefficient &cst_n, PPL::Coeffic
 	return false;
 }
 bool PPLDomain::getConstant(Ident &id, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d, bool display) {
-	Variable v = lookup(id);
+	Variable v = getVar(id);
 	return getConstant(v, cst_n, cst_d, display);
 }
 void PPLDomain::getRange(Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display) {
 #ifdef POLY_DEBUG			
 	cout << "get_range(" << id << ") = ";
 #endif
-	Variable v = lookup(id);
+	Variable v = getVar(id);
 	getRange(v, binf_n, binf_d, bsup_n, bsup_d, display);
 }
 
@@ -292,7 +292,7 @@ void PPLDomain::doScratch(Ident &id) {
 #ifdef POLY_DEBUG			
 	cout << "Before cylindrification: " << dom << endl;
 #endif
-	Variable v = lookup(id);
+	Variable v = getVar(id);
 	poly.unconstrain(v);
 #ifdef POLY_DEBUG			
 	cout << "Scratch " << id << " (axis " << v << ")" << endl;
@@ -368,7 +368,7 @@ PPLDomain PPLDomain::onLoopExit(int loop, int bound) {
 	PPLManager::t s_out = *this;
 	Ident id(loop, Ident::ID_LOOP);
 	ASSERT(s_out.hasIdent(id)); /* You are supposed to be already inside the loop when you call onLoopExit() */ 
-	Variable v = s_out.lookup(id);
+	Variable v = s_out.getVar(id);
 	if (bound >= 0) {
 		s_out.poly.add_constraint(v <= bound);
 }
@@ -387,7 +387,7 @@ PPLDomain PPLDomain::onLoopIter(int loop, bool  /*inner*/) {
 	PPLManager::t s_out = *this;
 	Ident id(loop, Ident::ID_LOOP);
 	ASSERT(s_out.hasIdent(id)); /* You are supposed to be already inside the loop when you call onLoopIter() */ 
-	Variable v_old = s_out.lookup(id);
+	Variable v_old = s_out.getVar(id);
 	Variable v_new = s_out.varNew(id, true);
 	s_out.poly.add_constraint(v_new == v_old + 1);
 
@@ -469,8 +469,8 @@ PPLDomain PPLDomain::onBranch(bool taken) {
 	switch (this_op) {
 		case sem::NE: {
 			PPL::C_Polyhedron poly2 = res.poly;
-			res.poly.add_constraint(res.lookup(compare_reg) <= -1);
-			poly2.add_constraint(res.lookup(compare_reg) >= 1);
+			res.poly.add_constraint(res.getVar(compare_reg) <= -1);
+			poly2.add_constraint(res.getVar(compare_reg) >= 1);
 			res.poly.poly_hull_assign(poly2);
 			break;
 #ifdef POLY_DEBUG			
@@ -481,32 +481,32 @@ PPLDomain PPLDomain::onBranch(bool taken) {
 #ifdef POLY_DEBUG			
 		cout << "EQ!" << endl;
 #endif
-			res.poly.add_constraint(res.lookup(compare_reg) == 0);
+			res.poly.add_constraint(res.getVar(compare_reg) == 0);
 			break;
 		case sem::GE:
 		case sem::UGE:
-			res.poly.add_constraint(res.lookup(compare_reg) >= 0);
+			res.poly.add_constraint(res.getVar(compare_reg) >= 0);
 #ifdef POLY_DEBUG			
 		cout << "(U)GE!" << endl;
 #endif
 			break;
 		case sem::GT:
 		case sem::UGT:
-			res.poly.add_constraint(res.lookup(compare_reg) >= 1);
+			res.poly.add_constraint(res.getVar(compare_reg) >= 1);
 #ifdef POLY_DEBUG			
 		cout << "(U)GT!" << endl;
 #endif
 			break;
 		case sem::LE:
 		case sem::ULE:
-			res.poly.add_constraint(res.lookup(compare_reg) <= 0);
+			res.poly.add_constraint(res.getVar(compare_reg) <= 0);
 #ifdef POLY_DEBUG			
 		cout << "(U)LE!" << endl;
 #endif
 			break;
 		case sem::LT:
 		case sem::ULT:
-			res.poly.add_constraint(res.lookup(compare_reg) <= -1);
+			res.poly.add_constraint(res.getVar(compare_reg) <= -1);
 #ifdef POLY_DEBUG			
 		cout << "(U)LT!" << endl;
 #endif
@@ -520,7 +520,8 @@ PPLDomain PPLDomain::onBranch(bool taken) {
 	res.compare_reg = Ident();
 	return res;
 }
-inline void PPLDomain::_partialMerge(PPL::C_Polyhedron &poly1, PPL::C_Polyhedron &poly2) const {
+
+void PPLDomain::_extendAndHull(PPL::C_Polyhedron &poly1, PPL::C_Polyhedron &poly2) const {
 	PPL::C_Polyhedron *src = &poly2;
 	if (poly1.space_dimension() > poly2.space_dimension()) {
 		src = new PPL::C_Polyhedron(poly2);
@@ -617,10 +618,10 @@ PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) {
 		if (mapr_ptr.hasKey(cons)) {
 			int ptrl = (*it).snd;
 			int ptrr = mapr_ptr[cons];
-			Variable l_addr = l1.lookup(Ident(ptrl, Ident::ID_MEM_ADDR));
-			Variable l_val = l1.lookup(Ident(ptrl, Ident::ID_MEM_VAL));
-			Variable r_addr = r1.lookup(Ident(ptrr, Ident::ID_MEM_ADDR));
-			Variable r_val = r1.lookup(Ident(ptrr, Ident::ID_MEM_VAL));
+			Variable l_addr = l1.getVar(Ident(ptrl, Ident::ID_MEM_ADDR));
+			Variable l_val = l1.getVar(Ident(ptrl, Ident::ID_MEM_VAL));
+			Variable r_addr = r1.getVar(Ident(ptrr, Ident::ID_MEM_ADDR));
+			Variable r_val = r1.getVar(Ident(ptrr, Ident::ID_MEM_VAL));
 			mapl[l_addr.id()] = axis;
 			mapr[r_addr.id()] = axis;
 			mapl[l_val.id()] = axis + 1;
@@ -710,9 +711,44 @@ PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) {
 	return l1;
 }
 
+
+Variable PPLDomain::memReplace(const Variable& address , const Variable& valueSource) {
+	const Ident &idOldAddress = getIdent(address);
+	const Ident &idOldValue = Ident(idOldAddress.getId(), Ident::ID_MEM_VAL);
+	Variable oldValue = getVar(idOldValue);
+
+	Ident idNewAddress, idNewValue;
+	varCreatePtr(idNewAddress, idNewValue);
+	const Variable &newAddress = getVar(idNewAddress);
+	const Variable &newValue = getVar(idNewValue);
+
+	doNewConstraint(address == newAddress);
+	doNewConstraint(newValue == valueSource);
+
+	varKill(oldValue);
+	varKill(address);
+	return newAddress;
+}
+
+Variable PPLDomain::memMerge(const Variable& address, const Variable& newValue) {
+	const Ident &idOldAddress = getIdent(address);
+	const Ident &idOldValue = Ident(idOldAddress.getId(), Ident::ID_MEM_VAL);
+	const Variable oldValue = getVar(idOldValue);
+
+	PPLDomain tempState = *this;
+
+	Variable newAddr1 = tempState.memReplace(address, newValue);
+	Variable newAddr2 = memReplace(address, oldValue);
+
+	ASSERT(axis2id == tempState.axis2id);
+	ASSERT(newAddr1.id() == newAddr2.id());
+	_extendAndHull(poly, tempState.poly);
+	return newAddr1;
+}
+
 PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
         PPLDomain s_out = *this;
-/* 		ASSERT(!hasFilter() || (si.op == sem::BRANCH)); */
+ 		ASSERT(!hasFilter() || (si.op == sem::BRANCH)); 
 
 	switch(si.op) {
                 case sem::NOP:
@@ -737,27 +773,26 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 				sem::reg_t dest = si.d();
 				Ident id(dest, Ident::ID_REG);
 				Variable v = s_out.varNew(id, true);
-				int32_t cst = si.cst(); // FIXME TODO
+				int32_t cst = si.cst();
 				s_out.poly.add_constraint(v == cst);
 				break;
 		        
 		}
 		case sem::SET:          // d <- a
 		{
-				sem::reg_t dest = si.d();
-				Ident id(dest, Ident::ID_REG);
 				sem::reg_t source = si.a();
 				Ident id2(source, Ident::ID_REG);
-				Variable v = s_out.varNew(id, true);
-				bool setToTop = false;
 				if (!s_out.hasIdent(id2)) {
-					cout << "[WARN] Identifier " << id2 << " used, but not defined! Set to TOP." << endl;
-					setToTop = true;
+					cout << "[WARN] Identifier " << id2 << " used, but not defined!" << endl;
+					break;
 				}
-				if (!setToTop) {
-					Variable vs = s_out.lookup(id2);
-					s_out.poly.add_constraint(v == vs);
-				}
+				Variable vs = s_out.getVar(id2);
+
+				sem::reg_t dest = si.d();
+				Ident id(dest, Ident::ID_REG);
+				Variable v = s_out.varNew(id, true);
+
+				s_out.poly.add_constraint(v == vs);
 			break;
 		}
 		case sem::SHL:          // d <- unsigned(a) << b
@@ -773,36 +808,37 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 		case sem::CMP:          // d <- a ~ b
 		case sem::CMPU:         // d <- a ~u b
 		{ 
-			
-		        sem::reg_t dest = si.d();
+		
+				/*
+				 * Binary operation:
+				 *
+				 * This is common code, responsible for preparing the input and output variables for the operation.
+				 * The constraint(s) to represent the actual binary operation are added by PPLDomain::_doBinaryOp().
+				 */	
 		        sem::reg_t op1 = si.a();
 		        sem::reg_t op2 = si.b();
 				Ident id1(op1, Ident::ID_REG);
 				Ident id2(op2, Ident::ID_REG);
-				Ident id(dest, Ident::ID_REG);
-				bool setToTop = false;
 		        if (!s_out.hasIdent(id1)) {
-					cout << "[WARN] Identifier " << id1 << " used, but not defined! Set to TOP" << endl;
-					setToTop = true;
+					cout << "[WARN] Identifier " << id1 << " used, but not defined!" << endl;
+					break;
 		        } else if (!s_out.hasIdent(id2)) {
-					cout << "[WARN] Identifier " << id2 << " used, but not defined! Set to TOP" << endl;
-					setToTop = true;
+					cout << "[WARN] Identifier " << id2 << " used, but not defined!" << endl;
+					break;
 		        } 
-				if (!setToTop) {
-					Variable vs1 = s_out.lookup(id1);
-					Variable vs2 = s_out.lookup(id2);
 
-					Variable v = s_out.varNew(id, true);
-					s_out._doBinaryOp(si.op, &v, &vs1, &vs2);
-				} else { s_out.varNew(id, true);
-}
+		        sem::reg_t dest = si.d();
+				Ident id(dest, Ident::ID_REG);
+
+				Variable vs1 = s_out.getVar(id1);
+				Variable vs2 = s_out.getVar(id2);
+				Variable v = s_out.varNew(id, true);
+				s_out._doBinaryOp(si.op, &v, &vs1, &vs2);
 		        break;
 
 		}
 		case sem::STORE:                // MEMb(a) <- d
 		{
-				// TODO(clement): verifier si y'a pas une intersection possible avec un store existant
-
 				bool had_exact_match = false;
 				bool had_potential_match = false;
 				bool need_join = false;
@@ -812,55 +848,30 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 				/* collect union of states resulting from all possible writes */
 				PPL::C_Polyhedron all_writes = PPL::C_Polyhedron(0, PPL::EMPTY);
 
+				/* This represents the new pair for memory address and value for the store destination */
 				Ident id_new_addr, id_new_val;
 				s_out.varCreatePtr(id_new_addr, id_new_val);
-
 				Variable v_new_addr = s_out.varNew(id_new_addr);
 				Variable v_new_val = s_out.varNew(id_new_val);
 
+				/* source register */
 				Ident id_reg_src(src, Ident::ID_REG);
+				Variable v_reg_src = s_out.getVar(id_reg_src, true);
+
+				/* destination address */
 				Ident id_reg_addr(addr, Ident::ID_REG);
-
-				Variable v_reg_src = s_out.lookup(id_reg_src, true);
-				Variable v_reg_addr = s_out.lookup(id_reg_addr, true);
-
-				/*
-				 * Teste si l'adresse du store peut aliaser SSP+4
-				 */
-
-				Ident id_frame(Ident::ID_START_SP, Ident::ID_SPECIAL);
-				Variable var_ssp = s_out.lookup(id_frame);
-				if (s_out.mayEqual(v_reg_addr, var_ssp, 4)) {
-					cout << "warning: unsafe write at EIP=0x" << hex(instaddr) << endl;
-				}
-
-				
+				Variable v_reg_addr = s_out.getVar(id_reg_addr, true);
 
 				for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++)
 				{
 					elm::Pair<Ident, int> p = *it;
-					if (p.fst.getType() == Ident::ID_LOOP) {
-						cout << "Projection de l'adresse du STORE (" << id_reg_addr << ") sur l'axe " << p.fst << ", STACK_FRAME" << endl;
-						cout << "A=addr, B=frame, C=bound" << endl;
-						genstruct::HashTable<int,int> map;
-						Ident id_frame(Ident::ID_START_SP, Ident::ID_SPECIAL);
-						Variable v_frame = s_out.lookup(id_frame);
-						Variable v_bound = s_out.lookup(p.fst);
-						map[v_reg_addr.id()] = 0;
-						map[v_frame.id()] = 1;
-						map[v_bound.id()] = 2;
-						PPLDomain tmp(s_out);
-						tmp.doMapPoly(PPLDomain::MapWithHash(map));
-						tmp.poly.minimized_constraints().print();
-						cout << endl;
-					}
 					if ((p.fst.getType() == Ident::ID_MEM_ADDR) && (p.fst != id_new_addr)) {
-						Variable v_ex_addr = s_out.getVar(p.snd);
+						Variable v_ex_addr = Variable(p.snd);
 						/* Store address may overlap with existing pointer */
 						if (s_out.mayEqual(v_reg_addr, v_ex_addr)) {
 							had_potential_match = true;
 							Ident id_ex_val(p.fst.getId(), Ident::ID_MEM_VAL);
-							Variable v_ex_val = s_out.lookup(id_ex_val);
+							Variable v_ex_val = s_out.getVar(id_ex_val);
 							if (s_out.mustEqual(v_reg_addr, v_ex_addr)) {
 #ifdef POLY_DEBUG
 								 /* Our abstract domain should not have aliases, therefore an 
@@ -879,7 +890,7 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 								this_write.unconstrain(v_ex_val);
 								this_write.add_constraint(v_reg_addr == v_ex_addr);
 								this_write.add_constraint(v_reg_src == v_ex_val);
-								_partialMerge(all_writes, this_write);
+								_extendAndHull(all_writes, this_write);
 								need_join = true;
 #ifdef POLY_DEBUG
 								cout << "This write: " << endl;
@@ -897,7 +908,7 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 #ifdef POLY_DEBUG
 					cout << "Dynamic store!" << endl;
 #endif
-					_partialMerge(s_out.poly, all_writes);
+					_extendAndHull(s_out.poly, all_writes);
 				}
 				s_out.poly.add_constraint(v_reg_addr == v_new_addr);
 				s_out.poly.add_constraint(v_reg_src == v_new_val);
@@ -909,7 +920,7 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 		        sem::reg_t addr = si.a();
 				Ident id_dst(dst, Ident::ID_REG);
 				Ident id_addr(addr, Ident::ID_REG);
-				Variable vaddr = s_out.lookup(id_addr);
+				Variable vaddr = s_out.getVar(id_addr);
 				Variable vdst = s_out.varNew(id_dst, true);
 				bool found = false;
 				
@@ -917,7 +928,7 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 				for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++)
 				{
 					elm::Pair<Ident, int> p = *it;
-					Variable vsnd = s_out.getVar(p.snd);
+					Variable vsnd = Variable(p.snd);
 					Ident id_val(p.fst.getId(), Ident::ID_MEM_VAL);
 					if (p.fst.getType() == Ident::ID_MEM_ADDR) {
 #ifdef POLY_DEBUG			
@@ -929,7 +940,7 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 #ifdef POLY_DEBUG			
 							cout << "Matched load source: " << p.fst << endl;
 #endif
-							Variable v_val = s_out.lookup(id_val);
+							Variable v_val = s_out.getVar(id_val);
 							s_out.poly.add_constraint(vdst == v_val);
 							found = true;
 							break;
@@ -1013,7 +1024,7 @@ int PPLDomain::_doAllocAxis(const Ident &ident, bool allow_replace) {
 	return num_axis - 1;
 }
 
-Variable PPLDomain::lookup(const Ident &ident, bool allow_varNew) {
+Variable PPLDomain::getVar(const Ident &ident, bool allow_varNew) {
 	if (allow_varNew && !hasIdent(ident)) {
 		return varNew(ident, false);
 	}
@@ -1056,10 +1067,6 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 	return true;
 }
 
-Variable PPLDomain::getVar(int axis) {
-	return Variable(axis);
-}
-
 Variable PPLDomain::varNew(const Ident &ident, bool allow_replace) {
 	return Variable(_doAllocAxis(ident, allow_replace));
 }
@@ -1086,9 +1093,6 @@ void PPLDomain::varRename(const Ident &ident, const Ident &newident, bool allow_
 
 bool PPLDomain::hasIdent(const Ident &ident) {
 	return id2axis.hasKey(ident);
-}
-bool PPLDomain::hasVar(int axis) {
-	return axis2id[axis].getType() != Ident::ID_INVALID;
 }
 
 
