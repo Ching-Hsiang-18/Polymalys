@@ -880,13 +880,13 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 					/* Replace existing equivalent abstract location */
 					const Variable &equiv = s_out.getVar(idEquiv);
 #ifdef POLY_DEBUG
-					cout << "MEMORY: Replacing existing location " << equiv << " with new value." << endl;
+					cout << "STORE: Replacing existing location " << equiv << " with new value." << endl;
 #endif					
 					s_out.memReplace(equiv, storeValue);
 				} else {
 					/* No exact match: Create new abstract location */
 #ifdef POLY_DEBUG
-					cout << "MEMORY: Creating new memory location. " << endl;
+					cout << "STORE: Creating new memory location. " << endl;
 #endif					
 					s_out.memCreate(storeAddr, storeValue);
 				}
@@ -895,7 +895,7 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 				for (elm::genstruct::Vector<Ident>::Iterator it(overlaps); it; it++) {
 					const Variable &overlap = s_out.getVar((*it));
 #ifdef POLY_DEBUG
-					cout << "MEMORY: Merging existing location " << (*it) << " with new value." << endl;
+					cout << "STORE: Merging existing location " << (*it) << " with new value." << endl;
 #endif					
 					s_out.memMerge(overlap, storeValue);
 				}
@@ -906,50 +906,38 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 			{
 		        sem::reg_t dst = si.d();
 		        sem::reg_t addr = si.a();
-				Ident id_dst(dst, Ident::ID_REG);
-				Ident id_addr(addr, Ident::ID_REG);
-				Variable vaddr = s_out.getVar(id_addr);
-				Variable vdst = s_out.varNew(id_dst, true);
+				Ident idLoadReg(dst, Ident::ID_REG);
+				Ident idLoadAddr(addr, Ident::ID_REG);
+				Variable loadAddr = s_out.getVar(idLoadAddr);
+				Variable loadReg = s_out.varNew(idLoadReg, true);
 				bool found = false;
-				
-				// Look for matching ID_MEM_ADDR identifier 
+
+				/*
+				 * Looking for existing abstract location equivalent to load address.
+				 */
 				for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++)
 				{
-					elm::Pair<Ident, int> p = *it;
-					Variable vsnd = Variable(p.snd);
-					Ident id_val(p.fst.getId(), Ident::ID_MEM_VAL);
-					if (p.fst.getType() == Ident::ID_MEM_ADDR) {
+					if ((*it).fst.getType() == Ident::ID_MEM_ADDR) {
+						Variable current = Variable((*it).snd);
+
+						if (mustAlias(loadAddr, current)) {
 #ifdef POLY_DEBUG			
-						if (mayAlias(vaddr, vsnd)) {
-							cout << "Candidate: " << p.fst << endl;
-						}
+							cout << "LOAD: Found equivalent abstract location: " << p.fst << endl;
 #endif
-						if (mustAlias(vaddr, vsnd)) {
-#ifdef POLY_DEBUG			
-							cout << "Matched load source: " << p.fst << endl;
-#endif
-							Variable v_val = s_out.getVar(id_val);
-							s_out.poly.add_constraint(vdst == v_val);
+							Ident idExistingValue((*it).fst.getId(), Ident::ID_MEM_VAL);
+							Variable existingValue = s_out.getVar(idExistingValue);
+							s_out.doNewConstraint(loadReg == existingValue);
 							found = true;
 							break;
-
-						}
-						if (mustAlias(vaddr, vsnd)) {
-							cout << "Exact!" << endl;
 						}
 					}
 				}
 
 				if (!found) {
 #ifdef POLY_DEBUG			
-					cout << "Not found, creating new unconstrained ptr..." << endl;
+					cout << "LOAD: Not found, creating new unconstrained ptr..." << endl;
 #endif
-					Ident addr, val;
-					s_out.varCreatePtr(addr, val);
-					Variable dummy_addr = s_out.varNew(addr);
-					Variable dummy_val = s_out.varNew(val);
-					s_out.poly.add_constraint(vdst == dummy_val);
-					s_out.poly.add_constraint(vaddr == dummy_addr);
+					s_out.memCreate(loadAddr, loadReg);
 				}
 			}
 			break;
