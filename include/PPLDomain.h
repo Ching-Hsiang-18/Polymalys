@@ -1,24 +1,25 @@
 #ifndef PPLDOMAIN_H
 #define PPLDOMAIN_H 1
 
-#include <otawa/ipet.h>
+#include <elm/util/BitVector.h>
 #include <otawa/cfg.h>
 #include <otawa/cfg/features.h>
+#include <otawa/ipet.h>
 #include <otawa/otawa.h>
 #include <otawa/prog/sem.h>
-#include <elm/util/BitVector.h>
 #include <ppl.hh>
 
 #include "PolyCommon.h"
 
-namespace otawa { namespace poly {
+namespace otawa {
+namespace poly {
 
 using namespace otawa;
 using namespace otawa::util;
 
 namespace PPL = Parma_Polyhedra_Library;
 using Variable = PPL::Variable;
-Output& operator<<(Output& o, Variable pv);
+Output &operator<<(Output &o, Variable pv);
 
 enum bound_t : signed long {
 	UNREACHABLE = -1,
@@ -28,122 +29,120 @@ enum bound_t : signed long {
 /**
  * @class Ident
  *
- * Identifiers can represent registers, memory address/values, loop bounds, or special values (such as starting stack frame address).
+ * Identifiers can represent registers, memory address/values, loop bounds, or special values (such as starting stack
+ * frame address).
  * They are associated to polyhedron variables in abstract states.
  *
  * Identifiers are uniquely identified by a type, and an id number.
  *
  */
 class Ident {
-	public:
-		enum IdentType {
-			ID_REG=0,
-			ID_MEM_ADDR,
-			ID_MEM_VAL,
-			ID_SPECIAL,
-			ID_LOOP,
-			ID_INVALID,
-			ID_MAX_TYPE,
-		};
-		enum IdentSpecial {
-			ID_START_SP=0,
-			ID_START_FP=1,
-			ID_START_LR=2,
-		};
-		inline Ident() : _type(ID_INVALID) { }
-		inline Ident(int id, IdentType typ) : _id(id), _type(typ) { }
-		inline ~Ident() = default; 
-		inline int getId() const { return _id; }
-		inline IdentType getType() const { return _type; }
-		inline bool equals(const Ident &b) const {
-			return (_id == b._id) && (_type == b._type);  
-		}
+  public:
+	enum IdentType {
+		ID_REG = 0,
+		ID_MEM_ADDR,
+		ID_MEM_VAL,
+		ID_SPECIAL,
+		ID_LOOP,
+		ID_INVALID,
+		ID_MAX_TYPE,
+	};
+	enum IdentSpecial {
+		ID_START_SP = 0,
+		ID_START_FP = 1,
+		ID_START_LR = 2,
+	};
+	inline Ident() : _type(ID_INVALID) {}
+	inline Ident(int id, IdentType typ) : _id(id), _type(typ) {}
+	inline ~Ident() = default;
+	inline int getId() const { return _id; }
+	inline IdentType getType() const { return _type; }
+	inline bool equals(const Ident &b) const { return (_id == b._id) && (_type == b._type); }
 
-		void print(io::Output &out) const;
+	void print(io::Output &out) const;
 
-		inline bool operator==(const Ident &i) const {
-			return (_id == i._id) && (_type == i._type);
-		}
-		inline bool operator!=(const Ident &i) const {
-			return (_id != i._id) || (_type != i._type);
-		}
+	inline bool operator==(const Ident &i) const { return (_id == i._id) && (_type == i._type); }
+	inline bool operator!=(const Ident &i) const { return (_id != i._id) || (_type != i._type); }
 
-	private:
-		int _id{};
-		IdentType _type;
+  private:
+	int _id{};
+	IdentType _type;
 };
-inline Output& operator<<(Output& o, const Ident &i) { i.print(o); return o; }
+inline Output &operator<<(Output &o, const Ident &i) {
+	i.print(o);
+	return o;
+}
 
 class HashIdent {
-	public:
-		static inline t::hash hash(const Ident& key) { 
-			return key.getId();
-		};
-		static inline bool equals(const Ident& key1, const Ident& key2) {
-			return key1.equals(key2);	
-		}
+  public:
+	static inline t::hash hash(const Ident &key) { return key.getId(); };
+	static inline bool equals(const Ident &key1, const Ident &key2) { return key1.equals(key2); }
 };
 
 class HashCons {
-	public:
-		static t::hash hash(const PPL::Constraint& key);
-		static inline bool equals(const PPL::Constraint& key1, const PPL::Constraint& key2) { 
-			return key1.is_equivalent_to(key2);
-		}
+  public:
+	static t::hash hash(const PPL::Constraint &key);
+	static inline bool equals(const PPL::Constraint &key1, const PPL::Constraint &key2) {
+		return key1.is_equivalent_to(key2);
+	}
 };
 
 class PPLDomain {
 
-private:
+  private:
 	/* Abstract state */
 	PPL::C_Polyhedron poly;
 
-	genstruct::HashTable<Ident , int, HashIdent> id2axis; ///< Mapping from identifier (register/pointers) to polyhedron variable
+	genstruct::HashTable<Ident, int, HashIdent>
+	    id2axis;                      ///< Mapping from identifier (register/pointers) to polyhedron variable
 	genstruct::Vector<Ident> axis2id; ///< Reverse identifier mapping
 
-	Ident compare_reg; ///< Register holding the last comparison result
+	Ident compare_reg;      ///< Register holding the last comparison result
 	sem::cond_t compare_op; ///< Last comparison semantics
 
 	int mem_ref{}; ///< Highest pointer ID + 1
-	int num_axis; ///<Highest poly variable ID + 1
+	int num_axis;  ///<Highest poly variable ID + 1
 
-	BitVector trash;  ///< Bitvector representing the set of variables scheduled to be destroyed
+	BitVector trash; ///< Bitvector representing the set of variables scheduled to be destroyed
 
 	/* Nested classes */
 
 	/**
 	 * @class MapHelper
 	 *
-	 * Wrapper for the PPL poly mapping partial functions, that computes automatically max_in_codomain/has_empty_codomain.
+	 * Wrapper for the PPL poly mapping partial functions, that computes automatically
+	 * max_in_codomain/has_empty_codomain.
 	 * See PPL documentation for details.
 	 */
 	template <class F> class MapHelper {
-		public:
-			MapHelper(F &pfunc, int max_in_domain);
-			inline PPL::dimension_type max_in_codomain() const { return _max_in_codomain; }
-			inline bool maps(PPL::dimension_type i, PPL::dimension_type &j) const { return _pfunc.maps(i, j); }
-			inline bool has_empty_codomain() const { return _empty; }
-		private:
-			F &_pfunc;
-			PPL::dimension_type _max_in_domain;
-			PPL::dimension_type _max_in_codomain;
-			bool _empty;
+	  public:
+		MapHelper(F &pfunc, int max_in_domain);
+		inline PPL::dimension_type max_in_codomain() const { return _max_in_codomain; }
+		inline bool maps(PPL::dimension_type i, PPL::dimension_type &j) const { return _pfunc.maps(i, j); }
+		inline bool has_empty_codomain() const { return _empty; }
+
+	  private:
+		F &_pfunc;
+		PPL::dimension_type _max_in_domain;
+		PPL::dimension_type _max_in_codomain;
+		bool _empty;
 	};
 
 	/**
 	 * @class RemoveMarked
 	 *
-	 * Partial mapping function that removes variables in set (bitvector) 
+	 * Partial mapping function that removes variables in set (bitvector)
 	 * Needs to be wrapped with MapHelper before usage with PPL.
 	 */
 	class RemoveMarked {
-		public:
-			inline ~RemoveMarked() = default;
-			inline RemoveMarked(BitVector &bv, int size) : _bv(bv), _size(size) { }
-			bool maps(PPL::dimension_type i, PPL::dimension_type &j) const;
-		private:
-			BitVector &_bv;
-			int _size;
+	  public:
+		inline ~RemoveMarked() = default;
+		inline RemoveMarked(BitVector &bv, int size) : _bv(bv), _size(size) {}
+		bool maps(PPL::dimension_type i, PPL::dimension_type &j) const;
+
+	  private:
+		BitVector &_bv;
+		int _size;
 	};
 
 	/**
@@ -153,21 +152,21 @@ private:
 	 * Needs to be wrapped with MapHelper before usage with PPL.
 	 */
 	class MapWithHash {
-		public:
-			inline explicit MapWithHash(genstruct::HashTable<int,int> &map) : _map(map) { }
-			inline bool maps(PPL::dimension_type i, PPL::dimension_type &j) const {
-				if (_map.hasKey(i)) {
-					j = _map[i];
-					return true;
-				} { return false;
-}
+	  public:
+		inline explicit MapWithHash(genstruct::HashTable<int, int> &map) : _map(map) {}
+		inline bool maps(PPL::dimension_type i, PPL::dimension_type &j) const {
+			if (_map.hasKey(i)) {
+				j = _map[i];
+				return true;
 			}
-		private:
-			genstruct::HashTable<int,int> &_map;
+			{ return false; }
+		}
+
+	  private:
+		genstruct::HashTable<int, int> &_map;
 	};
 
-public:
-
+  public:
 	/* Basic operations (constructor, destructor, copy, comparison) */
 
 	/**
@@ -193,7 +192,7 @@ public:
 		compare_op = sem::EQ;
 	}
 
-	inline PPLDomain (const PPLDomain &src)  {
+	inline PPLDomain(const PPLDomain &src) {
 		poly = src.poly;
 		num_axis = src.num_axis;
 		id2axis = src.id2axis;
@@ -204,11 +203,11 @@ public:
 		trash = src.trash;
 	}
 
-	inline ~PPLDomain() { 
-		// TODO(clement): 
+	inline ~PPLDomain() {
+		// TODO(clement):
 	}
 
-	inline PPLDomain& operator=(const PPLDomain& dom) {
+	inline PPLDomain &operator=(const PPLDomain &dom) {
 		poly = dom.poly;
 		num_axis = dom.num_axis;
 		id2axis = dom.id2axis;
@@ -227,7 +226,7 @@ public:
 	/**
 	 * Prints this state (constraints, mappings, and local variables)
 	 */
-	void print(io::Output & out) const; 
+	void print(io::Output &out) const;
 
 	/**
 	 * Display local variables in this state
@@ -239,7 +238,7 @@ public:
 	 */
 	void displayIdentMap(io::Output &out) const;
 
-	/** 
+	/**
 	 * Attempts to get the range of possible values for a variable associated with an identifier.
 	 *
 	 * @param id The target identifier
@@ -248,8 +247,9 @@ public:
 	 * @param bsup_n Reference for storing the numerator for the upper bound
 	 * @param bsup_d eference for storing the denominator for the upper bound
 	 */
-	void getRange(const Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d) const;
-	/** 
+	void getRange(const Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n,
+	              PPL::Coefficient &bsup_d) const;
+	/**
 	 * Attempts to get the range of possible values for a variable.
 	 *
 	 * @param v The target variable
@@ -258,10 +258,11 @@ public:
 	 * @param bsup_n Reference for storing the numerator for the upper bound
 	 * @param bsup_d eference for storing the denominator for the upper bound
 	 */
-	void getRange(const Variable &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d) const;
+	void getRange(const Variable &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n,
+	              PPL::Coefficient &bsup_d) const;
 
 	/**
-	 * Display a fraction on output stream. 
+	 * Display a fraction on output stream.
 	 *
 	 * @param out The output stream
 	 * @param num Numerator
@@ -281,7 +282,7 @@ public:
 	 *
 	 * @return true if bottom, false otherwise.
 	 */
-	inline bool isBottom() const { return (num_axis == -1) || poly.is_empty(); } 
+	inline bool isBottom() const { return (num_axis == -1) || poly.is_empty(); }
 
 	/**
 	 * Sets the current state to bottom.
@@ -296,7 +297,8 @@ public:
 	inline bool hasFilter() const { return (compare_reg.getType() != Ident::ID_INVALID); }
 
 	/**
-	 * Tests if two variables may be equal (i.e. exists at least one concrete state in this abstract state where they are equal)
+	 * Tests if two variables may be equal (i.e. exists at least one concrete state in this abstract state where they
+	 * are equal)
 	 *
 	 * @param v1 First variable
 	 * @param v2 Second variable
@@ -314,10 +316,11 @@ public:
 	bool mustAlias(const Variable &v1, const Variable &v2) const;
 
 	/**
-	 * Attempts to get the value of a a variable mapped to an identifier, if this value can be statically determined, and is unique.
+	 * Attempts to get the value of a a variable mapped to an identifier, if this value can be statically determined,
+	 * and is unique.
 	 *
 	 * @param id The target identifier
-	 * @param cst_n Reference for storing the numerator 
+	 * @param cst_n Reference for storing the numerator
 	 * @param cst_d Reference for storing the denominator
 	 * @return true if successful, false if the value cannot be determined.
 	 */
@@ -326,8 +329,8 @@ public:
 	/**
 	 * Attempts to get the value of a variable, if this value can be statically determined, and is unique.
 	 *
-	 * @param var The target variable 
-	 * @param cst_n Reference for storing the numerator 
+	 * @param var The target variable
+	 * @param cst_n Reference for storing the numerator
 	 * @param cst_d Reference for storing the denominator
 	 * @return true if successful, false if the value cannot be determined.
 	 */
@@ -337,7 +340,8 @@ public:
 	 * Attempts to get the current loop bound estimation, in the current state.
 	 *
 	 * @param loopId The ID of the loop header.
-	 * @return loop bound, or bound_t::UNREACHABLE if this state is bottom, or bound_t::UNBOUNDED if loop cannot be bounded.
+	 * @return loop bound, or bound_t::UNREACHABLE if this state is bottom, or bound_t::UNBOUNDED if loop cannot be
+	 * bounded.
 	 */
 	bound_t getLoopBound(int loopId) const;
 
@@ -351,7 +355,7 @@ public:
 	 *
 	 * @return The updated state.
 	 */
-	PPLDomain onSemInst(const sem::inst &si, int instaddr) const; 
+	PPLDomain onSemInst(const sem::inst &si, int instaddr) const;
 
 	/**
 	 * Process a conditional branch instruction, and apply the filtering.
@@ -361,7 +365,7 @@ public:
 	 * @return The updated state.
 	 */
 
-	PPLDomain onBranch(bool taken) const; 
+	PPLDomain onBranch(bool taken) const;
 
 	/**
 	 * Process join and widening
@@ -370,26 +374,27 @@ public:
 	 * @param widen true if we perform a widening, false for normal join
 	 * @return The updated state.
 	 */
-	PPLDomain onMerge(const PPLDomain& r, bool widen=false) const; 
+	PPLDomain onMerge(const PPLDomain &r, bool widen = false) const;
 	/**
 	 * Process loop entry
-	 * 
+	 *
 	 * @param loop The ID of the loop header.
 	 * @return The updated state.
 	 */
-	PPLDomain onLoopEntry(int loop) const; 
+	PPLDomain onLoopEntry(int loop) const;
 	/**
 	 * Process loop back-edge
 	 *
 	 * @param loop The ID of the loop header.
 	 * @return The updated state.
 	 */
-	PPLDomain onLoopIter(int loop) const; 
+	PPLDomain onLoopIter(int loop) const;
 	/**
 	 * Process loop exit-edge
 	 *
 	 * @param loop The ID of the loop header.
-	 * @param bound The current estimated bound of the loop (or bound_t::UNREACHABLE/bound_t::UNBOUNDED if loop unreachable/unbounded)
+	 * @param bound The current estimated bound of the loop (or bound_t::UNREACHABLE/bound_t::UNBOUNDED if loop
+	 * unreachable/unbounded)
 	 * @return The updated state.
 	 */
 	PPLDomain onLoopExit(int loop, int bound) const;
@@ -423,7 +428,7 @@ public:
 	void doIntegerWrap();
 
 	/**
-	 * Unconstrain (scratch) a variable associated with an identifier. 
+	 * Unconstrain (scratch) a variable associated with an identifier.
 	 *
 	 * @param id Target identifier.
 	 */
@@ -450,18 +455,18 @@ public:
 	/**
 	 * Schedule a variable (associated with an identifier) to be destroyed.
 	 * The actual variable removal will be done at the next _doFinalizeUpdate()
-	 * 
+	 *
 	 * @param id Target identifier
 	 */
-	inline void varKill(const Ident& id) { return _doFreeAxis(id2axis[id]); }
+	inline void varKill(const Ident &id) { return _doFreeAxis(id2axis[id]); }
 
 	/**
 	 * Schedule a variable to be destroyed.
 	 * The actual variable removal will be done at the next _doFinalizeUpdate()
-	 * 
+	 *
 	 * @param v Target variable
 	 */
-	inline void varKill(const Variable& v) { return _doFreeAxis(v.id()); }
+	inline void varKill(const Variable &v) { return _doFreeAxis(v.id()); }
 
 	/**
 	 * Gets the variable associated with an identifier (i.e. lookup).
@@ -470,15 +475,15 @@ public:
 	 * @param allow_varNew if true, and the identifier is unknown, create a new variable
 	 * @return The variable.
 	 */
-	Variable getVarOrNew(const Ident& ident, bool allow_varNew = true);
+	Variable getVarOrNew(const Ident &ident, bool allow_varNew = true);
 
 	/**
-	 * Gets the variable associated with an identifier (i.e. lookup). 
+	 * Gets the variable associated with an identifier (i.e. lookup).
 	 *
 	 * @param id The target identifier
 	 * @return The variable.
 	 */
-	Variable getVar(const Ident& /*ident*/) const;
+	Variable getVar(const Ident & /*ident*/) const;
 
 	/**
 	 * Tests if a variable is associated with an identifier.
@@ -486,8 +491,9 @@ public:
 	 * @param v Variable to test
 	 * @return true if the variable is mapped to an identifier, false otherwise
 	 */
-	inline bool isVarMapped(const Variable& v) const { 
-		return (axis2id.length() > v.id()) && (axis2id[v.id()].getType() != Ident::ID_INVALID) && id2axis.hasKey(axis2id[v.id()]); 
+	inline bool isVarMapped(const Variable &v) const {
+		return (axis2id.length() > v.id()) && (axis2id[v.id()].getType() != Ident::ID_INVALID) &&
+		       id2axis.hasKey(axis2id[v.id()]);
 	}
 
 	/**
@@ -496,7 +502,7 @@ public:
 	 * @param v The variable
 	 * @return The identifier
 	 */
-	inline const Ident& getIdent(const Variable& v) const { return axis2id[v.id()]; }
+	inline const Ident &getIdent(const Variable &v) const { return axis2id[v.id()]; }
 
 	/**
 	 * Tests if an identifier exists
@@ -504,7 +510,7 @@ public:
 	 * @param id The identifier
 	 * @return true if the identifier exists, false otherwise
 	 */
-	bool hasIdent(const Ident& /*ident*/) const;
+	bool hasIdent(const Ident & /*ident*/) const;
 
 	/**
 	 * Performs garbage-collection of variables scheduled to be destroyed.
@@ -516,22 +522,22 @@ public:
 	/**
 	 * Create new memory address/value variable and identifiers.
 	 */
-	void varCreatePtr(Ident& /*addr*/, Ident& /*val*/);
-
+	void varCreatePtr(Ident & /*addr*/, Ident & /*val*/);
 
 	/**
 	 * Associate a new value to the address variable, replacing existing value.
 	 *
-	 * The variable representing the address is scheduled to be destroyed. It is replaced by another variable representing
+	 * The variable representing the address is scheduled to be destroyed. It is replaced by another variable
+	 * representing
 	 * the same address, but associated with another value.
 	 *
 	 * The variable representing the old value is scheduled to be destroyed.
 	 *
-	 * @param address A variable representing a memory address. 
+	 * @param address A variable representing a memory address.
 	 * @param newValue A variable representing the new memory value.
 	 * @return new address variable
 	 */
-	Variable memReplace(const Variable& /* address */, const Variable& /* newValue */);
+	Variable memReplace(const Variable & /* address */, const Variable & /* newValue */);
 
 	/**
 	 * Create a new abstract memory location at specified address, with the specified value.
@@ -540,38 +546,41 @@ public:
 	 * @param value A variable representing the memory value.
 	 * @return new address variable
 	 */
-	Variable memCreate(const Variable& /* address */, const Variable& /* newValue */);
+	Variable memCreate(const Variable & /* address */, const Variable & /* newValue */);
 
 	/**
 	 * Associate a new value to the address variable, merging with existing value.
 	 *
-	 * The variable representing the address is scheduled to be destroyed. It is replaced by another variable representing
+	 * The variable representing the address is scheduled to be destroyed. It is replaced by another variable
+	 * representing
 	 * the same address, but associated with another value.
 	 *
-	 * @param address A variable representing a memory address. 
+	 * @param address A variable representing a memory address.
 	 * @param newValue A variable representing the new memory value.
 	 * @return new address variable
 	 */
-	Variable memMerge(const Variable& /* address */, const Variable& /* newValue */);
+	Variable memMerge(const Variable & /* address */, const Variable & /* newValue */);
 
-private: 
+  private:
 	/* Private helper functions. Subject to changes, and should not be used directly. */
-	int _doAllocAxis(const Ident& /*ident*/, bool allow_replace = false);
-	void _doFreeAxis(int axis); 
+	int _doAllocAxis(const Ident & /*ident*/, bool allow_replace = false);
+	void _doFreeAxis(int axis);
 #ifdef POLY_DEBUG
 	void _sanityChecks();
 #else
-	inline void _sanityChecks() { }
+	inline void _sanityChecks() {}
 #endif
 
 	const PPL::Constraint *_getConstraintFor(int axis) const;
 	/**
-	 * Indexes the pointer in dom, by their expression in terms of registers referenced in map_regs. 
+	 * Indexes the pointer in dom, by their expression in terms of registers referenced in map_regs.
 	 * Stores the result in map_ptr.
 	 */
-	void _indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, HashCons> &map_ptr, genstruct::HashTable<int, int>& commonRegs) const;
+	void _indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, HashCons> &map_ptr,
+	                          genstruct::HashTable<int, int> &commonRegs) const;
 
-	void _identifyAncestorVars(PPLDomain &l, genstruct::HashTable<int, int> &commonVarsL, PPLDomain &r, genstruct::HashTable<int, int> &commonVarsR) const;
+	void _identifyAncestorVars(PPLDomain &l, genstruct::HashTable<int, int> &commonVarsL, PPLDomain &r,
+	                           genstruct::HashTable<int, int> &commonVarsR) const;
 
 	/**
 	 * Computes the convex hull of two polyhedron of different space dimension, extending the smaller if needed.
@@ -586,19 +595,21 @@ private:
 	void _doBinaryOp(int op, Variable *v, Variable *vs1, Variable *vs2);
 
 	/**
-	 * Unify the two states so that variables refering to the same object (register, memory location, ...) have the same number.
+	 * Unify the two states so that variables refering to the same object (register, memory location, ...) have the same
+	 * number.
 	 *
 	 * @param l First state to unify
 	 * @param r Second state to unify
 	 */
-	void _doUnify(PPLDomain&l1, PPLDomain &r1) const;
-
+	void _doUnify(PPLDomain &l1, PPLDomain &r1) const;
 };
-inline Output& operator<<(Output& o, const PPLDomain &dom) { dom.print(o); return o; }
+inline Output &operator<<(Output &o, const PPLDomain &dom) {
+	dom.print(o);
+	return o;
+}
 inline bool operator==(const PPLDomain &a, const PPLDomain &b) { return a.equals(b); }
 inline bool operator!=(const PPLDomain &a, const PPLDomain &b) { return !(a == b); }
 
-}  // namespace poly
- }  // namespace otawa
+} // namespace poly
+} // namespace otawa
 #endif
-

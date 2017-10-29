@@ -1,21 +1,22 @@
-#include <otawa/otawa.h>
-#include <otawa/util/WideningListener.h>
-#include <otawa/util/HalfAbsInt.h>
-#include <otawa/dfa/FastState.h>
-#include <otawa/poly/features.h>
-#include <otawa/util/WideningFixPoint.h>
-#include <otawa/flowfact/features.h>
-#include <otawa/cfg/Edge.h>
-#include <otawa/graph/Graph.h>
-#include <otawa/dfa/ai.h>
 #include <ctime>
+#include <otawa/cfg/Edge.h>
+#include <otawa/dfa/FastState.h>
+#include <otawa/dfa/ai.h>
+#include <otawa/flowfact/features.h>
+#include <otawa/graph/Graph.h>
+#include <otawa/otawa.h>
+#include <otawa/poly/features.h>
+#include <otawa/util/HalfAbsInt.h>
+#include <otawa/util/WideningFixPoint.h>
+#include <otawa/util/WideningListener.h>
 #include <ppl.hh>
 
 #include "include/PPLDomain.h"
 #include "include/PPLManager.h"
 #include "include/PolyAnalysis.h"
 
-namespace otawa { namespace poly { 
+namespace otawa {
+namespace poly {
 using namespace otawa;
 using namespace util;
 
@@ -35,8 +36,7 @@ PPLManager::PPLManager(const PropList &props) : _init(MAX_AXIS(props)), _bot(), 
 	_init.doNewConstraint(var_ssp == var_sp);
 	_init.doNewConstraint(var_sfp == var_fp);
 	_init.doNewConstraint(var_slr == var_lr);
+}
 
-} 
-
-}  // namespace poly
-}  // namespace otawa 
+} // namespace poly
+} // namespace otawa
