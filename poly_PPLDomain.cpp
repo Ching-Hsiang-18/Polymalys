@@ -648,7 +648,6 @@ void PPLDomain::_doUnify(PPLDomain& l1, PPLDomain& r1) const {
 	cout << r1;
 #endif
 
-
 	/* 
 	 * These hashtables will represent the substitution to perform in the two input states.
 	 *
@@ -658,10 +657,8 @@ void PPLDomain::_doUnify(PPLDomain& l1, PPLDomain& r1) const {
 	genstruct::HashTable<int,int> mappingL;
 	genstruct::HashTable<int,int> mappingR;
 
-
 	/* Create substitution entries for common vars created in merge ancestor */
 	_identifyAncestorVars(l1, mappingL, r1, mappingR);
-
 
 #ifdef POLY_DEBUG			
 	cout << "Identifying address expressions appearing on both sides\n";	
@@ -734,6 +731,17 @@ void PPLDomain::_doUnify(PPLDomain& l1, PPLDomain& r1) const {
 	ASSERT(l1.poly.space_dimension() == r1.poly.space_dimension());
 	ASSERT(l1.poly.space_dimension() == axis);
 	l1.num_axis = l1.poly.space_dimension();
+
+#ifdef POLY_DEBUG			
+	cout << "=== unify done ===" << endl;
+	cout << "Left state: " << endl;
+	cout << l1;
+
+	cout << "Right state: " << endl;
+	cout << r1;
+
+	cout << "=== Merge phase ===" << endl;
+#endif
 }
 
 
@@ -774,16 +782,6 @@ PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) const {
 
 	_doUnify(l1, r1);
 
-#ifdef POLY_DEBUG			
-	cout << "=== unify done ===" << endl;
-	cout << "Left state: " << endl;
-	cout << l1;
-
-	cout << "Right state: " << endl;
-	cout << r1;
-
-	cout << "=== Merge phase ===" << endl;
-#endif
 
 	l1.poly.poly_hull_assign(r1.poly);
 	if (widen) {
