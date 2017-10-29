@@ -118,7 +118,6 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, ai::WorkListD
 					cout << "AFTER IR: " << s << endl;
 					s.displayIdentMap();
 #endif
-					s.doFinalizeUpdate();
 					s.doIntegerWrap();
 #ifdef POLY_DEBUG			
 					cout << "AFTER CLEANUP: " << s << endl;
@@ -128,10 +127,8 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, ai::WorkListD
 					cout << "===============================================" << endl << endl;
 #endif
 			}
-										
+			s.doFinalizeUpdate();
 		}
-		
-
 
 		/* Edge Processing, propagate updated state to successors */
 		for (ai::CFGGraph::Successor e(graph, *ana); e; e++) {
@@ -152,6 +149,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, ai::WorkListD
 			} else {
 				/* process edge update */
 				state_t edgeState = s;
+
 				if (edgeState.hasFilter()) {
 					/* Filtering: apply branch condition on edge state */
 #ifdef POLY_DEBUG			
@@ -182,9 +180,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, ai::WorkListD
 					} else {
 						/* Entry-Edge: initialize virtal loop counter */
 						edgeState = edgeState.onLoopEntry(e->sink()->id(), ENCLOSING_LOOP_HEADER(e->sink()));
-						// headerState.remove(e->sink()->id());
 					}
-					edgeState.doFinalizeUpdate(); // TODO avoid unnecessary doFinalizeUpdate()
 				}
 
 				if (LOOP_EXIT_EDGE(e)) {
@@ -197,8 +193,8 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, ai::WorkListD
 						edgeState = edgeState.onLoopExit(bb->id(), bound);
 						if (edgeState.isBottom())
 							continue;
-						edgeState.doFinalizeUpdate(); // TODO void unnecessary doFinalizeUpdate()
 				}
+				edgeState.doFinalizeUpdate();
 				ana.check(*e, edgeState);
 			}
 		}

@@ -161,6 +161,11 @@ void PPLDomain::doIntegerWrap() {
 }
 
 void PPLDomain::doFinalizeUpdate() {
+	/* Sets any bottom-equivalent state to the canonical bottom representation */
+	if (isBottom()) {
+		setBottom(); 
+		return;
+	}
 	_sanityChecks();
 #ifdef POLY_DEBUG			
 	if (PPLDomain::trash.countOnes() == 0) {

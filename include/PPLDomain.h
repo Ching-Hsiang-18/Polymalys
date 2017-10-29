@@ -252,7 +252,8 @@ public:
 	void getRange(Variable &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
 
 	inline int getVarIDCount() { return poly.space_dimension(); }
-	inline bool isBottom() const { return num_axis == -1; } 
+	inline bool isBottom() const { return (num_axis == -1) || poly.is_empty(); } 
+	inline void setBottom() { *this = PPLDomain(); }
 	inline bool hasFilter() { return (compare_reg.getType() != Ident::ID_INVALID); }
 	bool mayAlias(const Variable &v1, const Variable &v2, int offset = 0) const;
 	bool mustAlias(const Variable &v1, const Variable &v2, int offset = 0) const;
