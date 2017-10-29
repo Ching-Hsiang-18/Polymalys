@@ -376,7 +376,7 @@ PPLDomain PPLDomain::onLoopExit(int loop, int bound) {
     s_out.varKill(v);
 	if (s_out.poly.is_empty()) {
 #ifdef POLY_DEBUG			
-		cout << "is empty after onLoopExit!" << endl;
+		cout << "State is Bottom after onLoopExit (will not propagate states to exit-edges)" << endl;
 #endif
 		return PPLDomain(); // bottom
 	}
@@ -465,7 +465,7 @@ PPLDomain PPLDomain::onBranch(bool taken) {
 	PPLDomain res = *this;
 	this_op = taken ? compare_op : sem::invert(compare_op);
 #ifdef POLY_DEBUG			
-	cout << "compare_reg is: " << compare_reg << endl;
+	cout << "Filtering, compare_reg is: " << compare_reg << ", compare_op is: " << compare_op << ", taken=" << taken <<  endl;
 #endif
 	switch (this_op) {
 		case sem::NE: {
@@ -515,10 +515,13 @@ PPLDomain PPLDomain::onBranch(bool taken) {
 		default:
 			break;
 	};
-#ifdef POLY_DEBUG			
-	cout << "empty? " << res.poly.is_empty() << endl;
-#endif
 	res.compare_reg = Ident();
+	if (res.poly.is_empty()) {
+#ifdef POLY_DEBUG			
+		cout << "State is Bottom after Filtering (will not propagate states to branch destination)" << endl;
+#endif
+		return PPLDomain(); // bottom
+	}
 	return res;
 }
 
@@ -922,7 +925,7 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 
 						if (mustAlias(loadAddr, current)) {
 #ifdef POLY_DEBUG			
-							cout << "LOAD: Found equivalent abstract location: " << p.fst << endl;
+							cout << "LOAD: Found equivalent abstract location: " << (*it).fst << endl;
 #endif
 							Ident idExistingValue((*it).fst.getId(), Ident::ID_MEM_VAL);
 							Variable existingValue = s_out.getVar(idExistingValue);
@@ -964,8 +967,19 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 	return s_out;
 }
 
-p::feature POLY_ANALYSIS_FEATURE("otawa::poly::POLY_ANALYSIS_FEATURE", new Maker<PolyAnalysis>());
 
+
+bound_t PPLDomain::getLoopBound(int loopId) {
+	if (isBottom())
+		return bound_t::UNREACHABLE;
+	Ident id(loopId, Ident::ID_LOOP);
+	PPL::Coefficient binf_n, binf_d, bsup_n, bsup_d;
+	getRange(id, binf_n, binf_d, bsup_n, bsup_d);
+	if ( PPL::raw_value(bsup_d).get_ui() != 0) {
+		return (bound_t) (PPL::raw_value(bsup_n).get_ui() / PPL::raw_value(bsup_d).get_ui());
+	}
+	return bound_t::UNBOUNDED;
+}
 
 void PPLDomain::_doFreeAxis(int axis) {
 	ASSERT(axis2id[axis].getType() != Ident::ID_INVALID);
@@ -1071,6 +1085,7 @@ bool PPLDomain::hasIdent(const Ident &ident) {
 	return id2axis.hasKey(ident);
 }
 
+p::feature POLY_ANALYSIS_FEATURE("otawa::poly::POLY_ANALYSIS_FEATURE", new Maker<PolyAnalysis>());
 
 Identifier<int> LOC_VAR_SIZE("otawa::poly::LOC_VAR_SIZE", 4);
 Identifier<int> NUM_LOC_VARS("otawa::poly::NUM_LOC_VARS", 8);

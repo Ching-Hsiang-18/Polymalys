@@ -10,6 +10,7 @@
 #include <otawa/prog/sem.h>
 #include <elm/util/BitVector.h>
 #include <ppl.hh>
+#include <otawa/dfa/ai.h>
 
 #include "PPLManager.h"
 
@@ -27,7 +28,8 @@ protected:
 	void configure(const PropList &props) ;
 private:
 	using state_t = PPLManager::t;
-	void analyzeGraph(CFG &cfg, state_t &s, bool do_init); 
+	void processCFG(CFG &cfg, state_t &s, bool do_init); 
+	void processBB(PPLManager *man, ai::CFGGraph &graph, ai::WorkListDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph> > &ana, genstruct::HashTable<int, state_t> &headerState);
 	const PropList* _props;
 };
 

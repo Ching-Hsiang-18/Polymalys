@@ -21,6 +21,11 @@ using namespace otawa::util;
 namespace PPL = Parma_Polyhedra_Library;
 using Variable = PPL::Variable;
 
+enum bound_t : signed long {
+	UNREACHABLE = -1,
+	UNBOUNDED = -2,
+};
+
 class Ident {
 	public:
 		enum IdentType {
@@ -247,12 +252,13 @@ public:
 	void getRange(Variable &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
 
 	inline int getVarIDCount() { return poly.space_dimension(); }
-	inline bool isBottom() { return num_axis == -1; }
+	inline bool isBottom() const { return num_axis == -1; } 
 	inline bool hasFilter() { return (compare_reg.getType() != Ident::ID_INVALID); }
 	bool mayAlias(const Variable &v1, const Variable &v2, int offset = 0) const;
 	bool mustAlias(const Variable &v1, const Variable &v2, int offset = 0) const;
 	bool getConstant(Ident &id, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d, bool display = false);
 	bool getConstant(Variable &var, PPL::Coefficient &cst, PPL::Coefficient &cst_d, bool display = false);
+	bound_t getLoopBound(int loopId);
 
 	/* High-level update operations. They return the modified state. */
 	PPLDomain onSemInst(sem::inst si, int instaddr); ///< Process an OTAWA semantic instruction
