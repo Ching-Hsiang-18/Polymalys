@@ -24,13 +24,8 @@ p::declare PolyAnalysis::reg = p::init("otawa::poly::PolyAnalysis", Version(1,0,
 .require(dfa::INITIAL_STATE_FEATURE)
 .provide(POLY_ANALYSIS_FEATURE);
 
-/**
- */
 PolyAnalysis::PolyAnalysis(p::declare& r): Processor(r) { }
 
-
-/**
- */
 void PolyAnalysis::configure(const PropList &props) {
 
 	Processor::configure(props);
@@ -225,7 +220,7 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	cout << "LOOP BOUNDS: " << endl;
 	for (CFGCollection::Iterator iter2(coll); iter2; iter2++) {
 		for (CFG::BlockIter iter((*iter2)->blocks()); iter; iter++) {
-			BasicBlock *bb = (BasicBlock*) *iter;
+			Block *bb = (*iter);
 			if (LOOP_HEADER(bb)) {
 				cout << "[" << (*iter2)->name() << "]" << "MAX_ITERATION(" << bb->id() << ") = " << MAX_ITERATION(bb) << endl;
 				cout << "[" << (*iter2)->name() << "]" << "TOTAL_ITERATION(" << bb->id() << ") = " << TOTAL_ITERATION(bb) << endl;

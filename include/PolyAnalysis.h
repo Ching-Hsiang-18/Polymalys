@@ -1,5 +1,3 @@
-// #define POLY_DEBUG 1
-//
 #ifndef POLYANALYSIS_H
 #define POLYANALYSIS_H 1
 

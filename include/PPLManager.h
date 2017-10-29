@@ -1,4 +1,3 @@
-
 #ifndef PPLMANAGER_H
 #define PPLMANAGER_H 1
 

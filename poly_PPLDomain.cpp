@@ -76,6 +76,20 @@ void Ident::print(io::Output &out) const {
 			break;
 	};
 }
+
+Output& operator<<(Output& o, const Variable pv) { 
+	char letter = (pv.id() % 26) + 'A';
+	int number = pv.id() / 26;
+	char name[32];
+	if (number != 0) {
+		snprintf(name, sizeof(name), "%c%u", letter, number);
+	} else {
+		snprintf(name, sizeof(name), "%c", letter);
+	}
+	o << name;
+	return o;
+}  
+
 void PPLDomain::print(io::Output & out) const {
 	static char buf[64];
 
@@ -136,18 +150,39 @@ void PPLDomain::print(io::Output & out) const {
 	out << endl;
 }
 
-Output& operator<<(Output& o, const Variable pv) { 
-	char letter = (pv.id() % 26) + 'A';
-	int number = pv.id() / 26;
-	char name[32];
-	if (number != 0) {
-		snprintf(name, sizeof(name), "%c%u", letter, number);
-	} else {
-		snprintf(name, sizeof(name), "%c", letter);
+bool PPLDomain::equals(const PPLDomain &b) const {
+	if (!((poly == b.poly) &&
+			(id2axis.count() == b.id2axis.count()))) {
+		return false;
 	}
-	o << name;
-	return o;
-}  
+	if (trash != b.trash) {
+		return false;
+	}
+
+	if (compare_reg != b.compare_reg) {
+		return false;
+	}
+
+	if (compare_op != b.compare_op ) {
+		return false;
+	}
+
+	// TODO(clement) should return true if there exists a substitution that makes the two states equivalent
+	for (elm::genstruct::HashTable<Ident, int,HashIdent>::PairIterator it(id2axis); it; it++) {
+		const Pair<Ident, int> &p = *it;
+		if ((p.fst.getType() == Ident::ID_MEM_VAL) || (p.fst.getType() == Ident::ID_MEM_ADDR)) {
+			continue;
+		}
+		if (!b.id2axis.hasKey(p.fst)) {
+			return false;
+		}
+		int b_axis = b.id2axis[p.fst];
+		if (b_axis != p.snd) {
+			return false;
+		}
+	}
+	return true;
+}
 
 template <class F> PPLDomain::MapHelper<F>::MapHelper(F &pfunc, int max_in_domain) : _pfunc(pfunc), _max_in_domain(max_in_domain), _empty(true) {
 	for (PPL::dimension_type i = 0; i <= _max_in_domain; i++) {
@@ -174,109 +209,6 @@ bool PPLDomain::RemoveMarked::maps(PPL::dimension_type i, PPL::dimension_type &j
 	return true;
 }
 
-
-template <class F> void PPLDomain::doMapPoly(F pfunc) {
-	MapHelper<F> a(pfunc, poly.space_dimension() - 1);
-	poly.map_space_dimensions(a);
-}
-
-template <class F> void PPLDomain::doMapIdents(F pfunc) {
-	genstruct::Vector<Ident> todel;
-	int old_length = axis2id.length();
-	axis2id.clear();
-	axis2id.setLength(old_length);
-#ifdef POLY_DEBUG			
-	cout << "Remapping: ";
-#endif
-	for (elm::genstruct::HashTable<Ident, int, HashIdent>::MutableIter it(id2axis); it; it++) {
-		int &n = it.item();
-		PPL::dimension_type old_axis = n;
-		PPL::dimension_type new_axis = n;
-		if (pfunc.maps(old_axis, new_axis)) {
-			if (old_axis != new_axis) {
-#ifdef POLY_DEBUG			
-				cout << it.key() << "[" << Variable(old_axis) << "->" << Variable(new_axis) << "] ";
-#endif
-				n = new_axis;
-			}
-			axis2id[new_axis] = it.key();
-		} else { todel.add(it.key());
-}
-	}
-#ifdef POLY_DEBUG			
-	cout << endl;
-#endif
-	for (genstruct::Vector<Ident>::Iterator it(todel); it; it++) {
-		id2axis.remove(*it);
-	}
-}
-template <class F> void PPLDomain::doMap(F pfunc) {
-	doMapPoly(pfunc);
-	doMapIdents(pfunc);
-}
-
-#ifdef POLY_DEBUG
-void PPLDomain::_sanityChecks() {
-	int max_axis = -1;
-	if (isBottom())  {
-		ASSERT(poly.is_empty());
-		return;
-	}
-	ASSERT(!poly.is_empty());
-	for (elm::genstruct::HashTable<Ident, int,HashIdent>::PairIterator it(id2axis); it; it++) {
-		ASSERT((*it).snd < num_axis);
-		if (trash.bit((*it).snd)) {
-			continue;
-		}
-		ASSERT(axis2id[(*it).snd] == (*it).fst);
-		if ((*it).snd > max_axis) {
-			max_axis = (*it).snd;
-		}
-	}
-	for (int i = 0; i < id2axis.count(); i++)
-		ASSERT((axis2id[i].getType() == Ident::ID_INVALID) || (id2axis[axis2id[i]] == i));
-
-	for (int i = 0; i < num_axis; i++) {
-		if (trash.bit(i)) {
-			continue;
-		}
-		Ident &ident = axis2id[i];
-		ASSERT(id2axis[ident] == i);
-	}
-	ASSERT(max_axis + 1 == num_axis);
-	ASSERT(poly.space_dimension() <= num_axis); // unused axis can exist at the end
-	ASSERT(trash.size() >= num_axis);
-	ASSERT(trash.countOnes() <= num_axis);
-}
-#endif
-
-using PVAR = Variable *;
-
-void PPLDomain::doIntegerWrap() {
-	// TODO(clement): integer wrap not supported yet
-	
-}
-
-void PPLDomain::doFinalizeUpdate() {
-	/* Sets any bottom-equivalent state to the canonical bottom representation */
-	if (isBottom()) {
-		setBottom(); 
-		return;
-	}
-	_sanityChecks();
-#ifdef POLY_DEBUG			
-	if (PPLDomain::trash.countOnes() == 0) {
-		cout << "Nothing to clean" << endl;
-		_sanityChecks();
-		return;
-	}
-#endif
-	PPLDomain::RemoveMarked rm(PPLDomain::trash, poly.space_dimension());
-	doMap(rm);
-	num_axis -= PPLDomain::trash.countOnes();
-	PPLDomain::trash.clear();
-	_sanityChecks();
-}
 
 void PPLDomain::displayLocVars(io::Output &out) const {
 	const PropList _props;
@@ -383,15 +315,6 @@ void PPLDomain::getRange(const Variable &var, PPL::Coefficient &binf_n, PPL::Coe
 	poly.minimize(var, binf_n, binf_d, minimum);
 }
 
-void PPLDomain::doScratch(Ident &id) {
-	if (hasIdent(id)) { 
-		return;
-	}
-	
-	Variable v = getVar(id);
-	poly.unconstrain(v);
-}
-
 bool PPLDomain::mayAlias(const Variable &v1, const Variable &v2) const {
 	return !poly.relation_with(v1 == v2).implies(PPL::Poly_Con_Relation::is_disjoint()); 
 }
@@ -400,64 +323,30 @@ bool PPLDomain::mustAlias(const Variable &v1, const Variable &v2) const {
 	return poly.relation_with(v1 == v2).implies(PPL::Poly_Con_Relation::is_included()); 
 }
 
-void PPLDomain::_doBinaryOp(int op, Variable *v, Variable *vs1, Variable *vs2) {
-	bool b;
-	PPL::Coefficient cst_n, cst_d;
-#ifdef POLY_DEBUG			
-	cout << "Handle binary op: " << *v << " == " << *vs1 << " X " << *vs2 << endl;
-#endif
-	switch (op) {
-		case sem::ADD:
-			poly.add_constraint(*v == *vs1 + *vs2);
-			break;
-		case sem::SHL:          // d <- unsigned(a) << b
-			b = getConstant(*vs2, cst_n, cst_d);
-			if (b && (cst_d == 1))  {
-				poly.add_constraint(*v == *vs1 * (1 << PPL::raw_value(cst_n).get_ui()));
-			} else {
-				poly.add_constraint(*v >= *vs1);
-			}
-			break;
-		case sem::CMP:          // d <- a ~ b
-		case sem::CMPU:          // d <- a ~u b // TODO handle signedness FIXME
-		case sem::SUB:          // d <- a - b
-			poly.add_constraint(*v == *vs1 - *vs2);
-			break;
-		case sem::SHR:          // d <- unsigned(a) >> b
-		case sem::ASR:          // d <- a >> b
-			b = getConstant(*vs2, cst_n, cst_d);
-			if (b && (cst_d == 1))  {
-				poly.add_constraint(*vs1 == *v * (1 << PPL::raw_value(cst_n).get_ui()));
-			} else {
-				poly.add_constraint(*vs1 >= *v);
-			}
-			break;
-		case sem::MUL:
-			b = getConstant(*vs1,cst_n, cst_d);
-			if (b) {
-				poly.add_constraint(*v * cst_d == *vs2 * cst_n);
-			} else {
-				b = getConstant(*vs2, cst_n, cst_d);
-				if (b) {
-					poly.add_constraint(*v * cst_d == *vs1 * cst_n);
-}
-			} 
-			break;
-		case sem::MULH: // d <- (a * b) >> bitlength(d)
-			b = getConstant(*vs1, cst_n, cst_d);
-			if (b) {
-				poly.add_constraint(*v * cst_d == *vs2 * cst_n);
-			} else {
-				b = getConstant(*vs2, cst_n, cst_d);
-				if (b) {
-					poly.add_constraint(*v * cst_d == *vs1 * cst_n);
-}
-			}
-			break;
-		default:
-			break;
+
+
+void PPLDomain::displayIdentMap(io::Output &out) const {
+	out << "Mapping: " ;
+	for (elm::genstruct::HashTable<Ident, int,HashIdent>::PairIterator it(id2axis); it; it++) {
+		const Ident &ident = (*it).fst;
+		out << ident << ":" << Variable((*it).snd) << ", ";
 	}
+	out << endl;
 }
+
+bound_t PPLDomain::getLoopBound(int loopId) const {
+	if (isBottom()) {
+		return bound_t::UNREACHABLE;
+}
+	Ident id(loopId, Ident::ID_LOOP);
+	PPL::Coefficient binf_n, binf_d, bsup_n, bsup_d;
+	getRange(id, binf_n, binf_d, bsup_n, bsup_d);
+	if ( PPL::raw_value(bsup_d).get_ui() != 0) {
+		return static_cast<bound_t> (PPL::raw_value(bsup_n).get_ui() / PPL::raw_value(bsup_d).get_ui());
+	}
+	return bound_t::UNBOUNDED;
+}
+
 PPLDomain PPLDomain::onLoopExit(int loop, int bound) const {
 	PPLManager::t s_out = *this;
 	Ident id(loop, Ident::ID_LOOP);
@@ -496,81 +385,6 @@ PPLDomain PPLDomain::onLoopEntry(int loop) const {
 	return s_out;
 }
 
-
-
-void PPLDomain::displayIdentMap(io::Output &out) const {
-	out << "Mapping: " ;
-	for (elm::genstruct::HashTable<Ident, int,HashIdent>::PairIterator it(id2axis); it; it++) {
-		const Ident &ident = (*it).fst;
-		out << ident << ":" << Variable((*it).snd) << ", ";
-	}
-	out << endl;
-}
-
-
-// Return the first constraint in poly for which the coef of specified variable axis is non-zero
-const PPL::Constraint *PPLDomain::_getConstraintFor(int axis) const {
-	PPL::Constraint_System cons_sys = poly.minimized_constraints();
-	for (PPL::Constraint_System::const_iterator it = cons_sys.begin(); it != cons_sys.end(); it++) {
-		const PPL::Constraint &c = *it;
-		if (!c.is_equality()) {
-			continue;
-		}
-		if (c.coefficient(Variable(axis)) != 0) {
-			return new PPL::Constraint(c);
-		}
-	}
-	return nullptr;
-}
-
-
-
-/*
- * Identify variables that were created in common ancstor of l and r (TODO now limited to starting register values, i.e. SP/BP)
- */
-void PPLDomain::_identifyAncestorVars(PPLDomain &l, genstruct::HashTable<int, int> &commonVarsL, PPLDomain &r, genstruct::HashTable<int, int> &commonVarsR) const {
-	int idx = 0;
-#ifdef POLY_DEBUG			
-	cout << "Identifying common variables\n";
-#endif
-	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(l.id2axis); it; it++) {
-		const Ident &ident = (*it).fst;
-		if (ident.getType() != Ident::ID_SPECIAL) {
-			continue;
-		}
-		if (r.id2axis.hasKey(ident)) {
-			commonVarsL.put((*it).snd, idx);
-			commonVarsR.put(r.id2axis[ident], idx);
-#ifdef POLY_DEBUG			
-			cout << "Using: " << ident << endl;
-#endif
-			idx++;
-		}
-	}
-}
-
-/**
-* Indexes the pointer in dom, by their expression in terms of registers referenced in map_regs. 
-* Stores the result in map_ptr.
-*/
-void PPLDomain::_indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, HashCons> &map_ptr, genstruct::HashTable<int, int>& commonRegs) const {
-	int axis = commonRegs.count();
-	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
-		if ((*it).fst.getType() == Ident::ID_MEM_ADDR) {
-			commonRegs.put((*it).snd, axis);
-			PPLDomain dom(*this); /* make a working copy to do the projections */
-			dom.doMapPoly(MapWithHash(commonRegs));
-
-			const PPL::Constraint *cons = dom._getConstraintFor(axis);
-			if (cons != nullptr) {
-				map_ptr[*cons] = (*it).fst.getId();
-				delete cons;
-			}
-			commonRegs.remove((*it).snd);
-		}
-	} 
-
-}
 
 PPLDomain PPLDomain::onBranch(bool taken) const {
 	if (isBottom()) {
@@ -641,128 +455,6 @@ PPLDomain PPLDomain::onBranch(bool taken) const {
 	return res;
 }
 
-void PPLDomain::_extendAndHull(PPL::C_Polyhedron &poly1, PPL::C_Polyhedron &poly2) const {
-	PPL::C_Polyhedron *src = &poly2;
-	if (poly1.space_dimension() > poly2.space_dimension()) {
-		src = new PPL::C_Polyhedron(poly2);
-		src->add_space_dimensions_and_embed(poly1.space_dimension() - poly2.space_dimension());
-	} else if (poly2.space_dimension() > poly1.space_dimension()) {
-		poly1.add_space_dimensions_and_embed(poly2.space_dimension() - poly1.space_dimension());
-	}
-	poly1.poly_hull_assign(*src);
-	if (src != &poly2) {
-		delete src;
-}
-}
-
-void PPLDomain::_doUnify(PPLDomain& l1, PPLDomain& r1) const {
-	int axis = 0;
-
-#ifdef POLY_DEBUG			
-	cout << "Unify phase." << endl;
-	cout << "Left state: " << endl;
-	cout << l1;
-
-	cout << "Right state: " << endl;
-	cout << r1;
-#endif
-
-	/* 
-	 * These hashtables will represent the substitution to perform in the two input states.
-	 *
-	 * Hashtable keys contains original numbering of the common variables in each states.
-	 * Hashtable values contains a (new) common numbering of these varialbes.
-	 */
-	genstruct::HashTable<int,int> mappingL;
-	genstruct::HashTable<int,int> mappingR;
-
-	/* Create substitution entries for common vars created in merge ancestor */
-	_identifyAncestorVars(l1, mappingL, r1, mappingR);
-
-#ifdef POLY_DEBUG			
-	cout << "Identifying address expressions appearing on both sides\n";	
-#endif
-
-	/* 
-	 * Attempts to index each pointer by the expression of their address in terms of ancestor variables 
-	 *
-	 * The hashkey is the linear expression
-	 * The hashvalue is the (original) memory location index.
-	 * */
-	genstruct::HashTable<PPL::Constraint, int, HashCons> indexedPtrsL;
-	genstruct::HashTable<PPL::Constraint, int, HashCons> indexedPtrsR;
-
-	l1._indexPointersByExpr(indexedPtrsL, mappingL);
-	r1._indexPointersByExpr(indexedPtrsR, mappingR);
-
-	/* 
-	 * Pointer pairs with the same expression are equivalent, so we add a substitution for each one of them, so
-	 * they will be mapped to the same variable number.
-	 */
-	axis=mappingL.count();
-#ifdef POLY_DEBUG			
-	cout << "Memory locations appearing on both states: " ;
-#endif
-	int mem_ref = 0;
-	for (genstruct::HashTable<PPL::Constraint, int, HashCons>::PairIterator it(indexedPtrsL); it; it++) {
-		const PPL::Constraint &cons = (*it).fst;
-		if (indexedPtrsR.hasKey(cons)) {
-			int ptrIdxL = (*it).snd;
-			int ptrIdxR = indexedPtrsR[cons];
-			/* pointer with index ptrIdxL in l represents the same address as pointer with index ptrIdxR in r */
-			Variable addrL = l1.getVar(Ident(ptrIdxL, Ident::ID_MEM_ADDR));
-			Variable valL = l1.getVar(Ident(ptrIdxL, Ident::ID_MEM_VAL));
-			Variable addrR = r1.getVar(Ident(ptrIdxR, Ident::ID_MEM_ADDR));
-			Variable valR = r1.getVar(Ident(ptrIdxR, Ident::ID_MEM_VAL));
-			mappingL[addrL.id()] = axis;
-			mappingR[addrR.id()] = axis;
-			mappingL[valL.id()] = axis + 1;
-			mappingR[valR.id()] = axis + 1;
-			mem_ref++;
-#ifdef POLY_DEBUG			
-			cout << "ptr" << ptrIdxL << "/ptr" << ptrIdxR << ", ";
-#endif
-			axis += 2;
-		}
-	}
-#ifdef POLY_DEBUG			
-	cout << endl;
-#endif
-
-	/*
-	 * Finally, add a substitution for each register that appears in both states.
-	 */
-
-	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(l1.id2axis); it; it++) {
-		const Ident &ident = (*it).fst;
-		if ((ident.getType() != Ident::ID_REG) && (ident.getType() != Ident::ID_LOOP)) {
-			continue;
-}
-		if (r1.id2axis.hasKey(ident)) {
-			mappingL.put((*it).snd, axis);
-			mappingR.put(r1.id2axis[ident], axis);
-			axis++;
-		}
-	}
-
-	l1.doMap(PPLDomain::MapWithHash(mappingL));
-	r1.doMap(PPLDomain::MapWithHash(mappingR)); 
-	ASSERT(l1.poly.space_dimension() == r1.poly.space_dimension());
-	ASSERT(l1.poly.space_dimension() == axis);
-	l1.num_axis = l1.poly.space_dimension();
-
-#ifdef POLY_DEBUG			
-	cout << "unify done. " << endl;
-	cout << "Left state: " << endl;
-	cout << l1;
-
-	cout << "Right state: " << endl;
-	cout << r1;
-
-	cout << "Merge phase. " << endl;
-#endif
-}
-
 
 PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) const {
 	/*
@@ -823,52 +515,6 @@ PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) const {
 #endif
 
 	return l1;
-}
-
-
-Variable PPLDomain::memReplace(const Variable& address , const Variable& valueSource) {
-	const Ident &idOldAddress = getIdent(address);
-	const Ident &idOldValue = Ident(idOldAddress.getId(), Ident::ID_MEM_VAL);
-	Variable oldValue = getVar(idOldValue);
-
-	Ident idNewAddress, idNewValue;
-	varCreatePtr(idNewAddress, idNewValue);
-	const Variable &newAddress = varNew(idNewAddress);
-	const Variable &newValue = varNew(idNewValue);
-
-	doNewConstraint(address == newAddress);
-	doNewConstraint(newValue == valueSource);
-
-	varKill(oldValue);
-	varKill(address);
-	return newAddress;
-}
-
-Variable PPLDomain::memCreate(const Variable& address, const Variable& valueSource) {
-	Ident idNewAddress, idNewValue;
-	varCreatePtr(idNewAddress, idNewValue);
-	const Variable &newAddress = varNew(idNewAddress);
-	const Variable &newValue = varNew(idNewValue);
-
-	doNewConstraint(newValue == valueSource);
-	doNewConstraint(newAddress == address);
-	return newAddress;
-}
-
-Variable PPLDomain::memMerge(const Variable& address, const Variable& newValue) {
-	const Ident &idOldAddress = getIdent(address);
-	const Ident &idOldValue = Ident(idOldAddress.getId(), Ident::ID_MEM_VAL);
-	const Variable oldValue = getVar(idOldValue);
-
-	PPLDomain tempState = *this;
-
-	Variable newAddr1 = tempState.memReplace(address, newValue);
-	Variable newAddr2 = memReplace(address, oldValue);
-
-	ASSERT(axis2id == tempState.axis2id);
-	ASSERT(newAddr1.id() == newAddr2.id());
-	_extendAndHull(poly, tempState.poly);
-	return newAddr1;
 }
 
 PPLDomain PPLDomain::onSemInst(const sem::inst &si, int  /*instaddr*/) const {
@@ -1075,20 +721,186 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int  /*instaddr*/) const {
 	return s_out;
 }
 
-
-
-bound_t PPLDomain::getLoopBound(int loopId) const {
-	if (isBottom()) {
-		return bound_t::UNREACHABLE;
+template <class F> void PPLDomain::doMapPoly(F pfunc) {
+	MapHelper<F> a(pfunc, poly.space_dimension() - 1);
+	poly.map_space_dimensions(a);
 }
-	Ident id(loopId, Ident::ID_LOOP);
-	PPL::Coefficient binf_n, binf_d, bsup_n, bsup_d;
-	getRange(id, binf_n, binf_d, bsup_n, bsup_d);
-	if ( PPL::raw_value(bsup_d).get_ui() != 0) {
-		return static_cast<bound_t> (PPL::raw_value(bsup_n).get_ui() / PPL::raw_value(bsup_d).get_ui());
+
+template <class F> void PPLDomain::doMapIdents(F pfunc) {
+	genstruct::Vector<Ident> todel;
+	int old_length = axis2id.length();
+	axis2id.clear();
+	axis2id.setLength(old_length);
+#ifdef POLY_DEBUG			
+	cout << "Remapping: ";
+#endif
+	for (elm::genstruct::HashTable<Ident, int, HashIdent>::MutableIter it(id2axis); it; it++) {
+		int &n = it.item();
+		PPL::dimension_type old_axis = n;
+		PPL::dimension_type new_axis = n;
+		if (pfunc.maps(old_axis, new_axis)) {
+			if (old_axis != new_axis) {
+#ifdef POLY_DEBUG			
+				cout << it.key() << "[" << Variable(old_axis) << "->" << Variable(new_axis) << "] ";
+#endif
+				n = new_axis;
+			}
+			axis2id[new_axis] = it.key();
+		} else { todel.add(it.key());
+}
 	}
-	return bound_t::UNBOUNDED;
+#ifdef POLY_DEBUG			
+	cout << endl;
+#endif
+	for (genstruct::Vector<Ident>::Iterator it(todel); it; it++) {
+		id2axis.remove(*it);
+	}
 }
+template <class F> void PPLDomain::doMap(F pfunc) {
+	doMapPoly(pfunc);
+	doMapIdents(pfunc);
+}
+
+void PPLDomain::doScratch(Ident &id) {
+	if (hasIdent(id)) { 
+		return;
+	}
+	
+	Variable v = getVar(id);
+	poly.unconstrain(v);
+}
+
+
+void PPLDomain::doIntegerWrap() {
+	// TODO(clement): integer wrap not supported yet
+}
+
+void PPLDomain::doFinalizeUpdate() {
+	/* Sets any bottom-equivalent state to the canonical bottom representation */
+	if (isBottom()) {
+		setBottom(); 
+		return;
+	}
+	_sanityChecks();
+#ifdef POLY_DEBUG			
+	if (PPLDomain::trash.countOnes() == 0) {
+		cout << "Nothing to clean" << endl;
+		_sanityChecks();
+		return;
+	}
+#endif
+	PPLDomain::RemoveMarked rm(PPLDomain::trash, poly.space_dimension());
+	doMap(rm);
+	num_axis -= PPLDomain::trash.countOnes();
+	PPLDomain::trash.clear();
+	_sanityChecks();
+}
+
+Variable PPLDomain::varNew(const Ident &ident, bool allow_replace) {
+	return Variable(_doAllocAxis(ident, allow_replace));
+}
+
+Variable PPLDomain::getVar(const Ident &ident) const {
+	return Variable(id2axis[ident]);
+}
+
+Variable PPLDomain::getVarOrNew(const Ident &ident, bool allow_varNew) {
+	if (allow_varNew && !hasIdent(ident)) {
+		return varNew(ident, false);
+	}
+	return getVar(ident);
+}
+
+void PPLDomain::varCreatePtr(Ident &addr, Ident &val) {
+	addr = Ident(mem_ref, Ident::ID_MEM_ADDR);
+	val = Ident(mem_ref, Ident::ID_MEM_VAL);
+	mem_ref++;
+}
+
+bool PPLDomain::hasIdent(const Ident &ident) const {
+	return id2axis.hasKey(ident);
+}
+
+Variable PPLDomain::memReplace(const Variable& address , const Variable& valueSource) {
+	const Ident &idOldAddress = getIdent(address);
+	const Ident &idOldValue = Ident(idOldAddress.getId(), Ident::ID_MEM_VAL);
+	Variable oldValue = getVar(idOldValue);
+
+	Ident idNewAddress, idNewValue;
+	varCreatePtr(idNewAddress, idNewValue);
+	const Variable &newAddress = varNew(idNewAddress);
+	const Variable &newValue = varNew(idNewValue);
+
+	doNewConstraint(address == newAddress);
+	doNewConstraint(newValue == valueSource);
+
+	varKill(oldValue);
+	varKill(address);
+	return newAddress;
+}
+
+Variable PPLDomain::memCreate(const Variable& address, const Variable& valueSource) {
+	Ident idNewAddress, idNewValue;
+	varCreatePtr(idNewAddress, idNewValue);
+	const Variable &newAddress = varNew(idNewAddress);
+	const Variable &newValue = varNew(idNewValue);
+
+	doNewConstraint(newValue == valueSource);
+	doNewConstraint(newAddress == address);
+	return newAddress;
+}
+
+Variable PPLDomain::memMerge(const Variable& address, const Variable& newValue) {
+	const Ident &idOldAddress = getIdent(address);
+	const Ident &idOldValue = Ident(idOldAddress.getId(), Ident::ID_MEM_VAL);
+	const Variable oldValue = getVar(idOldValue);
+
+	PPLDomain tempState = *this;
+
+	Variable newAddr1 = tempState.memReplace(address, newValue);
+	Variable newAddr2 = memReplace(address, oldValue);
+
+	ASSERT(axis2id == tempState.axis2id);
+	ASSERT(newAddr1.id() == newAddr2.id());
+	_extendAndHull(poly, tempState.poly);
+	return newAddr1;
+}
+
+
+#ifdef POLY_DEBUG
+void PPLDomain::_sanityChecks() {
+	int max_axis = -1;
+	if (isBottom())  {
+		ASSERT(poly.is_empty());
+		return;
+	}
+	ASSERT(!poly.is_empty());
+	for (elm::genstruct::HashTable<Ident, int,HashIdent>::PairIterator it(id2axis); it; it++) {
+		ASSERT((*it).snd < num_axis);
+		if (trash.bit((*it).snd)) {
+			continue;
+		}
+		ASSERT(axis2id[(*it).snd] == (*it).fst);
+		if ((*it).snd > max_axis) {
+			max_axis = (*it).snd;
+		}
+	}
+	for (int i = 0; i < id2axis.count(); i++)
+		ASSERT((axis2id[i].getType() == Ident::ID_INVALID) || (id2axis[axis2id[i]] == i));
+
+	for (int i = 0; i < num_axis; i++) {
+		if (trash.bit(i)) {
+			continue;
+		}
+		Ident &ident = axis2id[i];
+		ASSERT(id2axis[ident] == i);
+	}
+	ASSERT(max_axis + 1 == num_axis);
+	ASSERT(poly.space_dimension() <= num_axis); // unused axis can exist at the end
+	ASSERT(trash.size() >= num_axis);
+	ASSERT(trash.countOnes() <= num_axis);
+}
+#endif
 
 void PPLDomain::_doFreeAxis(int axis) {
 	ASSERT(axis2id[axis].getType() != Ident::ID_INVALID);
@@ -1125,64 +937,249 @@ int PPLDomain::_doAllocAxis(const Ident &ident, bool allow_replace) {
 	return num_axis - 1;
 }
 
-Variable PPLDomain::getVar(const Ident &ident) const {
-	return Variable(id2axis[ident]);
-}
-
-Variable PPLDomain::getVarOrNew(const Ident &ident, bool allow_varNew) {
-	if (allow_varNew && !hasIdent(ident)) {
-		return varNew(ident, false);
-	}
-	return getVar(ident);
-}
-
-void PPLDomain::varCreatePtr(Ident &addr, Ident &val) {
-	addr = Ident(mem_ref, Ident::ID_MEM_ADDR);
-	val = Ident(mem_ref, Ident::ID_MEM_VAL);
-	mem_ref++;
-}
-
-bool PPLDomain::equals(const PPLDomain &b) const {
-	if (!((poly == b.poly) &&
-			(id2axis.count() == b.id2axis.count()))) {
-		return false;
-	}
-	if (trash != b.trash) {
-		return false;
-	}
-
-	if (compare_reg != b.compare_reg) {
-		return false;
-	}
-
-	if (compare_op != b.compare_op ) {
-		return false;
-	}
-
-	// TODO(clement) should return true if there exists a substitution that makes the two states equivalent
-	for (elm::genstruct::HashTable<Ident, int,HashIdent>::PairIterator it(id2axis); it; it++) {
-		const Pair<Ident, int> &p = *it;
-		if ((p.fst.getType() == Ident::ID_MEM_VAL) || (p.fst.getType() == Ident::ID_MEM_ADDR)) {
+// Return the first constraint in poly for which the coef of specified variable axis is non-zero
+const PPL::Constraint *PPLDomain::_getConstraintFor(int axis) const {
+	PPL::Constraint_System cons_sys = poly.minimized_constraints();
+	for (PPL::Constraint_System::const_iterator it = cons_sys.begin(); it != cons_sys.end(); it++) {
+		const PPL::Constraint &c = *it;
+		if (!c.is_equality()) {
 			continue;
 		}
-		if (!b.id2axis.hasKey(p.fst)) {
-			return false;
-		}
-		int b_axis = b.id2axis[p.fst];
-		if (b_axis != p.snd) {
-			return false;
+		if (c.coefficient(Variable(axis)) != 0) {
+			return new PPL::Constraint(c);
 		}
 	}
-	return true;
+	return nullptr;
 }
 
-Variable PPLDomain::varNew(const Ident &ident, bool allow_replace) {
-	return Variable(_doAllocAxis(ident, allow_replace));
+/*
+ * Identify variables that were created in common ancstor of l and r (TODO now limited to starting register values, i.e. SP/BP)
+ */
+void PPLDomain::_identifyAncestorVars(PPLDomain &l, genstruct::HashTable<int, int> &commonVarsL, PPLDomain &r, genstruct::HashTable<int, int> &commonVarsR) const {
+	int idx = 0;
+#ifdef POLY_DEBUG			
+	cout << "Identifying common variables\n";
+#endif
+	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(l.id2axis); it; it++) {
+		const Ident &ident = (*it).fst;
+		if (ident.getType() != Ident::ID_SPECIAL) {
+			continue;
+		}
+		if (r.id2axis.hasKey(ident)) {
+			commonVarsL.put((*it).snd, idx);
+			commonVarsR.put(r.id2axis[ident], idx);
+#ifdef POLY_DEBUG			
+			cout << "Using: " << ident << endl;
+#endif
+			idx++;
+		}
+	}
 }
 
-bool PPLDomain::hasIdent(const Ident &ident) const {
-	return id2axis.hasKey(ident);
+/**
+* Indexes the pointer in dom, by their expression in terms of registers referenced in map_regs. 
+* Stores the result in map_ptr.
+*/
+void PPLDomain::_indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, HashCons> &map_ptr, genstruct::HashTable<int, int>& commonRegs) const {
+	int axis = commonRegs.count();
+	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
+		if ((*it).fst.getType() == Ident::ID_MEM_ADDR) {
+			commonRegs.put((*it).snd, axis);
+			PPLDomain dom(*this); /* make a working copy to do the projections */
+			dom.doMapPoly(MapWithHash(commonRegs));
+
+			const PPL::Constraint *cons = dom._getConstraintFor(axis);
+			if (cons != nullptr) {
+				map_ptr[*cons] = (*it).fst.getId();
+				delete cons;
+			}
+			commonRegs.remove((*it).snd);
+		}
+	} 
+
 }
+
+void PPLDomain::_doUnify(PPLDomain& l1, PPLDomain& r1) const {
+	int axis = 0;
+
+#ifdef POLY_DEBUG			
+	cout << "Unify phase." << endl;
+	cout << "Left state: " << endl;
+	cout << l1;
+
+	cout << "Right state: " << endl;
+	cout << r1;
+#endif
+
+	/* 
+	 * These hashtables will represent the substitution to perform in the two input states.
+	 *
+	 * Hashtable keys contains original numbering of the common variables in each states.
+	 * Hashtable values contains a (new) common numbering of these varialbes.
+	 */
+	genstruct::HashTable<int,int> mappingL;
+	genstruct::HashTable<int,int> mappingR;
+
+	/* Create substitution entries for common vars created in merge ancestor */
+	_identifyAncestorVars(l1, mappingL, r1, mappingR);
+
+#ifdef POLY_DEBUG			
+	cout << "Identifying address expressions appearing on both sides\n";	
+#endif
+
+	/* 
+	 * Attempts to index each pointer by the expression of their address in terms of ancestor variables 
+	 *
+	 * The hashkey is the linear expression
+	 * The hashvalue is the (original) memory location index.
+	 * */
+	genstruct::HashTable<PPL::Constraint, int, HashCons> indexedPtrsL;
+	genstruct::HashTable<PPL::Constraint, int, HashCons> indexedPtrsR;
+
+	l1._indexPointersByExpr(indexedPtrsL, mappingL);
+	r1._indexPointersByExpr(indexedPtrsR, mappingR);
+
+	/* 
+	 * Pointer pairs with the same expression are equivalent, so we add a substitution for each one of them, so
+	 * they will be mapped to the same variable number.
+	 */
+	axis=mappingL.count();
+#ifdef POLY_DEBUG			
+	cout << "Memory locations appearing on both states: " ;
+#endif
+	int mem_ref = 0;
+	for (genstruct::HashTable<PPL::Constraint, int, HashCons>::PairIterator it(indexedPtrsL); it; it++) {
+		const PPL::Constraint &cons = (*it).fst;
+		if (indexedPtrsR.hasKey(cons)) {
+			int ptrIdxL = (*it).snd;
+			int ptrIdxR = indexedPtrsR[cons];
+			/* pointer with index ptrIdxL in l represents the same address as pointer with index ptrIdxR in r */
+			Variable addrL = l1.getVar(Ident(ptrIdxL, Ident::ID_MEM_ADDR));
+			Variable valL = l1.getVar(Ident(ptrIdxL, Ident::ID_MEM_VAL));
+			Variable addrR = r1.getVar(Ident(ptrIdxR, Ident::ID_MEM_ADDR));
+			Variable valR = r1.getVar(Ident(ptrIdxR, Ident::ID_MEM_VAL));
+			mappingL[addrL.id()] = axis;
+			mappingR[addrR.id()] = axis;
+			mappingL[valL.id()] = axis + 1;
+			mappingR[valR.id()] = axis + 1;
+			mem_ref++;
+#ifdef POLY_DEBUG			
+			cout << "ptr" << ptrIdxL << "/ptr" << ptrIdxR << ", ";
+#endif
+			axis += 2;
+		}
+	}
+#ifdef POLY_DEBUG			
+	cout << endl;
+#endif
+
+	/*
+	 * Finally, add a substitution for each register that appears in both states.
+	 */
+
+	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(l1.id2axis); it; it++) {
+		const Ident &ident = (*it).fst;
+		if ((ident.getType() != Ident::ID_REG) && (ident.getType() != Ident::ID_LOOP)) {
+			continue;
+}
+		if (r1.id2axis.hasKey(ident)) {
+			mappingL.put((*it).snd, axis);
+			mappingR.put(r1.id2axis[ident], axis);
+			axis++;
+		}
+	}
+
+	l1.doMap(PPLDomain::MapWithHash(mappingL));
+	r1.doMap(PPLDomain::MapWithHash(mappingR)); 
+	ASSERT(l1.poly.space_dimension() == r1.poly.space_dimension());
+	ASSERT(l1.poly.space_dimension() == axis);
+	l1.num_axis = l1.poly.space_dimension();
+
+#ifdef POLY_DEBUG			
+	cout << "unify done. " << endl;
+	cout << "Left state: " << endl;
+	cout << l1;
+
+	cout << "Right state: " << endl;
+	cout << r1;
+
+	cout << "Merge phase. " << endl;
+#endif
+}
+
+void PPLDomain::_extendAndHull(PPL::C_Polyhedron &poly1, PPL::C_Polyhedron &poly2) const {
+	PPL::C_Polyhedron *src = &poly2;
+	if (poly1.space_dimension() > poly2.space_dimension()) {
+		src = new PPL::C_Polyhedron(poly2);
+		src->add_space_dimensions_and_embed(poly1.space_dimension() - poly2.space_dimension());
+	} else if (poly2.space_dimension() > poly1.space_dimension()) {
+		poly1.add_space_dimensions_and_embed(poly2.space_dimension() - poly1.space_dimension());
+	}
+	poly1.poly_hull_assign(*src);
+	if (src != &poly2) {
+		delete src;
+	}
+}
+
+void PPLDomain::_doBinaryOp(int op, Variable *v, Variable *vs1, Variable *vs2) {
+	bool b;
+	PPL::Coefficient cst_n, cst_d;
+#ifdef POLY_DEBUG			
+	cout << "Handle binary op: " << *v << " == " << *vs1 << " X " << *vs2 << endl;
+#endif
+	switch (op) {
+		case sem::ADD:
+			poly.add_constraint(*v == *vs1 + *vs2);
+			break;
+		case sem::SHL:          // d <- unsigned(a) << b
+			b = getConstant(*vs2, cst_n, cst_d);
+			if (b && (cst_d == 1))  {
+				poly.add_constraint(*v == *vs1 * (1 << PPL::raw_value(cst_n).get_ui()));
+			} else {
+				poly.add_constraint(*v >= *vs1);
+			}
+			break;
+		case sem::CMP:          // d <- a ~ b
+		case sem::CMPU:          // d <- a ~u b // TODO handle signedness FIXME
+		case sem::SUB:          // d <- a - b
+			poly.add_constraint(*v == *vs1 - *vs2);
+			break;
+		case sem::SHR:          // d <- unsigned(a) >> b
+		case sem::ASR:          // d <- a >> b
+			b = getConstant(*vs2, cst_n, cst_d);
+			if (b && (cst_d == 1))  {
+				poly.add_constraint(*vs1 == *v * (1 << PPL::raw_value(cst_n).get_ui()));
+			} else {
+				poly.add_constraint(*vs1 >= *v);
+			}
+			break;
+		case sem::MUL:
+			b = getConstant(*vs1,cst_n, cst_d);
+			if (b) {
+				poly.add_constraint(*v * cst_d == *vs2 * cst_n);
+			} else {
+				b = getConstant(*vs2, cst_n, cst_d);
+				if (b) {
+					poly.add_constraint(*v * cst_d == *vs1 * cst_n);
+}
+			} 
+			break;
+		case sem::MULH: // d <- (a * b) >> bitlength(d)
+			b = getConstant(*vs1, cst_n, cst_d);
+			if (b) {
+				poly.add_constraint(*v * cst_d == *vs2 * cst_n);
+			} else {
+				b = getConstant(*vs2, cst_n, cst_d);
+				if (b) {
+					poly.add_constraint(*v * cst_d == *vs1 * cst_n);
+}
+			}
+			break;
+		default:
+			break;
+	}
+}
+
 
 p::feature POLY_ANALYSIS_FEATURE("otawa::poly::POLY_ANALYSIS_FEATURE", new Maker<PolyAnalysis>());
 

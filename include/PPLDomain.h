@@ -1,5 +1,3 @@
-// #define POLY_DEBUG 1
-//
 #ifndef PPLDOMAIN_H
 #define PPLDOMAIN_H 1
 
@@ -210,7 +208,7 @@ public:
 		// TODO(clement): 
 	}
 
-	inline void operator=(const PPLDomain& dom) {
+	inline PPLDomain& operator=(const PPLDomain& dom) {
 		poly = dom.poly;
 		num_axis = dom.num_axis;
 		id2axis = dom.id2axis;
@@ -219,7 +217,7 @@ public:
 		compare_op = dom.compare_op;
 		mem_ref = dom.mem_ref;
 		trash = dom.trash;
-	
+		return *this;
 	}
 
 	bool equals(const PPLDomain & /*b*/) const;
