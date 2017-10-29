@@ -157,10 +157,10 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, ai::WorkListD
 				if (LOOP_HEADER(e->sink())) {
 					if (Dominance::dominates(e->sink(), e->source())) {
 						/* Back-Edge: increment virtual loop counter */
-						edgeState = edgeState.onLoopIter(e->sink()->id(), ENCLOSING_LOOP_HEADER(e->sink()));
+						edgeState = edgeState.onLoopIter(e->sink()->id());
 					} else {
 						/* Entry-Edge: initialize virtal loop counter */
-						edgeState = edgeState.onLoopEntry(e->sink()->id(), ENCLOSING_LOOP_HEADER(e->sink()));
+						edgeState = edgeState.onLoopEntry(e->sink()->id());
 					}
 				}
 

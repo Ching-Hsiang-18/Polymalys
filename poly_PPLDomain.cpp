@@ -376,12 +376,12 @@ void PPLDomain::doScratch(Ident &id) {
 	poly.unconstrain(v);
 }
 
-bool PPLDomain::mayAlias(const Variable &v1, const Variable &v2, int offset) const {
-	return !poly.relation_with(v1 == v2 + offset).implies(PPL::Poly_Con_Relation::is_disjoint()); 
+bool PPLDomain::mayAlias(const Variable &v1, const Variable &v2) const {
+	return !poly.relation_with(v1 == v2).implies(PPL::Poly_Con_Relation::is_disjoint()); 
 }
 
-bool PPLDomain::mustAlias(const Variable &v1, const Variable &v2, int offset) const {
-	return poly.relation_with(v1 == v2 + offset).implies(PPL::Poly_Con_Relation::is_included()); 
+bool PPLDomain::mustAlias(const Variable &v1, const Variable &v2) const {
+	return poly.relation_with(v1 == v2).implies(PPL::Poly_Con_Relation::is_included()); 
 }
 
 void PPLDomain::_doBinaryOp(int op, Variable *v, Variable *vs1, Variable *vs2) {
@@ -459,7 +459,7 @@ PPLDomain PPLDomain::onLoopExit(int loop, int bound) const {
 }
 
 
-PPLDomain PPLDomain::onLoopIter(int loop, bool  /*inner*/) const {
+PPLDomain PPLDomain::onLoopIter(int loop) const {
 	PPLManager::t s_out = *this;
 	Ident id(loop, Ident::ID_LOOP);
 	ASSERT(s_out.hasIdent(id)); /* You are supposed to be already inside the loop when you call onLoopIter() */ 
@@ -470,7 +470,7 @@ PPLDomain PPLDomain::onLoopIter(int loop, bool  /*inner*/) const {
 	return s_out;
 }
 
-PPLDomain PPLDomain::onLoopEntry(int loop, bool  /*inner*/) const {
+PPLDomain PPLDomain::onLoopEntry(int loop) const {
 	PPLManager::t s_out = *this;
 	Ident id(loop, Ident::ID_LOOP);
 	Variable v = s_out.varNew(id, true);
@@ -853,7 +853,7 @@ Variable PPLDomain::memMerge(const Variable& address, const Variable& newValue) 
 	return newAddr1;
 }
 
-PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) const {
+PPLDomain PPLDomain::onSemInst(const sem::inst &si, int instaddr) const {
         PPLDomain s_out = *this;
  		ASSERT(!hasFilter() || (si.op == sem::BRANCH)); 
 
@@ -1157,26 +1157,6 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 
 Variable PPLDomain::varNew(const Ident &ident, bool allow_replace) {
 	return Variable(_doAllocAxis(ident, allow_replace));
-}
-
-void PPLDomain::varRename(const Ident &ident, const Ident &newident, bool allow_replace) {
-	int axis;
-	ASSERT(allow_replace || !id2axis.hasKey(newident));
-	if (id2axis.hasKey(newident)) {
-		axis = id2axis[newident];
-#ifdef POLY_DEBUG			
-		cout << "The identifier " << ident << " was mapped to variable " << Variable(axis) << endl;
-#endif
-		_doFreeAxis(axis);
-	}
-	axis = id2axis[ident];
-
-	axis2id[axis] = newident;
-	id2axis[newident] = axis;
-	id2axis.remove(ident);
-#ifdef POLY_DEBUG			
-	cout << "Renaming identifier " << ident << " to " << newident << ", mapped to variable " << Variable(axis) << endl;
-#endif
 }
 
 bool PPLDomain::hasIdent(const Ident &ident) const {

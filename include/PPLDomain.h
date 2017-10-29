@@ -27,7 +27,15 @@ enum bound_t : signed long {
 	UNBOUNDED = -2,
 };
 
-
+/**
+ * @class Ident
+ *
+ * Identifiers can represent registers, memory address/values, loop bounds, or special values (such as starting stack frame address).
+ * They are associated to polyhedron variables in abstract states.
+ *
+ * Identifiers are uniquely identified by a type, and an id number.
+ *
+ */
 class Ident {
 	public:
 		enum IdentType {
@@ -101,10 +109,16 @@ private:
 	int mem_ref; ///< Highest pointer ID + 1
 	int num_axis; ///<Highest poly variable ID + 1
 
-	/* Not really part of the abstract state */
-	BitVector trash; 
+	BitVector trash;  ///< Bitvector representing the set of variables scheduled to be destroyed
 
 	/* Nested classes */
+
+	/**
+	 * @class MapHelper
+	 *
+	 * Wrapper for the PPL poly mapping partial functions, that computes automatically max_in_codomain/has_empty_codomain.
+	 * See PPL documentation for details.
+	 */
 	template <class F> class MapHelper {
 		public:
 			MapHelper(F &pfunc, int max_in_domain);
@@ -118,7 +132,12 @@ private:
 			bool _empty;
 	};
 
-	/* Partial mapping function that removes variables in set (bitvector) */
+	/**
+	 * @class RemoveMarked
+	 *
+	 * Partial mapping function that removes variables in set (bitvector) 
+	 * Needs to be wrapped with MapHelper before usage with PPL.
+	 */
 	class RemoveMarked {
 		public:
 			inline ~RemoveMarked() { }
@@ -129,6 +148,12 @@ private:
 			int _size;
 	};
 
+	/**
+	 * @class MapWithHash
+	 *
+	 * Partial mapping function accoring to passed hashtable.
+	 * Needs to be wrapped with MapHelper before usage with PPL.
+	 */
 	class MapWithHash {
 		public:
 			inline MapWithHash(genstruct::HashTable<int,int> &map) : _map(map) { }
@@ -160,10 +185,10 @@ public:
 	 * Builds a top state
 	 * @param maxAxis Maximum number of variables this state can hold
 	 */
-	inline PPLDomain(int max_axis) {
+	inline PPLDomain(int maxAxis) {
 		num_axis = 0;
 		mem_ref = 0;
-		trash = BitVector(max_axis);
+		trash = BitVector(maxAxis);
 		poly = PPL::C_Polyhedron(0, PPL::UNIVERSE);
 		compare_reg = Ident();
 		compare_op = sem::EQ;
@@ -199,49 +224,290 @@ public:
 	bool equals(const PPLDomain &) const;
 
 	/* Operations that reads the state and returns information about it */
-	void print(io::Output & out) const;
+
+	/**
+	 * Prints this state (constraints, mappings, and local variables)
+	 */
+	void print(io::Output & out) const; 
+
+	/**
+	 * Display local variables in this state
+	 */
 	void displayLocVars(io::Output &out) const;
+
+	/**
+	 * Display mappings in this state
+	 */
 	void displayIdentMap(io::Output &out) const;
+
+	/** 
+	 * Attempts to get the range of possible values for a variable associated with an identifier.
+	 *
+	 * @param id The target identifier
+	 * @param binf_n Reference for storing the numerator for the lower bound
+	 * @param binf_d Reference for storing the denominator for the lower bound
+	 * @param bsup_n Reference for storing the numerator for the upper bound
+	 * @param bsup_d eference for storing the denominator for the upper bound
+	 */
 	void getRange(const Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d) const;
+	/** 
+	 * Attempts to get the range of possible values for a variable.
+	 *
+	 * @param v The target variable
+	 * @param binf_n Reference for storing the numerator for the lower bound
+	 * @param binf_d Reference for storing the denominator for the lower bound
+	 * @param bsup_n Reference for storing the numerator for the upper bound
+	 * @param bsup_d eference for storing the denominator for the upper bound
+	 */
 	void getRange(const Variable &v, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d) const;
+
+	/**
+	 * Display a fraction on output stream. 
+	 *
+	 * @param out The output stream
+	 * @param num Numerator
+	 * @param den Denominator
+	 */
 	void displayFrac(io::Output &out, const PPL::Coefficient &num, const PPL::Coefficient &den) const;
 
+	/**
+	 * Gets the space dimension of the polyhedron in the current state
+	 *
+	 * @return The space dimension count.
+	 */
 	inline int getVarIDCount() const { return poly.space_dimension(); }
+
+	/**
+	 * Tests if the current state is equivalent to Bottom.
+	 *
+	 * @return true if bottom, false otherwise.
+	 */
 	inline bool isBottom() const { return (num_axis == -1) || poly.is_empty(); } 
+
+	/**
+	 * Sets the current state to bottom.
+	 */
 	inline void setBottom() { *this = PPLDomain(); }
+
+	/**
+	 * Tests if the current state has a pending filtering operation, resulting from a condition branch
+	 *
+	 * @return true if pending filtering operation, false otherwise.
+	 */
 	inline bool hasFilter() const { return (compare_reg.getType() != Ident::ID_INVALID); }
-	bool mayAlias(const Variable &v1, const Variable &v2, int offset = 0) const;
-	bool mustAlias(const Variable &v1, const Variable &v2, int offset = 0) const;
+
+	/**
+	 * Tests if two variables may be equal (i.e. exists at least one concrete state in this abstract state where they are equal)
+	 *
+	 * @param v1 First variable
+	 * @param v2 Second variable
+	 * @return true if may be equal, false otherwise
+	 */
+	bool mayAlias(const Variable &v1, const Variable &v2) const;
+
+	/**
+	 * Tests if two variables must be equal (i.e. they are equal for all concrete states in this abstract state)
+	 *
+	 * @param v1 First variable
+	 * @param v2 Second variable
+	 * @return true if must be equal, false otherwise
+	 */
+	bool mustAlias(const Variable &v1, const Variable &v2) const;
+
+	/**
+	 * Attempts to get the value of a a variable mapped to an identifier, if this value can be statically determined, and is unique.
+	 *
+	 * @param id The target identifier
+	 * @param cst_n Reference for storing the numerator 
+	 * @param cst_d Reference for storing the denominator
+	 * @return true if successful, false if the value cannot be determined.
+	 */
 	bool getConstant(const Ident &id, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d) const;
+
+	/**
+	 * Attempts to get the value of a variable, if this value can be statically determined, and is unique.
+	 *
+	 * @param var The target variable 
+	 * @param cst_n Reference for storing the numerator 
+	 * @param cst_d Reference for storing the denominator
+	 * @return true if successful, false if the value cannot be determined.
+	 */
 	bool getConstant(const Variable &var, PPL::Coefficient &cst, PPL::Coefficient &cst_d) const;
+
+	/**
+	 * Attempts to get the current loop bound estimation, in the current state.
+	 *
+	 * @param loopId The ID of the loop header.
+	 * @return loop bound, or bound_t::UNREACHABLE if this state is bottom, or bound_t::UNBOUNDED if loop cannot be bounded.
+	 */
 	bound_t getLoopBound(int loopId) const;
 
 	/* High-level update operations. They return the modified state. */
-	PPLDomain onSemInst(sem::inst si, int instaddr) const; ///< Process an OTAWA semantic instruction
-	PPLDomain onBranch(bool taken) const; ///< Process a branch, taking care of filtering
-	PPLDomain onMerge(const PPLDomain& r, bool widen=false) const; ///< Process join and widening
-	PPLDomain onLoopEntry(int loop, bool inner=false) const; ///< Process loop entry edge
-	PPLDomain onLoopIter(int loop, bool inner=false) const; ///< Process loop back-edge
-	PPLDomain onLoopExit(int loop, int bound) const; ///< Process loop exit-edge
+
+	/**
+	 * Process an OTAWA semantic instruction
+	 *
+	 * @param si The semantic instruction
+	 * @param instaddr Instruction address
+	 *
+	 * @return The updated state.
+	 */
+	PPLDomain onSemInst(const sem::inst &si, int instaddr) const; 
+
+	/**
+	 * Process a conditional branch instruction, and apply the filtering.
+	 *
+	 * @param taken true if we are processing the TAKEN edge, false otherwise
+	 *
+	 * @return The updated state.
+	 */
+
+	PPLDomain onBranch(bool taken) const; 
+
+	/**
+	 * Process join and widening
+	 *
+	 * @param r Other state to merge with
+	 * @param widen true if we perform a widening, false for normal join
+	 * @return The updated state.
+	 */
+	PPLDomain onMerge(const PPLDomain& r, bool widen=false) const; 
+	/**
+	 * Process loop entry
+	 * 
+	 * @param loop The ID of the loop header.
+	 * @return The updated state.
+	 */
+	PPLDomain onLoopEntry(int loop) const; 
+	/**
+	 * Process loop back-edge
+	 *
+	 * @param loop The ID of the loop header.
+	 * @return The updated state.
+	 */
+	PPLDomain onLoopIter(int loop) const; 
+	/**
+	 * Process loop exit-edge
+	 *
+	 * @param loop The ID of the loop header.
+	 * @param bound The current estimated bound of the loop (or bound_t::UNREACHABLE/bound_t::UNBOUNDED if loop unreachable/unbounded)
+	 * @return The updated state.
+	 */
+	PPLDomain onLoopExit(int loop, int bound) const;
 
 	/* Operations that modify the state in-place */
+
+	/**
+	 * Map only the polyhedron (without the identifier mappings). This is probably not what you want.
+	 *
+	 * @param pfunc The partial mapping function (see PPL docs)
+	 */
 	template <class F> void doMapPoly(F pfunc);
+
+	/**
+	 * Map only the identifiers mappings (without the polyhedron). This is probably not what you want.
+	 *
+	 * @param pfunc The partial mapping function (see PPL docs)
+	 */
 	template <class F> void doMapIdents(F pfunc);
+
+	/**
+	 * Map the state according to partial function. This is equivalent to calling doMapPoly + doMapIdents
+	 *
+	 * @param pfunc The partial mapping function (see PPL docs)
+	 */
 	template <class F> void doMap(F pfunc);
+
+	/**
+	 * Handle integer wrap-around (currently not implemented)
+	 */
 	void doIntegerWrap();
+
+	/**
+	 * Unconstrain (scratch) a variable associated with an identifier. 
+	 *
+	 * @param id Target identifier.
+	 */
 	void doScratch(Ident &id);
+
+	/**
+	 * Add a new constraints to the polyhedron
+	 *
+	 * @param c The new constraint to add.
+	 */
 	void doNewConstraint(const PPL::Constraint &c) { poly.add_constraint(c); }
 
 	/* Variable/Idents handling operations */
-	Variable varNew(const Ident&, bool allow_replace = false);
+
+	/**
+	 * create a new variable to represent an identifier.
+	 *
+	 * @param id The identifier to associate the variable with.
+	 * @param allow_replace true if we allow replacing an existing variable that was mapped to id, false otherwise
+	 * @return The new variable.
+	 */
+	Variable varNew(const Ident &id, bool allow_replace = false);
+
+	/**
+	 * Schedule a variable (associated with an identifier) to be destroyed.
+	 * The actual variable removal will be done at the next _doFinalizeUpdate()
+	 * 
+	 * @param id Target identifier
+	 */
 	inline void varKill(const Ident& id) { return _doFreeAxis(id2axis[id]); }
+
+	/**
+	 * Schedule a variable to be destroyed.
+	 * The actual variable removal will be done at the next _doFinalizeUpdate()
+	 * 
+	 * @param v Target variable
+	 */
 	inline void varKill(const Variable& v) { return _doFreeAxis(v.id()); }
-	void varRename(const Ident &ident, const Ident &newident, bool allow_replace);
-	Variable getVarOrNew(const Ident&, bool allow_varNew = true);
+
+	/**
+	 * Gets the variable associated with an identifier (i.e. lookup).
+	 *
+	 * @param id The target identifier
+	 * @param allow_varNew if true, and the identifier is unknown, create a new variable
+	 * @return The variable.
+	 */
+	Variable getVarOrNew(const Ident& id, bool allow_varNew = true);
+
+	/**
+	 * Gets the variable associated with an identifier (i.e. lookup). 
+	 *
+	 * @param id The target identifier
+	 * @return The variable.
+	 */
 	Variable getVar(const Ident&) const;
+
+	/**
+	 * Tests if a variable is associated with an identifier.
+	 *
+	 * @param v Variable to test
+	 * @return true if the variable is mapped to an identifier, false otherwise
+	 */
 	inline bool isVarMapped(const Variable& v) const { return (axis2id.length() > v.id()) && (axis2id[v.id()].getType() != Ident::ID_INVALID); }
+
+	/**
+	 * Returns the identifier associated with a variable
+	 *
+	 * @param v The variable
+	 * @return The identifier
+	 */
 	inline const Ident& getIdent(const Variable& v) const { return axis2id[v.id()]; }
+
+	/**
+	 * Tests if an identifier exists
+	 *
+	 * @param id The identifier
+	 * @return true if the identifier exists, false otherwise
+	 */
 	bool hasIdent(const Ident&) const;
+
+	/**
+	 * Performs garbage-collection of variables scheduled to be destroyed.
+	 */
 	void doFinalizeUpdate();
 
 	/* Pointers/Memory-related operations */
@@ -287,7 +553,8 @@ public:
 	 */
 	Variable memMerge(const Variable& /* address */, const Variable& /* newValue */);
 
-private: /* Private helper functions */
+private: 
+	/* Private helper functions. Subject to changes, and should not be used directly. */
 	int _doAllocAxis(const Ident&, bool allow_replace = false);
 	void _doFreeAxis(int axis); 
 #ifdef POLY_DEBUG
@@ -329,11 +596,6 @@ private: /* Private helper functions */
 inline Output& operator<<(Output& o, const PPLDomain &dom) { dom.print(o); return o; }
 inline bool operator==(const PPLDomain &a, const PPLDomain &b) { return a.equals(b); }
 inline bool operator!=(const PPLDomain &a, const PPLDomain &b) { return !(a == b); }
-
-
-
-
-
 
 } } // namespace otawa::poly
 #endif
