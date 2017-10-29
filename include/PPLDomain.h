@@ -20,13 +20,13 @@ using namespace otawa::util;
 
 namespace PPL = Parma_Polyhedra_Library;
 using Variable = PPL::Variable;
+Output& operator<<(Output& o, const Variable pv);
 
 enum bound_t : signed long {
 	UNREACHABLE = -1,
 	UNBOUNDED = -2,
 };
 
-Output& operator<<(Output& o, const Variable pv);
 
 class Ident {
 	public:
@@ -53,45 +53,8 @@ class Ident {
 			return (_id == b._id) && (_type == b._type);  
 		}
 
-		inline void print(io::Output &out) const {
-			switch(_type) {
-				case ID_REG:
-					if (_id < 0) {
-						out << "T" << -_id;
-					} else {
-						out << "R" << _id;
-					}
-					break;
-				case ID_MEM_ADDR:
-					out << "ptr" << _id;
-					break;
-				case ID_MEM_VAL:
-					out << "*ptr" << _id;
-					break;
-				case ID_LOOP:
-					out << "bound" << _id;
-					break;
-				case ID_SPECIAL:
-					switch(_id) {
-						case ID_START_FP:
-							out << "START_FP";
-							break;
-						case ID_START_SP:
-							out << "START_SP";
-							break;
-						case ID_START_LR:
-							out << "START_LR";
-							break;
-						default:
-							out << "[SPECIAL " << _id << "]";
-							break;
-					}
-					break;
-				default:
-					out << "[ID=" << _id << ", TYPE=" << int(_type) << "]";
-					break;
-			};
-		}
+		void print(io::Output &out) const;
+
 		inline bool operator==(const Ident &i) const {
 			return (_id == i._id) && (_type == i._type);
 		}
@@ -236,44 +199,9 @@ public:
 	bool equals(const PPLDomain &) const;
 
 	/* Operations that reads the state and returns information about it */
-	inline void print(io::Output & out) const {
-		static char buf[64];
-		PPL::Constraint_System cons = poly.minimized_constraints();
-
-		for (PPL::Constraint_System::const_iterator it = cons.begin(); it != cons.end(); it++) {
-			const PPL::Constraint &c = *it;
-			for (PPL::dimension_type i = 0; i < cons.space_dimension(); i++) {
-				const PPL::Coefficient &coef = c.coefficient(Variable(i));
-				if (coef != 0) {
-					Variable v(i);
-					if (coef == -1) {
-						out << "- ";
-					} else if (coef != 1) {
-						gmp_snprintf(buf, sizeof(buf), "%Zd", &PPL::raw_value(coef));
-						buf[sizeof(buf)-1] = 0;
-						out << buf << ".";
-					}
-					if (isVarMapped(v)) {
-						out << getIdent(v);
-					} else {
-						out << v;
-					}
-					out << " ";
-				}
-			}
-			const PPL::Coefficient &cst = c.inhomogeneous_term();
-			gmp_snprintf(buf, sizeof(buf), "%Zd", &PPL::raw_value(cst));
-			buf[sizeof(buf)-1] = 0;
-			if (c.is_equality()) {
-				out << "= ";
-			} else out << ">= ";
-			out << buf;
-			out << "; ";;
-		}
-		out << endl;
-	}
-	void displayLocVars();
-	void displayIdentMap();
+	void print(io::Output & out) const;
+	void displayLocVars(io::Output &out);
+	void displayIdentMap(io::Output &out);
 	void getRange(Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
 	void getRange(Variable &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
 
@@ -388,10 +316,10 @@ private: /* Private helper functions */
 	void _doBinaryOp(int op, Variable *v, Variable *vs1, Variable *vs2);
 
 };
-
+inline Output& operator<<(Output& o, const PPLDomain &dom) { dom.print(o); return o; }
 inline bool operator==(const PPLDomain &a, const PPLDomain &b) { return a.equals(b); }
 inline bool operator!=(const PPLDomain &a, const PPLDomain &b) { return !(a == b); }
-inline Output& operator<<(Output& o, const PPLDomain &dom) { dom.print(o); return o; }
+
 
 
 

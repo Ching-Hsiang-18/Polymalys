@@ -9,7 +9,7 @@
 #include <elm/util/BitVector.h>
 #include <ppl.hh>
 
-// #define POLY_DEBUG 1
+#define POLY_DEBUG 1
 
 namespace otawa { namespace poly {
 using namespace otawa;

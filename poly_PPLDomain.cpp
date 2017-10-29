@@ -37,24 +37,105 @@ t::hash HashCons::hash(const PPL::Constraint& key) {
 	return result;
 }
 
-/*
-Variable::Variable(const Ident &ident, const PPLDomain &dom) : Variable(dom.id2axis[ident]), _dom(dom), _ident(ident) { }
-Variable::Variable(int axis, const PPLDomain &dom) 	: Variable(axis), _dom(dom), _ident(dom.axis2id[axis]) { 
-	ASSERT(_ident.getType() != Ident::ID_INVALID);	
-} 
-*/
+void Ident::print(io::Output &out) const {
+	switch(_type) {
+		case ID_REG:
+			if (_id < 0) {
+				out << "T" << -_id;
+			} else {
+				out << "R" << _id;
+			}
+			break;
+		case ID_MEM_ADDR:
+			out << "ptr" << _id;
+			break;
+		case ID_MEM_VAL:
+			out << "*ptr" << _id;
+			break;
+		case ID_LOOP:
+			out << "bound" << _id;
+			break;
+		case ID_SPECIAL:
+			switch(_id) {
+				case ID_START_FP:
+					out << "START_FP";
+					break;
+				case ID_START_SP:
+					out << "START_SP";
+					break;
+				case ID_START_LR:
+					out << "START_LR";
+					break;
+				default:
+					out << "[SPECIAL " << _id << "]";
+					break;
+			}
+			break;
+		default:
+			out << "[ID=" << _id << ", TYPE=" << int(_type) << "]";
+			break;
+	};
+}
+void PPLDomain::print(io::Output & out) const {
+	static char buf[64];
+
+	if (isBottom()) {
+		out << "BOTTOM";
+		return;
+	}
+
+	PPL::Constraint_System cons = poly.minimized_constraints();
+	int ncons = 0;
+
+	out << "Constraints: ";;
+	for (PPL::Constraint_System::const_iterator it = cons.begin(); it != cons.end(); it++, ncons++) {
+		const PPL::Constraint &c = *it;
+		for (PPL::dimension_type i = 0; i < cons.space_dimension(); i++) {
+			const PPL::Coefficient &coef = c.coefficient(Variable(i));
+			if (coef != 0) {
+				Variable v(i);
+				if (coef == -1) {
+					out << "- ";
+				} else if (coef != 1) {
+					gmp_snprintf(buf, sizeof(buf), "%Zd", &PPL::raw_value(coef));
+					buf[sizeof(buf)-1] = 0;
+					out << buf << ".";
+				}
+				if (isVarMapped(v)) {
+					out << getIdent(v);
+				} else {
+					out << v;
+				}
+				out << " ";
+			}
+		}
+		const PPL::Coefficient &cst = c.inhomogeneous_term();
+		gmp_snprintf(buf, sizeof(buf), "%Zd", &PPL::raw_value(cst));
+		buf[sizeof(buf)-1] = 0;
+		if (c.is_equality()) {
+			out << "= ";
+		} else out << ">= ";
+		out << buf;
+		out << "; ";;
+	}
+	out << endl;
+	out << "Space dimension: " << poly.space_dimension() << ", Constraints count: " << ncons << endl;
+	const_cast<PPLDomain*>(this)->displayIdentMap(out);
+	const_cast<PPLDomain*>(this)->displayLocVars(out);
+	out << endl;
+}
 
 Output& operator<<(Output& o, const Variable pv) { 
-		char letter = (pv.id() % 26) + 'A';
-		int number = pv.id() / 26;
-		char name[32];
-		if (number != 0) {
-			snprintf(name, sizeof(name), "%c%u", letter, number);
-		} else {
-			snprintf(name, sizeof(name), "%c", letter);
-		}
-		o << name;
-		return o;
+	char letter = (pv.id() % 26) + 'A';
+	int number = pv.id() / 26;
+	char name[32];
+	if (number != 0) {
+		snprintf(name, sizeof(name), "%c%u", letter, number);
+	} else {
+		snprintf(name, sizeof(name), "%c", letter);
+	}
+	o << name;
+	return o;
 }  
 
 template <class F> PPLDomain::MapHelper<F>::MapHelper(F &pfunc, int max_in_domain) : _pfunc(pfunc), _max_in_domain(max_in_domain), _empty(true) {
@@ -93,9 +174,8 @@ template <class F> void PPLDomain::doMapIdents(F pfunc) {
 	int old_length = axis2id.length();
 	axis2id.clear();
 	axis2id.setLength(old_length);
-	// cout << "trash bitvector:" << PPLDomain::trash << endl;
 #ifdef POLY_DEBUG			
-	cout << "REMAP: ";
+	cout << "Remapping: ";
 #endif
 	for (elm::genstruct::HashTable<Ident, int, HashIdent>::MutableIter it(id2axis); it; it++) {
 		int &n = it.item();
@@ -174,31 +254,29 @@ void PPLDomain::doFinalizeUpdate() {
 		return;
 	}
 #endif
-	// displayIdentMap(dom);
 	PPLDomain::RemoveMarked rm(PPLDomain::trash, poly.space_dimension());
 	doMapPoly(rm);
 	num_axis -= PPLDomain::trash.countOnes();
 	doMapIdents(rm);
 	PPLDomain::trash.clear();
-	// displayIdentMap(dom);
 	_sanityChecks();
 }
 
-void PPLDomain::displayLocVars() {
+void PPLDomain::displayLocVars(io::Output &out) {
 	const PropList _props;
 	PPL::Constraint_System mcons = poly.minimized_constraints();
 	if (isBottom()) {
-		cout << "diplay_loc_vars: Nothing to display (state is BOTTOM)" << endl;
+		out << "diplay_loc_vars: Nothing to display (state is BOTTOM)" << endl;
 		return;
 	}
 	Ident id_ssp(Ident::ID_START_SP, Ident::ID_SPECIAL);
 	Variable ssp = getVar(id_ssp);
-	cout << mcons.space_dimension() << " Local variables: " << endl;
+	out << " Local variables: " << endl;
 	for (int i = 0 ; i < NUM_LOC_VARS(_props)*LOC_VAR_SIZE(_props); i += LOC_VAR_SIZE(_props)) {
 		PPL::Constraint_System cons = mcons;
 		Variable v(num_axis);
 		cons.insert(v == ssp - i - LOC_VAR_SIZE(_props));
-		cout << " [SP - " << hex(i) << "] == ";
+		out << " [SP - " << hex(i) << "] == ";
 		bool found = false;
 		for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++)
 		{
@@ -216,15 +294,15 @@ void PPLDomain::displayLocVars() {
 					Ident idval(p.fst.getId(), Ident::ID_MEM_VAL);
 					PPL::Coefficient num, den;
 					getConstant(idval, num, den, true);
-					cout <<  " (aka " << idval << ")";
+					out <<  " (aka " << idval << ")";
 					break;
 				}
 			}
 		}
 		if (!found) {
-			cout << "N/A" ;
+			out << "N/A" ;
 		}
-		cout << endl;
+		out << endl;
 	}
 
 }
@@ -293,17 +371,10 @@ void PPLDomain::getRange(Variable &var, PPL::Coefficient &binf_n, PPL::Coefficie
 void PPLDomain::doScratch(Ident &id) {
 	if (hasIdent(id)) { 
 		return;
-}
+	}
 	
-#ifdef POLY_DEBUG			
-	cout << "Before cylindrification: " << *this << endl;
-#endif
 	Variable v = getVar(id);
 	poly.unconstrain(v);
-#ifdef POLY_DEBUG			
-	cout << "Scratch " << id << " (axis " << v << ")" << endl;
-	cout << "After cylindrification: " << *this << endl;
-#endif
 }
 
 bool PPLDomain::mayAlias(const Variable &v1, const Variable &v2, int offset) const {
@@ -410,13 +481,13 @@ PPLDomain PPLDomain::onLoopEntry(int loop, bool  /*inner*/) {
 
 
 
-void PPLDomain::displayIdentMap() {
-	cout << "IDMAP: " ;
+void PPLDomain::displayIdentMap(io::Output &out) {
+	out << "Mapping: " ;
 	for (elm::genstruct::HashTable<Ident, int,HashIdent>::PairIterator it(id2axis); it; it++) {
 		const Ident &ident = (*it).fst;
-		cout << ident << ":" << Variable((*it).snd) << ", ";
+		out << ident << ":" << Variable((*it).snd) << ", ";
 	}
-	cout << endl;
+	out << endl;
 }
 
 
@@ -443,7 +514,7 @@ const PPL::Constraint *PPLDomain::_getConstraintFor(int axis) {
 void PPLDomain::_identifyAncestorVars(PPLDomain &l, genstruct::HashTable<int, int> &commonVarsL, PPLDomain &r, genstruct::HashTable<int, int> &commonVarsR) {
 	int idx = 0;
 #ifdef POLY_DEBUG			
-	cerr << "Identifying common variables\n";
+	cout << "Identifying common variables\n";
 #endif
 	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(l.id2axis); it; it++) {
 		const Ident &ident = (*it).fst;
@@ -453,6 +524,9 @@ void PPLDomain::_identifyAncestorVars(PPLDomain &l, genstruct::HashTable<int, in
 		if (r.id2axis.hasKey(ident)) {
 			commonVarsL.put((*it).snd, idx);
 			commonVarsR.put(r.id2axis[ident], idx);
+#ifdef POLY_DEBUG			
+			cout << "Using: " << ident << endl;
+#endif
 			idx++;
 		}
 	}
@@ -581,7 +655,7 @@ PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) {
 
 	if (r.isBottom()) {
 #ifdef POLY_DEBUG			
-		cerr << "Trivial join (r empty)" << endl;
+		cout << "Trivial join (r empty)" << endl;
 #endif
 		return l;
 		}
@@ -598,22 +672,16 @@ PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) {
 
 #ifdef POLY_DEBUG			
 	if (widen) {
-		cerr << "================= WIDENING ==================" << endl;
+		cout << "Merge type: widening" << endl;
 	} else {
-		cerr << "=================== JOIN ====================" << endl;
+		cout << "Merge type: join" << endl;
 	}
-	cerr << "=== Unify phase ===" << endl;
-	cerr << "Left dimension: " << l.poly.space_dimension() << endl;
-	l.poly.minimized_constraints().print();
-	cerr << endl;
-	displayLocVars();
-	displayIdentMap();
-	cout << endl;
-	cerr << "Right dimension: " << l.poly.space_dimension() << endl;
-	r.poly.minimized_constraints().print();
-	cerr << endl;
-	displayLocVars();
-	displayIdentMap();
+	cout << "=== Unify phase ===" << endl;
+	cout << "Left state: " << endl;
+	cout << l;
+
+	cout << "Right state: " << endl;
+	cout << r;
 #endif
 
 
@@ -632,7 +700,7 @@ PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) {
 
 
 #ifdef POLY_DEBUG			
-	cerr << "Identifying address expressions appearing on both sides\n";	
+	cout << "Identifying address expressions appearing on both sides\n";	
 #endif
 
 	/* 
@@ -704,52 +772,35 @@ PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) {
 	l1.num_axis = l1.poly.space_dimension();
 
 #ifdef POLY_DEBUG			
-	cerr << "=== unify done ===" << endl;
-	cerr << "left hand term dimension: " << l1.poly.space_dimension() << endl;
-	l1.poly.minimized_constraints().print();
-	cerr << endl;
-	displayLocVars();
-	displayIdentMap();
-	cout << endl;
-	cerr << "right hand term dimension: " << r1.poly.space_dimension() << endl;
-	r1.poly.minimized_constraints().print();
-	cerr << endl;
-	displayLocVars();
-	displayIdentMap();
+	cout << "=== unify done ===" << endl;
+	cout << "Left state: " << endl;
+	cout << l1;
 
-	cerr << "=== Join phase ===" << endl;
+	cout << "Right state: " << endl;
+	cout << r1;
+
+	cout << "=== Merge phase ===" << endl;
 #endif
 
 	l1.poly.poly_hull_assign(r1.poly);
 	if (widen) {
 #ifdef POLY_DEBUG			
-		cerr << "before widening: " << endl;
-		cerr << "left hand term dimension: " << l1.poly.space_dimension() << endl;
-		l1.poly.minimized_constraints().print();
-		cerr << endl;
-		displayLocVars();
-		displayIdentMap();
-		cout << endl;
-		cerr << "right hand term dimension: " << r1.poly.space_dimension() << endl;
-		r1.poly.minimized_constraints().print();
-		cerr << endl;
-		displayLocVars();
-		displayIdentMap();
-		cerr << endl;
-		cerr << "---" << endl;
+		cout << "Before widening: " << endl;
+		cout << "Left state: " << endl;
+		cout << l1;
+
+		cout << "Right state: " << endl;
+		cout << r1;
 		ASSERT(l1.poly.contains(r1.poly));
 #endif
 		PPL::Constraint_System dummy;
 		l1.poly.bounded_BHRZ03_extrapolation_assign(r1.poly, dummy);
 	}
 #ifdef POLY_DEBUG			
-	cerr << "=== all done. ===" << endl;
-	cerr << "result dimension: " << l1.poly.space_dimension() << endl;
-	l1.poly.minimized_constraints().print();
-	cerr << endl;
-	displayLocVars();
-	displayIdentMap();
-	cerr << "=====================================" << endl;
+	cout << "=== All done. ===" << endl;
+	cout << "result state:";
+	cout << l1;
+	cout << "=====================================" << endl;
 #endif
 
 	return l1;
@@ -997,13 +1048,11 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 			}
 			break;
 		default:
-			cerr << "Invalid semantic instruction!" << endl;
+			cout << "Invalid semantic instruction!" << endl;
 			ASSERT(false);
 			break;
 	}
-	// cout << "avant wrap" << s_out << endl;
 	s_out.doIntegerWrap();
-	// cout << "apres wrap" << s_out << endl;
 	return s_out;
 }
 
@@ -1024,7 +1073,7 @@ bound_t PPLDomain::getLoopBound(int loopId) {
 void PPLDomain::_doFreeAxis(int axis) {
 	ASSERT(axis2id[axis].getType() != Ident::ID_INVALID);
 #ifdef POLY_DEBUG			
-	cout << "L'axe " << Variable(axis) << ", qui etait alloue a l'identificateur " << axis2id[axis] << ", est marque pour etre supprime. " << endl;
+	cout << "Variable " << Variable(axis) << ", mapped to identifier " << axis2id[axis] << ", is scheduled to be destroyed. " << endl;
 #endif
 	trash.set(axis);
 }
@@ -1035,7 +1084,7 @@ int PPLDomain::_doAllocAxis(const Ident &ident, bool allow_replace) {
 	if (id2axis.hasKey(ident)) {
 		int axis = id2axis[ident];
 #ifdef POLY_DEBUG			
-		cout << "L'identificateur " << ident << " etait deja associe a l'axe " << Variable(axis) << endl;
+		cout << "The identifier " << ident << " was mapped to variable " << Variable(axis) << endl;
 #endif
 		_doFreeAxis(axis);
 	}
@@ -1045,7 +1094,7 @@ int PPLDomain::_doAllocAxis(const Ident &ident, bool allow_replace) {
 	}
 	axis2id[num_axis] = ident;
 #ifdef POLY_DEBUG			
-	cout << "Nouvel axe " << Variable(num_axis) << " alloue pour l'identificateur " << ident << endl;
+	cout << "New variable " << Variable(num_axis) << " created for identifier " << ident << endl;
 #endif
 	num_axis++;
 	if (poly.space_dimension() < num_axis) {
@@ -1074,25 +1123,25 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 	}
 	if (trash != b.trash) {
 		return false;
-}
+	}
 
 	if (compare_reg != b.compare_reg) {
 		return false;
-}
+	}
 
 	// FIXME TODO not correct because of same memory location having different names
 	for (elm::genstruct::HashTable<Ident, int,HashIdent>::PairIterator it(id2axis); it; it++) {
 		const Pair<Ident, int> &p = *it;
 		if ((p.fst.getType() == Ident::ID_MEM_VAL) || (p.fst.getType() == Ident::ID_MEM_ADDR)) {
 			continue;
-}
+		}
 		if (!b.id2axis.hasKey(p.fst)) {
 			return false;
-}
+		}
 		int b_axis = b.id2axis[p.fst];
 		if (b_axis != p.snd) {
 			return false;
-}
+		}
 	}
 	return true;
 }
@@ -1107,7 +1156,7 @@ void PPLDomain::varRename(const Ident &ident, const Ident &newident, bool allow_
 	if (id2axis.hasKey(newident)) {
 		axis = id2axis[newident];
 #ifdef POLY_DEBUG			
-		cout << "L'identificateur " << ident << " etait deja associe a l'axe " << Variable(axis) << endl;
+		cout << "The identifier " << ident << " was mapped to variable " << Variable(axis) << endl;
 #endif
 		_doFreeAxis(axis);
 	}
@@ -1117,7 +1166,7 @@ void PPLDomain::varRename(const Ident &ident, const Ident &newident, bool allow_
 	id2axis[newident] = axis;
 	id2axis.remove(ident);
 #ifdef POLY_DEBUG			
-	cout << "Renommage de l'identificateur " << ident << " en " << newident << " sur l'axe " << Variable(axis) << endl;
+	cout << "Renaming identifier " << ident << " to " << newident << ", mapped to variable " << Variable(axis) << endl;
 #endif
 }
 

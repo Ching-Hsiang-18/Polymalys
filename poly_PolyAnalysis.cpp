@@ -8,7 +8,6 @@
 #include <otawa/cfg/Edge.h>
 #include <otawa/graph/Graph.h>
 #include <otawa/dfa/ai.h>
-#include <elm/log/Log.h>
 #include <time.h>
 #include <ppl.hh>
 
@@ -95,32 +94,29 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, ai::WorkListD
 		/* Basic block processing */
 		for (BasicBlock::InstIter inst(bl); inst; inst++) {
 #ifdef POLY_DEBUG			
-				cout << "CPU (concrete) instruction: " << *inst << endl;
+				cout << "Starting update for CPU (concrete) instruction: " << *inst << endl;
 #endif
 				sem::Block block;
 			inst->semInsts(block);
 			for(sem::Block::InstIter semi(block); semi; semi++) {
 #ifdef POLY_DEBUG			
 					cout << "===============================================" << endl;
-					cout << "BEFORE: " << s << endl;
-					s.displayIdentMap();
-					cout << "Semantic instruction (IR): " << *semi << endl;
+					cout << "State before semantic instruction update: " << endl << s << endl;
+					cout << "Updating for semantic instruction (IR): " << *semi << endl;
 #endif
 					s = s.onSemInst(*semi, inst->address());
 #ifdef POLY_DEBUG			
-					cout << "AFTER IR: " << s << endl;
-					s.displayIdentMap();
+					cout << "State after semantic instruction update: " << endl << s << endl;
 #endif
 					s.doIntegerWrap();
-#ifdef POLY_DEBUG			
-					cout << "AFTER CLEANUP: " << s << endl;
-					s.displayIdentMap();
-					cout << "===============================================" << endl;
-					s.displayLocVars();
-					cout << "===============================================" << endl << endl;
-#endif
 			}
+#ifdef POLY_DEBUG			
+			cout << "Finished update for CPU (concrete) instruction: " << *inst << endl;
+#endif
 			s.doFinalizeUpdate();
+#ifdef POLY_DEBUG			
+					cout << "State after cleanup: " << endl << s << endl;
+#endif
 		}
 
 		/* Edge Processing, propagate updated state to successors */
@@ -147,22 +143,14 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, ai::WorkListD
 					/* Filtering: apply branch condition on edge state */
 #ifdef POLY_DEBUG			
 					cout << "BEFORE FILTERING: " << endl;
-					edgeState.displayIdentMap();
-					fflush(stdout);
-					edgeState.print(cout); cout << endl;
-					fflush(stdout);
-					edgeState.displayLocVars();
+					cout << edgeState;
 #endif
 					edgeState = edgeState.onBranch(e->isTaken());
 					if (edgeState.isBottom())
 						continue;
 #ifdef POLY_DEBUG			
 					cout << "FILTERED STATE: " << endl;
-					edgeState.displayIdentMap();
-					fflush(stdout);
-					edgeState.print(cout); cout << endl;
-					fflush(stdout);
-					edgeState.displayLocVars();
+					cout << edgeState;
 #endif
 				}
 
@@ -216,12 +204,7 @@ void PolyAnalysis::processCFG(CFG &cfg, state_t &s, bool isEntryCFG) {
 	cout << "Ending abstract interpretation for CFG: " << cfg.name() << endl;	
 	if (isEntryCFG) {
 		cout << "FINAL STATE: " << endl;
-		s.displayIdentMap();
-		fflush(stdout);
-		s.print(cout); cout << endl;
-		fflush(stdout);
-		s.displayLocVars();
-		cout << endl;
+		cout << s;
 	}
 }
 
@@ -229,7 +212,7 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	const CFGCollection *coll = INVOLVED_CFGS(ws);
 	ASSERT(coll);
 	CFG *entry = coll->get(0);
-	log << "CFG count: " << coll->count() << endl;
+	cout << "CFG count: " << coll->count() << endl;
 	state_t dummy;
 	processCFG(*entry, dummy, true);
 	cout << "LOOP BOUNDS: " << endl;
