@@ -120,8 +120,8 @@ void PPLDomain::print(io::Output & out) const {
 	}
 	out << endl;
 	out << "Space dimension: " << poly.space_dimension() << ", Constraints count: " << ncons << endl;
-	const_cast<PPLDomain*>(this)->displayIdentMap(out);
-	const_cast<PPLDomain*>(this)->displayLocVars(out);
+	displayIdentMap(out);
+	displayLocVars(out);
 	out << endl;
 }
 
@@ -262,7 +262,7 @@ void PPLDomain::doFinalizeUpdate() {
 	_sanityChecks();
 }
 
-void PPLDomain::displayLocVars(io::Output &out) {
+void PPLDomain::displayLocVars(io::Output &out) const {
 	const PropList _props;
 	PPL::Constraint_System mcons = poly.minimized_constraints();
 	if (isBottom()) {
@@ -321,7 +321,7 @@ void PPLDomain::displayLocVars(io::Output &out) {
 
 }
 
-bool PPLDomain::getConstant(Variable &var, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d) {
+bool PPLDomain::getConstant(const Variable &var, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d) const {
 	PPL::Coefficient binf_d, binf_n, bsup_d, bsup_n;
 	getRange(var, bsup_n, bsup_d, binf_n, binf_d);
 	if ((binf_d == bsup_d) && (binf_n == bsup_n) && (binf_d != 0)) {
@@ -331,11 +331,11 @@ bool PPLDomain::getConstant(Variable &var, PPL::Coefficient &cst_n, PPL::Coeffic
 	}
 	return false;
 }
-bool PPLDomain::getConstant(Ident &id, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d) {
+bool PPLDomain::getConstant(const Ident &id, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d) const {
 	Variable v = getVar(id);
 	return getConstant(v, cst_n, cst_d);
 }
-void PPLDomain::getRange(Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d) {
+void PPLDomain::getRange(const Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d) const {
 	Variable v = getVar(id);
 	getRange(v, binf_n, binf_d, bsup_n, bsup_d);
 }
@@ -354,7 +354,7 @@ void PPLDomain::displayFrac(io::Output &out, const PPL::Coefficient &num, const 
 	}
 }
 
-void PPLDomain::getRange(Variable &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d) {
+void PPLDomain::getRange(const Variable &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d) const {
 	bool maximum, minimum;
 	if (var.id() >= poly.space_dimension()) {
 		bsup_n = 0;
@@ -440,7 +440,7 @@ void PPLDomain::_doBinaryOp(int op, Variable *v, Variable *vs1, Variable *vs2) {
 			break;
 	}
 }
-PPLDomain PPLDomain::onLoopExit(int loop, int bound) {
+PPLDomain PPLDomain::onLoopExit(int loop, int bound) const {
 	PPLManager::t s_out = *this;
 	Ident id(loop, Ident::ID_LOOP);
 	ASSERT(s_out.hasIdent(id)); /* You are supposed to be already inside the loop when you call onLoopExit() */ 
@@ -459,7 +459,7 @@ PPLDomain PPLDomain::onLoopExit(int loop, int bound) {
 }
 
 
-PPLDomain PPLDomain::onLoopIter(int loop, bool  /*inner*/) {
+PPLDomain PPLDomain::onLoopIter(int loop, bool  /*inner*/) const {
 	PPLManager::t s_out = *this;
 	Ident id(loop, Ident::ID_LOOP);
 	ASSERT(s_out.hasIdent(id)); /* You are supposed to be already inside the loop when you call onLoopIter() */ 
@@ -470,7 +470,7 @@ PPLDomain PPLDomain::onLoopIter(int loop, bool  /*inner*/) {
 	return s_out;
 }
 
-PPLDomain PPLDomain::onLoopEntry(int loop, bool  /*inner*/) {
+PPLDomain PPLDomain::onLoopEntry(int loop, bool  /*inner*/) const {
 	PPLManager::t s_out = *this;
 	Ident id(loop, Ident::ID_LOOP);
 	Variable v = s_out.varNew(id, true);
@@ -480,7 +480,7 @@ PPLDomain PPLDomain::onLoopEntry(int loop, bool  /*inner*/) {
 
 
 
-void PPLDomain::displayIdentMap(io::Output &out) {
+void PPLDomain::displayIdentMap(io::Output &out) const {
 	out << "Mapping: " ;
 	for (elm::genstruct::HashTable<Ident, int,HashIdent>::PairIterator it(id2axis); it; it++) {
 		const Ident &ident = (*it).fst;
@@ -491,7 +491,7 @@ void PPLDomain::displayIdentMap(io::Output &out) {
 
 
 // Return the first constraint in poly for which the coef of specified variable axis is non-zero
-const PPL::Constraint *PPLDomain::_getConstraintFor(int axis) {
+const PPL::Constraint *PPLDomain::_getConstraintFor(int axis) const {
 	PPL::Constraint_System cons_sys = poly.minimized_constraints();
 	for (PPL::Constraint_System::const_iterator it = cons_sys.begin(); it != cons_sys.end(); it++) {
 		const PPL::Constraint &c = *it;
@@ -510,7 +510,7 @@ const PPL::Constraint *PPLDomain::_getConstraintFor(int axis) {
 /*
  * Identify variables that were created in common ancstor of l and r (TODO now limited to starting register values, i.e. SP/BP)
  */
-void PPLDomain::_identifyAncestorVars(PPLDomain &l, genstruct::HashTable<int, int> &commonVarsL, PPLDomain &r, genstruct::HashTable<int, int> &commonVarsR) {
+void PPLDomain::_identifyAncestorVars(PPLDomain &l, genstruct::HashTable<int, int> &commonVarsL, PPLDomain &r, genstruct::HashTable<int, int> &commonVarsR) const {
 	int idx = 0;
 #ifdef POLY_DEBUG			
 	cout << "Identifying common variables\n";
@@ -535,7 +535,7 @@ void PPLDomain::_identifyAncestorVars(PPLDomain &l, genstruct::HashTable<int, in
 * Indexes the pointer in dom, by their expression in terms of registers referenced in map_regs. 
 * Stores the result in map_ptr.
 */
-void PPLDomain::_indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, HashCons> &map_ptr, genstruct::HashTable<int, int>& commonRegs) {
+void PPLDomain::_indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, HashCons> &map_ptr, genstruct::HashTable<int, int>& commonRegs) const {
 	int axis = commonRegs.count();
 	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
 		if ((*it).fst.getType() == Ident::ID_MEM_ADDR) {
@@ -554,7 +554,7 @@ void PPLDomain::_indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, 
 
 }
 
-PPLDomain PPLDomain::onBranch(bool taken) {
+PPLDomain PPLDomain::onBranch(bool taken) const {
 	if (isBottom())
 		return PPLDomain();
 	sem::cond_t this_op;
@@ -636,51 +636,16 @@ void PPLDomain::_extendAndHull(PPL::C_Polyhedron &poly1, PPL::C_Polyhedron &poly
 }
 }
 
-PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) {
-	/*
-	 * The merge works in three phases:
-	 *
-	 * 1. First, we identify variables representing the same object (register, or memory location) in both states.
-	 * 2. Then, we perform a substitution (variable renumbering) so that variables representing the same object have the same number.
-	 * 3. Finally we perform the actual merge (convex hull or widening).
-	 */
-	PPLDomain &l = *this;
+void PPLDomain::_doUnify(PPLDomain& l1, PPLDomain& r1) const {
 	int axis = 0;
 
-	ASSERT(!l.trash.countOnes());
-	ASSERT(!r.trash.countOnes());
-	ASSERT(compare_reg.getType() == Ident::ID_INVALID);
-	ASSERT(r.compare_reg.getType() == Ident::ID_INVALID);
-
-	if (r.isBottom()) {
 #ifdef POLY_DEBUG			
-		cout << "Trivial join (r empty)" << endl;
-#endif
-		return l;
-		}
-	if (l.isBottom()) {
-#ifdef POLY_DEBUG			
-		cerr << "Trivial join (l empty)" << endl;
-#endif
-		return r;
-	}
-
-	/* We have a non-trivial merge, so we will need working copies of l/r to perform the substitutions. */
-	PPLDomain r1 = r;
-	PPLDomain l1 = l;
-
-#ifdef POLY_DEBUG			
-	if (widen) {
-		cout << "Merge type: widening" << endl;
-	} else {
-		cout << "Merge type: join" << endl;
-	}
 	cout << "=== Unify phase ===" << endl;
 	cout << "Left state: " << endl;
-	cout << l;
+	cout << l1;
 
 	cout << "Right state: " << endl;
-	cout << r;
+	cout << r1;
 #endif
 
 
@@ -752,7 +717,7 @@ PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) {
 	 * Finally, add a substitution for each register that appears in both states.
 	 */
 
-	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(l.id2axis); it; it++) {
+	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(l1.id2axis); it; it++) {
 		const Ident &ident = (*it).fst;
 		if ((ident.getType() != Ident::ID_REG) && (ident.getType() != Ident::ID_LOOP)) {
 			continue;
@@ -769,6 +734,45 @@ PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) {
 	ASSERT(l1.poly.space_dimension() == r1.poly.space_dimension());
 	ASSERT(l1.poly.space_dimension() == axis);
 	l1.num_axis = l1.poly.space_dimension();
+}
+
+
+PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) const {
+	/*
+	 * The merge works in two phases:
+	 *
+	 * 1. Unification phase: we perform a substitution (variable renumbering), so that variables representing the same object (i.e.
+	 * register, or memory location) in both states, have the same number.
+	 * 2. Merge phase: this is the actual convex hull or widening, performed on the unified states.
+	 */
+
+	ASSERT(!trash.countOnes());
+	ASSERT(!r.trash.countOnes());
+	ASSERT(compare_reg.getType() == Ident::ID_INVALID);
+	ASSERT(r.compare_reg.getType() == Ident::ID_INVALID);
+
+	if (r.isBottom()) {
+#ifdef POLY_DEBUG			
+		cout << "Trivial merge (r is bottom)" << endl;
+#endif
+		return *this;
+		}
+	if (isBottom()) {
+#ifdef POLY_DEBUG			
+		cerr << "Trivial merge (l is bottom)" << endl;
+#endif
+		return r;
+	}
+
+#ifdef POLY_DEBUG			
+	cout << "Non-trivial merge, type=" << (widen ? "widening" : "convex-hull") << endl;
+#endif
+
+	/* We have a non-trivial merge, so we will need working copies of l/r to perform the substitutions. */
+	PPLDomain l1 = *this;
+	PPLDomain r1 = r;
+
+	_doUnify(l1, r1);
 
 #ifdef POLY_DEBUG			
 	cout << "=== unify done ===" << endl;
@@ -851,7 +855,7 @@ Variable PPLDomain::memMerge(const Variable& address, const Variable& newValue) 
 	return newAddr1;
 }
 
-PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
+PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) const {
         PPLDomain s_out = *this;
  		ASSERT(!hasFilter() || (si.op == sem::BRANCH)); 
 
@@ -947,11 +951,11 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 
 				sem::reg_t addr = si.a();
 				Ident idStoreAddr(addr, Ident::ID_REG);
-				Variable storeAddr = s_out.getVar(idStoreAddr, true);
+				Variable storeAddr = s_out.getVarOrNew(idStoreAddr);
 
 		        sem::reg_t src = si.d();
 				Ident idStoreValue(src, Ident::ID_REG);
-				Variable storeValue = s_out.getVar(idStoreValue, true);
+				Variable storeValue = s_out.getVarOrNew(idStoreValue);
 
 				Ident idEquiv; /* Identifier equivalent to the store addr, if any. */
 				elm::genstruct::Vector<Ident> overlaps; /* List of identifiers overlapping the store addr. */
@@ -1057,7 +1061,7 @@ PPLDomain PPLDomain::onSemInst(sem::inst si, int instaddr) {
 
 
 
-bound_t PPLDomain::getLoopBound(int loopId) {
+bound_t PPLDomain::getLoopBound(int loopId) const {
 	if (isBottom())
 		return bound_t::UNREACHABLE;
 	Ident id(loopId, Ident::ID_LOOP);
@@ -1102,11 +1106,15 @@ int PPLDomain::_doAllocAxis(const Ident &ident, bool allow_replace) {
 	return num_axis - 1;
 }
 
-Variable PPLDomain::getVar(const Ident &ident, bool allow_varNew) {
+Variable PPLDomain::getVar(const Ident &ident) const {
+	return Variable(id2axis[ident]);
+}
+
+Variable PPLDomain::getVarOrNew(const Ident &ident, bool allow_varNew) {
 	if (allow_varNew && !hasIdent(ident)) {
 		return varNew(ident, false);
 	}
-	return Variable(id2axis[ident]);
+	return getVar(ident);
 }
 
 void PPLDomain::varCreatePtr(Ident &addr, Ident &val) {
@@ -1128,7 +1136,11 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 		return false;
 	}
 
-	// FIXME TODO not correct because of same memory location having different names
+	if (compare_op != b.compare_op ) {
+		return false;
+	}
+
+	// TODO(clement) should return true if there exists a substitution that makes the two states equivalent
 	for (elm::genstruct::HashTable<Ident, int,HashIdent>::PairIterator it(id2axis); it; it++) {
 		const Pair<Ident, int> &p = *it;
 		if ((p.fst.getType() == Ident::ID_MEM_VAL) || (p.fst.getType() == Ident::ID_MEM_ADDR)) {
@@ -1169,7 +1181,7 @@ void PPLDomain::varRename(const Ident &ident, const Ident &newident, bool allow_
 #endif
 }
 
-bool PPLDomain::hasIdent(const Ident &ident) {
+bool PPLDomain::hasIdent(const Ident &ident) const {
 	return id2axis.hasKey(ident);
 }
 

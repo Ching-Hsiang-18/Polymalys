@@ -200,29 +200,29 @@ public:
 
 	/* Operations that reads the state and returns information about it */
 	void print(io::Output & out) const;
-	void displayLocVars(io::Output &out);
-	void displayIdentMap(io::Output &out);
-	void getRange(Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d);
-	void getRange(Variable &v, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d);
+	void displayLocVars(io::Output &out) const;
+	void displayIdentMap(io::Output &out) const;
+	void getRange(const Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d) const;
+	void getRange(const Variable &v, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d) const;
 	void displayFrac(io::Output &out, const PPL::Coefficient &num, const PPL::Coefficient &den) const;
 
-	inline int getVarIDCount() { return poly.space_dimension(); }
+	inline int getVarIDCount() const { return poly.space_dimension(); }
 	inline bool isBottom() const { return (num_axis == -1) || poly.is_empty(); } 
 	inline void setBottom() { *this = PPLDomain(); }
-	inline bool hasFilter() { return (compare_reg.getType() != Ident::ID_INVALID); }
+	inline bool hasFilter() const { return (compare_reg.getType() != Ident::ID_INVALID); }
 	bool mayAlias(const Variable &v1, const Variable &v2, int offset = 0) const;
 	bool mustAlias(const Variable &v1, const Variable &v2, int offset = 0) const;
-	bool getConstant(Ident &id, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d);
-	bool getConstant(Variable &var, PPL::Coefficient &cst, PPL::Coefficient &cst_d);
-	bound_t getLoopBound(int loopId);
+	bool getConstant(const Ident &id, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d) const;
+	bool getConstant(const Variable &var, PPL::Coefficient &cst, PPL::Coefficient &cst_d) const;
+	bound_t getLoopBound(int loopId) const;
 
 	/* High-level update operations. They return the modified state. */
-	PPLDomain onSemInst(sem::inst si, int instaddr); ///< Process an OTAWA semantic instruction
-	PPLDomain onBranch(bool taken); ///< Process a branch, taking care of filtering
-	PPLDomain onMerge(const PPLDomain& r, bool widen=false); ///< Process join and widening
-	PPLDomain onLoopEntry(int loop, bool inner=false); ///< Process loop entry edge
-	PPLDomain onLoopIter(int loop, bool inner=false); ///< Process loop back-edge
-	PPLDomain onLoopExit(int loop, int bound); ///< Process loop exit-edge
+	PPLDomain onSemInst(sem::inst si, int instaddr) const; ///< Process an OTAWA semantic instruction
+	PPLDomain onBranch(bool taken) const; ///< Process a branch, taking care of filtering
+	PPLDomain onMerge(const PPLDomain& r, bool widen=false) const; ///< Process join and widening
+	PPLDomain onLoopEntry(int loop, bool inner=false) const; ///< Process loop entry edge
+	PPLDomain onLoopIter(int loop, bool inner=false) const; ///< Process loop back-edge
+	PPLDomain onLoopExit(int loop, int bound) const; ///< Process loop exit-edge
 
 	/* Operations that modify the state in-place */
 	template <class F> void doMapPoly(F pfunc);
@@ -237,10 +237,11 @@ public:
 	inline void varKill(const Ident& id) { return _doFreeAxis(id2axis[id]); }
 	inline void varKill(const Variable& v) { return _doFreeAxis(v.id()); }
 	void varRename(const Ident &ident, const Ident &newident, bool allow_replace);
-	Variable getVar(const Ident&, bool allow_varNew = false);
+	Variable getVarOrNew(const Ident&, bool allow_varNew = true);
+	Variable getVar(const Ident&) const;
 	inline bool isVarMapped(const Variable& v) const { return (axis2id.length() > v.id()) && (axis2id[v.id()].getType() != Ident::ID_INVALID); }
 	inline const Ident& getIdent(const Variable& v) const { return axis2id[v.id()]; }
-	bool hasIdent(const Ident&);
+	bool hasIdent(const Ident&) const;
 	void doFinalizeUpdate();
 
 	/* Pointers/Memory-related operations */
@@ -295,14 +296,14 @@ private: /* Private helper functions */
 	inline void _sanityChecks() { }
 #endif
 
-	const PPL::Constraint *_getConstraintFor(int axis);
+	const PPL::Constraint *_getConstraintFor(int axis) const;
 	/**
 	 * Indexes the pointer in dom, by their expression in terms of registers referenced in map_regs. 
 	 * Stores the result in map_ptr.
 	 */
-	void _indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, HashCons> &map_ptr, genstruct::HashTable<int, int>& map_regs);
+	void _indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, HashCons> &map_ptr, genstruct::HashTable<int, int>& map_regs) const;
 
-	void _identifyAncestorVars(PPLDomain &l, genstruct::HashTable<int, int> &commonVarsL, PPLDomain &r, genstruct::HashTable<int, int> &commonVarsR);
+	void _identifyAncestorVars(PPLDomain &l, genstruct::HashTable<int, int> &commonVarsL, PPLDomain &r, genstruct::HashTable<int, int> &commonVarsR) const;
 
 	/**
 	 * Computes the convex hull of two polyhedron of different space dimension, extending the smaller if needed.
@@ -315,6 +316,14 @@ private: /* Private helper functions */
 	 * @return Join or widening result
 	 */
 	void _doBinaryOp(int op, Variable *v, Variable *vs1, Variable *vs2);
+
+	/**
+	 * Unify the two states so that variables refering to the same object (register, memory location, ...) have the same number.
+	 *
+	 * @param l First state to unify
+	 * @param r Second state to unify
+	 */
+	void _doUnify(PPLDomain&l, PPLDomain &r) const;
 
 };
 inline Output& operator<<(Output& o, const PPLDomain &dom) { dom.print(o); return o; }
