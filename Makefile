@@ -47,8 +47,8 @@ uninstall:
 
 clang-tidy:
 	rm -f tidy.txt
-	clang-tidy -fix -header-filter=./ -checks='*' poly_PolyAnalysis.cpp >> tidy.txt
-	clang-tidy -fix -header-filter=./ -checks='*' poly_PlugHook.cpp >> tidy.txt
-	clang-tidy -fix -header-filter=./ -checks='*' poly_PPLDomain.cpp >> tidy.txt
-	clang-tidy -fix -header-filter=./ -checks='*' poly_PPLManager.cpp >> tidy.txt
+	clang-tidy -fix -header-filter=^./include -checks='*' poly_PolyAnalysis.cpp >> tidy.txt
+	clang-tidy -fix -header-filter=^./include -checks='*' poly_PlugHook.cpp >> tidy.txt
+	clang-tidy -fix -header-filter=^./include -checks='*' poly_PPLDomain.cpp >> tidy.txt
+	clang-tidy -fix -header-filter=^./include -checks='*' poly_PPLManager.cpp >> tidy.txt
 .PHONY: clean install douter test tests compildb

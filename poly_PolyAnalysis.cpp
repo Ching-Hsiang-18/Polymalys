@@ -100,7 +100,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, ai::WorkListD
 			inst->semInsts(block);
 			for(sem::Block::InstIter semi(block); semi; semi++) {
 #ifdef POLY_DEBUG			
-					cout << "===============================================" << endl;
+					cout << "Starting update before semantic instruction." << endl;
 					cout << "State before semantic instruction update: " << endl << s << endl;
 					cout << "Updating for semantic instruction (IR): " << *semi << endl;
 #endif

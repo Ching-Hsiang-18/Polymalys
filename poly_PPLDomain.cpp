@@ -640,7 +640,7 @@ void PPLDomain::_doUnify(PPLDomain& l1, PPLDomain& r1) const {
 	int axis = 0;
 
 #ifdef POLY_DEBUG			
-	cout << "=== Unify phase ===" << endl;
+	cout << "Unify phase." << endl;
 	cout << "Left state: " << endl;
 	cout << l1;
 
@@ -733,14 +733,14 @@ void PPLDomain::_doUnify(PPLDomain& l1, PPLDomain& r1) const {
 	l1.num_axis = l1.poly.space_dimension();
 
 #ifdef POLY_DEBUG			
-	cout << "=== unify done ===" << endl;
+	cout << "unify done. " << endl;
 	cout << "Left state: " << endl;
 	cout << l1;
 
 	cout << "Right state: " << endl;
 	cout << r1;
 
-	cout << "=== Merge phase ===" << endl;
+	cout << "Merge phase. " << endl;
 #endif
 }
 
@@ -798,10 +798,9 @@ PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) const {
 		l1.poly.bounded_BHRZ03_extrapolation_assign(r1.poly, dummy);
 	}
 #ifdef POLY_DEBUG			
-	cout << "=== All done. ===" << endl;
+	cout << "Merge finished." << endl;
 	cout << "result state:";
 	cout << l1;
-	cout << "=====================================" << endl;
 #endif
 
 	return l1;
