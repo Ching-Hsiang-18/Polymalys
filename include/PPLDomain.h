@@ -26,6 +26,8 @@ enum bound_t : signed long {
 	UNBOUNDED = -2,
 };
 
+Output& operator<<(Output& o, const Variable pv);
+
 class Ident {
 	public:
 		enum IdentType {
@@ -158,11 +160,6 @@ private:
 		public:
 			inline ~RemoveMarked() { }
 			inline RemoveMarked(BitVector &bv, int size) : _bv(bv), _size(size) { }
-			inline bool has_empty_codomain() const { return _bv.countBits() == _size; }
-			inline PPL::dimension_type max_in_codomain() const { 
-				return _size - _bv.countBits() - 1;
-				/* FIXME not always correct due to PPL weirdness */ 
-			}
 			bool maps(PPL::dimension_type i, PPL::dimension_type &j) const;
 		private:
 			BitVector &_bv;
@@ -172,8 +169,6 @@ private:
 	class MapWithHash {
 		public:
 			inline MapWithHash(genstruct::HashTable<int,int> &map) : _map(map) { }
-			inline bool has_empty_codomain() const { return false; }
-			inline PPL::dimension_type max_in_codomain() const { return 0; } 
 			inline bool maps(PPL::dimension_type i, PPL::dimension_type &j) const {
 				if (_map.hasKey(i)) {
 					j = _map[i];
@@ -242,9 +237,40 @@ public:
 
 	/* Operations that reads the state and returns information about it */
 	inline void print(io::Output & out) const {
+		static char buf[64];
 		PPL::Constraint_System cons = poly.minimized_constraints();
-		cons.print();
-		out << "";
+
+		for (PPL::Constraint_System::const_iterator it = cons.begin(); it != cons.end(); it++) {
+			const PPL::Constraint &c = *it;
+			for (PPL::dimension_type i = 0; i < cons.space_dimension(); i++) {
+				const PPL::Coefficient &coef = c.coefficient(Variable(i));
+				if (coef != 0) {
+					Variable v(i);
+					if (coef == -1) {
+						out << "- ";
+					} else if (coef != 1) {
+						gmp_snprintf(buf, sizeof(buf), "%Zd", &PPL::raw_value(coef));
+						buf[sizeof(buf)-1] = 0;
+						out << buf << ".";
+					}
+					if (isVarMapped(v)) {
+						out << getIdent(v);
+					} else {
+						out << v;
+					}
+					out << " ";
+				}
+			}
+			const PPL::Coefficient &cst = c.inhomogeneous_term();
+			gmp_snprintf(buf, sizeof(buf), "%Zd", &PPL::raw_value(cst));
+			buf[sizeof(buf)-1] = 0;
+			if (c.is_equality()) {
+				out << "= ";
+			} else out << ">= ";
+			out << buf;
+			out << "; ";;
+		}
+		out << endl;
 	}
 	void displayLocVars();
 	void displayIdentMap();
@@ -283,10 +309,9 @@ public:
 	inline void varKill(const Variable& v) { return _doFreeAxis(v.id()); }
 	void varRename(const Ident &ident, const Ident &newident, bool allow_replace);
 	Variable getVar(const Ident&, bool allow_varNew = false);
-	inline bool isVarMapped(const Variable& v) { return axis2id[v.id()].getType() != Ident::ID_INVALID; }
-	inline Ident& getIdent(const Variable& v) { return axis2id[v.id()]; }
+	inline bool isVarMapped(const Variable& v) const { return (axis2id.length() > v.id()) && (axis2id[v.id()].getType() != Ident::ID_INVALID); }
+	inline const Ident& getIdent(const Variable& v) const { return axis2id[v.id()]; }
 	bool hasIdent(const Ident&);
-	bool hasVar(Variable&);
 	void doFinalizeUpdate();
 
 	/* Pointers/Memory-related operations */
@@ -346,7 +371,9 @@ private: /* Private helper functions */
 	 * Indexes the pointer in dom, by their expression in terms of registers referenced in map_regs. 
 	 * Stores the result in map_ptr.
 	 */
-	void _indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, HashCons> &map_ptr, genstruct::HashTable<int, int> map_regs);
+	void _indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, HashCons> &map_ptr, genstruct::HashTable<int, int>& map_regs);
+
+	void _identifyAncestorVars(PPLDomain &l, genstruct::HashTable<int, int> &commonVarsL, PPLDomain &r, genstruct::HashTable<int, int> &commonVarsR);
 
 	/**
 	 * Computes the convex hull of two polyhedron of different space dimension, extending the smaller if needed.

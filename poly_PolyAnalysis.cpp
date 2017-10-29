@@ -8,6 +8,7 @@
 #include <otawa/cfg/Edge.h>
 #include <otawa/graph/Graph.h>
 #include <otawa/dfa/ai.h>
+#include <elm/log/Log.h>
 #include <time.h>
 #include <ppl.hh>
 
@@ -74,16 +75,8 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, ai::WorkListD
 #ifdef POLY_DEBUG			
 			cout << "ITERATION: " << int(bound) << endl;
 #endif
-			if ((MAX_ITERATION(bl) != bound_t::UNBOUNDED) && ((MAX_ITERATION(bl) < bound)  || (bound == bound_t::UNBOUNDED))) {
+			if ((MAX_ITERATION(bl) != bound_t::UNBOUNDED) && ((MAX_ITERATION(bl) < bound)  || (bound == bound_t::UNBOUNDED)))
 				MAX_ITERATION(bl) = bound;
-				for (genstruct::Vector<Edge*>::Iterator exitedge(**EXIT_LIST(bl)); exitedge; exitedge++) {
-#ifdef POLY_DEBUG			
-					cout << "Trigger exit edge with bound: " << bound << "(" << *exitedge << ")" << endl;
-#endif
-					Block::EdgeIter e = exitedge->source()->ins();
-					ana.change(e);
-				}
-			}
 
 			/* We record state at each loop header to be able to handle widening */
 			if (headerState.hasKey(bl->id()))
@@ -186,13 +179,17 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, ai::WorkListD
 				if (LOOP_EXIT_EDGE(e)) {
 					/* Exit edge: remove virtual loop counter, and apply loop bound constraint on state */
 					Block *bb = LOOP_EXIT_EDGE(e);
-					int bound = MAX_ITERATION(bb);
+
+					/* FIXME: should be bound = s.getLoopBound(bb->id()) but we need to fix the widening to make it work */
+					int bound = MAX_ITERATION(bb); // HACK
 #ifdef POLY_DEBUG			
-						cout << "Bound on loop exit: " << bound << endl;
+					cout << "Bound on loop exit: " << bound << endl;
 #endif
+					if (bound >= 0) {
 						edgeState = edgeState.onLoopExit(bb->id(), bound);
 						if (edgeState.isBottom())
 							continue;
+					}
 				}
 				edgeState.doFinalizeUpdate();
 				ana.check(*e, edgeState);
@@ -201,8 +198,8 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, ai::WorkListD
 	}
 }
 
-void PolyAnalysis::processCFG(CFG &cfg, state_t &s, bool do_init) {
-	PPLManager *man = do_init ? (new PPLManager(*_props)) : (new PPLManager(s, *_props));;
+void PolyAnalysis::processCFG(CFG &cfg, state_t &s, bool isEntryCFG) {
+	PPLManager *man = isEntryCFG ? (new PPLManager(*_props)) : (new PPLManager(s, *_props));;
 	genstruct::HashTable<int, state_t> headerState;
 	ai::CFGGraph graph(&cfg);
 	ai::EdgeStore<PPLManager, ai::CFGGraph> store(*man, graph);
@@ -217,7 +214,7 @@ void PolyAnalysis::processCFG(CFG &cfg, state_t &s, bool do_init) {
 	Block::EdgeIter edge(bb->ins());
 	s = store.get(edge);
 	cout << "Ending abstract interpretation for CFG: " << cfg.name() << endl;	
-	if (do_init) {
+	if (isEntryCFG) {
 		cout << "FINAL STATE: " << endl;
 		s.displayIdentMap();
 		fflush(stdout);
@@ -232,7 +229,7 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	const CFGCollection *coll = INVOLVED_CFGS(ws);
 	ASSERT(coll);
 	CFG *entry = coll->get(0);
-	cout << "CFG count: " << coll->count() << endl;
+	log << "CFG count: " << coll->count() << endl;
 	state_t dummy;
 	processCFG(*entry, dummy, true);
 	cout << "LOOP BOUNDS: " << endl;

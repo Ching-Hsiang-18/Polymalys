@@ -427,7 +427,7 @@ const PPL::Constraint *PPLDomain::_getConstraintFor(int axis) {
 		const PPL::Constraint &c = *it;
 		if (!c.is_equality()) {
 			continue;
-}
+		}
 		if (c.coefficient(Variable(axis)) != 0) {
 			return new PPL::Constraint(c);
 		}
@@ -437,34 +437,53 @@ const PPL::Constraint *PPLDomain::_getConstraintFor(int axis) {
 
 
 
-
+/*
+ * Identify variables that were created in common ancstor of l and r (TODO now limited to starting register values, i.e. SP/BP)
+ */
+void PPLDomain::_identifyAncestorVars(PPLDomain &l, genstruct::HashTable<int, int> &commonVarsL, PPLDomain &r, genstruct::HashTable<int, int> &commonVarsR) {
+	int idx = 0;
+#ifdef POLY_DEBUG			
+	cerr << "Identifying common variables\n";
+#endif
+	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(l.id2axis); it; it++) {
+		const Ident &ident = (*it).fst;
+		if (ident.getType() != Ident::ID_SPECIAL) {
+			continue;
+		}
+		if (r.id2axis.hasKey(ident)) {
+			commonVarsL.put((*it).snd, idx);
+			commonVarsR.put(r.id2axis[ident], idx);
+			idx++;
+		}
+	}
+}
 
 /**
 * Indexes the pointer in dom, by their expression in terms of registers referenced in map_regs. 
 * Stores the result in map_ptr.
 */
-void PPLDomain::_indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, HashCons> &map_ptr, genstruct::HashTable<int, int> map_regs) {
-int axis = map_regs.count();
-for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
-	if ((*it).fst.getType() == Ident::ID_MEM_ADDR) {
-		map_regs.put((*it).snd, axis);
-		PPLDomain dom(*this); /* make a working copy to do the projections */
-		dom.doMapPoly(MapWithHash(map_regs));
+void PPLDomain::_indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, HashCons> &map_ptr, genstruct::HashTable<int, int>& commonRegs) {
+	int axis = commonRegs.count();
+	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
+		if ((*it).fst.getType() == Ident::ID_MEM_ADDR) {
+			commonRegs.put((*it).snd, axis);
+			PPLDomain dom(*this); /* make a working copy to do the projections */
+			dom.doMapPoly(MapWithHash(commonRegs));
 
-		const PPL::Constraint *cons = dom._getConstraintFor(axis);
-		if (cons != nullptr) {
-			map_ptr[*cons] = (*it).fst.getId();
-			delete cons;
+			const PPL::Constraint *cons = dom._getConstraintFor(axis);
+			if (cons != nullptr) {
+				map_ptr[*cons] = (*it).fst.getId();
+				delete cons;
+			}
+			commonRegs.remove((*it).snd);
 		}
-		map_regs.remove((*it).snd);
-	}
-}
+	} 
+
 }
 
 PPLDomain PPLDomain::onBranch(bool taken) {
-	if (isBottom()) {
-		return *this;
-}
+	if (isBottom())
+		return PPLDomain();
 	sem::cond_t this_op;
 	ASSERT(hasFilter());
 	PPLDomain res = *this;
@@ -521,7 +540,7 @@ PPLDomain PPLDomain::onBranch(bool taken) {
 			break;
 	};
 	res.compare_reg = Ident();
-	if (res.poly.is_empty()) {
+	if (res.isBottom()) {
 #ifdef POLY_DEBUG			
 		cout << "State is Bottom after Filtering (will not propagate states to branch destination)" << endl;
 #endif
@@ -545,98 +564,115 @@ void PPLDomain::_extendAndHull(PPL::C_Polyhedron &poly1, PPL::C_Polyhedron &poly
 }
 
 PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) {
+	/*
+	 * The merge works in three phases:
+	 *
+	 * 1. First, we identify variables representing the same object (register, or memory location) in both states.
+	 * 2. Then, we perform a substitution (variable renumbering) so that variables representing the same object have the same number.
+	 * 3. Finally we perform the actual merge (convex hull or widening).
+	 */
 	PPLDomain &l = *this;
 	int axis = 0;
+
 	ASSERT(!l.trash.countOnes());
 	ASSERT(!r.trash.countOnes());
-	if (r.poly.is_empty()) {
+	ASSERT(compare_reg.getType() == Ident::ID_INVALID);
+	ASSERT(r.compare_reg.getType() == Ident::ID_INVALID);
+
+	if (r.isBottom()) {
 #ifdef POLY_DEBUG			
-		cerr << "trivial join (r empty)" << endl;
+		cerr << "Trivial join (r empty)" << endl;
 #endif
 		return l;
 		}
-	if (l.poly.is_empty()) {
+	if (l.isBottom()) {
 #ifdef POLY_DEBUG			
-		cerr << "trivial join (l empty)" << endl;
+		cerr << "Trivial join (l empty)" << endl;
 #endif
 		return r;
 	}
 
+	/* We have a non-trivial merge, so we will need working copies of l/r to perform the substitutions. */
+	PPLDomain r1 = r;
+	PPLDomain l1 = l;
+
 #ifdef POLY_DEBUG			
 	if (widen) {
 		cerr << "================= WIDENING ==================" << endl;
-	} else cerr << "=================== JOIN ====================" << endl;
-	cerr << "=== prepare phase ===" << endl;
-	cerr << "left hand term dimension: " << l.poly.space_dimension() << endl;
+	} else {
+		cerr << "=================== JOIN ====================" << endl;
+	}
+	cerr << "=== Unify phase ===" << endl;
+	cerr << "Left dimension: " << l.poly.space_dimension() << endl;
 	l.poly.minimized_constraints().print();
 	cerr << endl;
 	displayLocVars();
 	displayIdentMap();
 	cout << endl;
-	cerr << "right hand term dimension: " << r.poly.space_dimension() << endl;
+	cerr << "Right dimension: " << l.poly.space_dimension() << endl;
 	r.poly.minimized_constraints().print();
 	cerr << endl;
 	displayLocVars();
 	displayIdentMap();
 #endif
 
-	genstruct::HashTable<PPL::Constraint, elm::Pair<int,int>, HashCons> map;
-	genstruct::HashTable<PPL::Constraint, int, HashCons> mapl_ptr;
-	genstruct::HashTable<PPL::Constraint, int, HashCons> mapr_ptr;
 
-	genstruct::HashTable<int,int> mapl;
-	genstruct::HashTable<int,int> mapr;
+	/* 
+	 * These hashtables will represent the substitution to perform in the two input states.
+	 *
+	 * Hashtable keys contains original numbering of the common variables in each states.
+	 * Hashtable values contains a (new) common numbering of these varialbes.
+	 */
+	genstruct::HashTable<int,int> mappingL;
+	genstruct::HashTable<int,int> mappingR;
 
-	genstruct::HashTable<int,int> mapl2;
-	genstruct::HashTable<int,int> mapr2;
 
-	PPLDomain r1 = r;
-	PPLDomain l1 = l;
+	/* Create substitution entries for common vars created in merge ancestor */
+	_identifyAncestorVars(l1, mappingL, r1, mappingR);
 
-	// mapl/mapr : on map tout les id SPECIAL vers une numerotation commune
-#ifdef POLY_DEBUG			
-	cerr << "Mapping common ancestors to common destination axis\n";
-#endif
-	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(l.id2axis); it; it++) {
-		const Ident &ident = (*it).fst;
-		if (ident.getType() != Ident::ID_SPECIAL) {
-			continue;
-}
-		if (r1.id2axis.hasKey(ident)) {
-			mapl.put((*it).snd, axis);
-			mapr.put(r1.id2axis[ident], axis);
-			axis++;
-		}
-	}
-
-	// chopper les constraints des pointeurs sur L, mettre dans la hashmap 
-	// on recupere dans mapl_ptr/mapr_ptr un mapping de contrainte vers numero de pointeur (ptr1, ptr2, etc)
 
 #ifdef POLY_DEBUG			
 	cerr << "Identifying address expressions appearing on both sides\n";	
 #endif
-	l1._indexPointersByExpr(mapl_ptr, mapl);
-	r1._indexPointersByExpr(mapr_ptr, mapr);
 
-	// mapl/mapr: on ajoute tout les pointeurs communs, on map vers une numerotation commune
+	/* 
+	 * Attempts to index each pointer by the expression of their address in terms of ancestor variables 
+	 *
+	 * The hashkey is the linear expression
+	 * The hashvalue is the (original) memory location index.
+	 * */
+	genstruct::HashTable<PPL::Constraint, int, HashCons> indexedPtrsL;
+	genstruct::HashTable<PPL::Constraint, int, HashCons> indexedPtrsR;
+
+	l1._indexPointersByExpr(indexedPtrsL, mappingL);
+	r1._indexPointersByExpr(indexedPtrsR, mappingR);
+
+	/* 
+	 * Pointer pairs with the same expression are equivalent, so we add a substitution for each one of them, so
+	 * they will be mapped to the same variable number.
+	 */
+	axis=mappingL.count();
 #ifdef POLY_DEBUG			
-	cout << "COMMON PTRs: " ;
+	cout << "Memory locations appearing on both states: " ;
 #endif
-	for (genstruct::HashTable<PPL::Constraint, int, HashCons>::PairIterator it(mapl_ptr); it; it++) {
+	int mem_ref = 0;
+	for (genstruct::HashTable<PPL::Constraint, int, HashCons>::PairIterator it(indexedPtrsL); it; it++) {
 		const PPL::Constraint &cons = (*it).fst;
-		if (mapr_ptr.hasKey(cons)) {
-			int ptrl = (*it).snd;
-			int ptrr = mapr_ptr[cons];
-			Variable l_addr = l1.getVar(Ident(ptrl, Ident::ID_MEM_ADDR));
-			Variable l_val = l1.getVar(Ident(ptrl, Ident::ID_MEM_VAL));
-			Variable r_addr = r1.getVar(Ident(ptrr, Ident::ID_MEM_ADDR));
-			Variable r_val = r1.getVar(Ident(ptrr, Ident::ID_MEM_VAL));
-			mapl[l_addr.id()] = axis;
-			mapr[r_addr.id()] = axis;
-			mapl[l_val.id()] = axis + 1;
-			mapr[r_val.id()] = axis + 1;
+		if (indexedPtrsR.hasKey(cons)) {
+			int ptrIdxL = (*it).snd;
+			int ptrIdxR = indexedPtrsR[cons];
+			/* pointer with index ptrIdxL in l represents the same address as pointer with index ptrIdxR in r */
+			Variable addrL = l1.getVar(Ident(ptrIdxL, Ident::ID_MEM_ADDR));
+			Variable valL = l1.getVar(Ident(ptrIdxL, Ident::ID_MEM_VAL));
+			Variable addrR = r1.getVar(Ident(ptrIdxR, Ident::ID_MEM_ADDR));
+			Variable valR = r1.getVar(Ident(ptrIdxR, Ident::ID_MEM_VAL));
+			mappingL[addrL.id()] = axis;
+			mappingR[addrR.id()] = axis;
+			mappingL[valL.id()] = axis + 1;
+			mappingR[valR.id()] = axis + 1;
+			mem_ref++;
 #ifdef POLY_DEBUG			
-			cout << "ptr" << ptrl << "/ptr" << ptrr << ", ";
+			cout << "ptr" << ptrIdxL << "/ptr" << ptrIdxR << ", ";
 #endif
 			axis += 2;
 		}
@@ -645,25 +681,30 @@ PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) {
 	cout << endl;
 #endif
 
-	// maplregs/mapr : ajout dans map de tous les axes registres (temporaires ou non) de l/r vers une numerotation commune
+	/*
+	 * Finally, add a substitution for each register that appears in both states.
+	 */
+
 	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(l.id2axis); it; it++) {
 		const Ident &ident = (*it).fst;
 		if ((ident.getType() != Ident::ID_REG) && (ident.getType() != Ident::ID_LOOP)) {
 			continue;
 }
 		if (r1.id2axis.hasKey(ident)) {
-			mapl.put((*it).snd, axis);
-			mapr.put(r1.id2axis[ident], axis);
+			mappingL.put((*it).snd, axis);
+			mappingR.put(r1.id2axis[ident], axis);
 			axis++;
 		}
 	}
 
-	l1.doMap(PPLDomain::MapWithHash(mapl));
-	r1.doMap(PPLDomain::MapWithHash(mapr)); 
+	l1.doMap(PPLDomain::MapWithHash(mappingL));
+	r1.doMap(PPLDomain::MapWithHash(mappingR)); 
+	ASSERT(l1.poly.space_dimension() == r1.poly.space_dimension());
+	ASSERT(l1.poly.space_dimension() == axis);
+	l1.num_axis = l1.poly.space_dimension();
 
-	// Fin preparation
 #ifdef POLY_DEBUG			
-	cerr << "=== prepare done ===" << endl;
+	cerr << "=== unify done ===" << endl;
 	cerr << "left hand term dimension: " << l1.poly.space_dimension() << endl;
 	l1.poly.minimized_constraints().print();
 	cerr << endl;
@@ -676,34 +717,31 @@ PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) {
 	displayLocVars();
 	displayIdentMap();
 
-	cerr << "=== convex-hull phase ===" << endl;
+	cerr << "=== Join phase ===" << endl;
 #endif
 
 	l1.poly.poly_hull_assign(r1.poly);
 	if (widen) {
 #ifdef POLY_DEBUG			
 		cerr << "before widening: " << endl;
-	cerr << "left hand term dimension: " << l1.poly.space_dimension() << endl;
-	l1.poly.minimized_constraints().print();
-	cerr << endl;
-	displayLocVars();
-	displayIdentMap();
-	cout << endl;
-	cerr << "right hand term dimension: " << r1.poly.space_dimension() << endl;
-	r1.poly.minimized_constraints().print();
-	cerr << endl;
-	displayLocVars();
-	displayIdentMap();
-	cerr << endl;
-	cerr << "---" << endl;
-#endif
-	PPL::Constraint_System dummy;
-#ifdef POLY_DEBUG
+		cerr << "left hand term dimension: " << l1.poly.space_dimension() << endl;
+		l1.poly.minimized_constraints().print();
+		cerr << endl;
+		displayLocVars();
+		displayIdentMap();
+		cout << endl;
+		cerr << "right hand term dimension: " << r1.poly.space_dimension() << endl;
+		r1.poly.minimized_constraints().print();
+		cerr << endl;
+		displayLocVars();
+		displayIdentMap();
+		cerr << endl;
+		cerr << "---" << endl;
 		ASSERT(l1.poly.contains(r1.poly));
 #endif
+		PPL::Constraint_System dummy;
 		l1.poly.bounded_BHRZ03_extrapolation_assign(r1.poly, dummy);
 	}
-	l1.num_axis = l1.poly.space_dimension();
 #ifdef POLY_DEBUG			
 	cerr << "=== all done. ===" << endl;
 	cerr << "result dimension: " << l1.poly.space_dimension() << endl;
@@ -714,9 +752,6 @@ PPLDomain PPLDomain::onMerge(const PPLDomain& r, bool widen) {
 	cerr << "=====================================" << endl;
 #endif
 
-	if (r1.hasFilter()) {
-		ASSERT(false);
-	}
 	return l1;
 }
 
