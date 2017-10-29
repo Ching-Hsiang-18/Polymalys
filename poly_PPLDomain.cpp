@@ -2,8 +2,8 @@
 #include <otawa/util/WideningListener.h>
 #include <otawa/util/HalfAbsInt.h>
 #include <otawa/dfa/FastState.h>
-#include <otawa/util/WideningFixPoint.h>
 #include <otawa/poly/features.h>
+#include <otawa/util/WideningFixPoint.h>
 #include <otawa/flowfact/features.h>
 #include <otawa/cfg/Edge.h>
 #include <otawa/graph/Graph.h>
@@ -90,35 +90,46 @@ void PPLDomain::print(io::Output & out) const {
 	out << "Constraints: ";;
 	for (PPL::Constraint_System::const_iterator it = cons.begin(); it != cons.end(); it++, ncons++) {
 		const PPL::Constraint &c = *it;
+
 		for (PPL::dimension_type i = 0; i < cons.space_dimension(); i++) {
 			const PPL::Coefficient &coef = c.coefficient(Variable(i));
+
 			if (coef != 0) {
 				Variable v(i);
+
 				if (coef == -1) {
 					out << "- ";
-				} else if (coef != 1) {
+				} else if (coef != 1) { 
 					gmp_snprintf(buf, sizeof(buf), "%Zd", &PPL::raw_value(coef));
 					buf[sizeof(buf)-1] = 0;
 					out << buf << ".";
 				}
+
 				if (isVarMapped(v)) {
 					out << getIdent(v);
 				} else {
 					out << v;
 				}
+
 				out << " ";
 			}
 		}
-		const PPL::Coefficient &cst = c.inhomogeneous_term();
-		gmp_snprintf(buf, sizeof(buf), "%Zd", &PPL::raw_value(cst));
-		buf[sizeof(buf)-1] = 0;
+
 		if (c.is_equality()) {
 			out << "= ";
-		} else out << ">= ";
+		} else { 
+			out << ">= ";
+		}
+
+		const PPL::Coefficient &cst = -c.inhomogeneous_term(); // Constraints form is: coef*X + ... + cst = 0
+		gmp_snprintf(buf, sizeof(buf), "%Zd", &PPL::raw_value(cst));
+		buf[sizeof(buf)-1] = 0;
 		out << buf;
+
 		out << "; ";;
 	}
 	out << endl;
+
 	out << "Space dimension: " << poly.space_dimension() << ", Constraints count: " << ncons << endl;
 	displayIdentMap(out);
 	displayLocVars(out);
@@ -214,15 +225,21 @@ void PPLDomain::_sanityChecks() {
 	ASSERT(!poly.is_empty());
 	for (elm::genstruct::HashTable<Ident, int,HashIdent>::PairIterator it(id2axis); it; it++) {
 		ASSERT((*it).snd < num_axis);
-		if (trash.bit((*it).snd))
+		if (trash.bit((*it).snd)) {
 			continue;
+		}
 		ASSERT(axis2id[(*it).snd] == (*it).fst);
-		if ((*it).snd > max_axis)
+		if ((*it).snd > max_axis) {
 			max_axis = (*it).snd;
+		}
 	}
+	for (int i = 0; i < id2axis.count(); i++)
+		ASSERT((axis2id[i].getType() == Ident::ID_INVALID) || (id2axis[axis2id[i]] == i));
+
 	for (int i = 0; i < num_axis; i++) {
-		if (trash.bit(i))
+		if (trash.bit(i)) {
 			continue;
+		}
 		Ident &ident = axis2id[i];
 		ASSERT(id2axis[ident] == i);
 	}
@@ -255,9 +272,8 @@ void PPLDomain::doFinalizeUpdate() {
 	}
 #endif
 	PPLDomain::RemoveMarked rm(PPLDomain::trash, poly.space_dimension());
-	doMapPoly(rm);
+	doMap(rm);
 	num_axis -= PPLDomain::trash.countOnes();
-	doMapIdents(rm);
 	PPLDomain::trash.clear();
 	_sanityChecks();
 }
@@ -422,8 +438,9 @@ void PPLDomain::_doBinaryOp(int op, Variable *v, Variable *vs1, Variable *vs2) {
 				poly.add_constraint(*v * cst_d == *vs2 * cst_n);
 			} else {
 				b = getConstant(*vs2, cst_n, cst_d);
-				if (b)
+				if (b) {
 					poly.add_constraint(*v * cst_d == *vs1 * cst_n);
+}
 			} 
 			break;
 		case sem::MULH: // d <- (a * b) >> bitlength(d)
@@ -432,8 +449,9 @@ void PPLDomain::_doBinaryOp(int op, Variable *v, Variable *vs1, Variable *vs2) {
 				poly.add_constraint(*v * cst_d == *vs2 * cst_n);
 			} else {
 				b = getConstant(*vs2, cst_n, cst_d);
-				if (b)
+				if (b) {
 					poly.add_constraint(*v * cst_d == *vs1 * cst_n);
+}
 			}
 			break;
 		default:
@@ -555,8 +573,9 @@ void PPLDomain::_indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, 
 }
 
 PPLDomain PPLDomain::onBranch(bool taken) const {
-	if (isBottom())
+	if (isBottom()) {
 		return PPLDomain();
+}
 	sem::cond_t this_op;
 	ASSERT(hasFilter());
 	PPLDomain res = *this;
@@ -852,7 +871,7 @@ Variable PPLDomain::memMerge(const Variable& address, const Variable& newValue) 
 	return newAddr1;
 }
 
-PPLDomain PPLDomain::onSemInst(const sem::inst &si, int instaddr) const {
+PPLDomain PPLDomain::onSemInst(const sem::inst &si, int  /*instaddr*/) const {
         PPLDomain s_out = *this;
  		ASSERT(!hasFilter() || (si.op == sem::BRANCH)); 
 
@@ -1059,13 +1078,14 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int instaddr) const {
 
 
 bound_t PPLDomain::getLoopBound(int loopId) const {
-	if (isBottom())
+	if (isBottom()) {
 		return bound_t::UNREACHABLE;
+}
 	Ident id(loopId, Ident::ID_LOOP);
 	PPL::Coefficient binf_n, binf_d, bsup_n, bsup_d;
 	getRange(id, binf_n, binf_d, bsup_n, bsup_d);
 	if ( PPL::raw_value(bsup_d).get_ui() != 0) {
-		return (bound_t) (PPL::raw_value(bsup_n).get_ui() / PPL::raw_value(bsup_d).get_ui());
+		return static_cast<bound_t> (PPL::raw_value(bsup_n).get_ui() / PPL::raw_value(bsup_d).get_ui());
 	}
 	return bound_t::UNBOUNDED;
 }
@@ -1075,6 +1095,8 @@ void PPLDomain::_doFreeAxis(int axis) {
 #ifdef POLY_DEBUG			
 	cout << "Variable " << Variable(axis) << ", mapped to identifier " << axis2id[axis] << ", is scheduled to be destroyed. " << endl;
 #endif
+	id2axis.remove(axis2id[axis]);
+	axis2id[axis] = Ident();
 	trash.set(axis);
 }
 

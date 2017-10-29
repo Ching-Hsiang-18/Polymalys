@@ -1,14 +1,14 @@
 #include <otawa/otawa.h>
 #include <otawa/util/WideningListener.h>
-#include <otawa/util/WideningFixPoint.h>
 #include <otawa/util/HalfAbsInt.h>
+#include <otawa/util/WideningFixPoint.h>
 #include <otawa/dfa/FastState.h>
 #include <otawa/poly/features.h>
 #include <otawa/flowfact/features.h>
 #include <otawa/cfg/Edge.h>
 #include <otawa/graph/Graph.h>
 #include <otawa/dfa/ai.h>
-#include <time.h>
+#include <ctime>
 #include <ppl.hh>
 
 #include "include/PPLDomain.h"
@@ -55,8 +55,9 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, ai::WorkListD
 		processCFG(*subCFG, s, false);
 
 		cout << "Return from " << subCFG->name() << " to " << (*ana)->toSynth()->caller()->name() << endl;
-		for (ai::CFGGraph::Successor e(graph, *ana); e; e++)
+		for (ai::CFGGraph::Successor e(graph, *ana); e; e++) {
 				ana.check(*e, s);
+}
 	} else {
 		/* Handle normal basic block */
 		BasicBlock *bl = (*ana)->toBasic();
@@ -74,12 +75,14 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, ai::WorkListD
 #ifdef POLY_DEBUG			
 			cout << "ITERATION: " << int(bound) << endl;
 #endif
-			if ((MAX_ITERATION(bl) != bound_t::UNBOUNDED) && ((MAX_ITERATION(bl) < bound)  || (bound == bound_t::UNBOUNDED)))
+			if ((MAX_ITERATION(bl) != bound_t::UNBOUNDED) && ((MAX_ITERATION(bl) < bound)  || (bound == bound_t::UNBOUNDED))) {
 				MAX_ITERATION(bl) = bound;
+}
 
 			/* We record state at each loop header to be able to handle widening */
-			if (headerState.hasKey(bl->id()))
+			if (headerState.hasKey(bl->id())) {
 				s = man->widening(s, headerState[bl->id()]);
+}
 			headerState[bl->id()] = s;
 
 		}
@@ -91,22 +94,24 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, ai::WorkListD
 			return;
 		}
 
+#ifdef POLY_DEBUG			
+		cout << "State at basic block start: " << endl << s << endl;
+#endif
+
 		/* Basic block processing */
 		for (BasicBlock::InstIter inst(bl); inst; inst++) {
 #ifdef POLY_DEBUG			
-				cout << "Starting update for CPU (concrete) instruction: " << *inst << endl;
+			cout << "Starting update for CPU (concrete) instruction: " << *inst << endl;
 #endif
-				sem::Block block;
+			sem::Block block;
 			inst->semInsts(block);
 			for(sem::Block::InstIter semi(block); semi; semi++) {
 #ifdef POLY_DEBUG			
-					cout << "Starting update before semantic instruction." << endl;
-					cout << "State before semantic instruction update: " << endl << s << endl;
 					cout << "Updating for semantic instruction (IR): " << *semi << endl;
 #endif
 					s = s.onSemInst(*semi, inst->address());
 #ifdef POLY_DEBUG			
-					cout << "State after semantic instruction update: " << endl << s << endl;
+					cout << "State after semantic instruction update: " << endl << s << endl << endl;
 #endif
 					s.doIntegerWrap();
 			}
@@ -115,7 +120,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, ai::WorkListD
 #endif
 			s.doFinalizeUpdate();
 #ifdef POLY_DEBUG			
-					cout << "State after cleanup: " << endl << s << endl;
+			cout << "State after cleanup: " << endl << s << endl;
 #endif
 		}
 
@@ -132,7 +137,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, ai::WorkListD
 			 * 2. The current output edge of current block is an exit-edge (need to do onLoopExit)
 			 * 3. The current block has a conditional branch (need to do onBranch, for filtering)
 			 */
-			if (!LOOP_HEADER(e->sink()) && !LOOP_EXIT_EDGE(e) && !s.hasFilter()) { 
+			if (!LOOP_HEADER(e->sink()) && (LOOP_EXIT_EDGE(e) == nullptr) && !s.hasFilter()) { 
 				/* no edge update: simply copy output state to successor input state */
 				ana.check(*e, s);
 			} else {
@@ -146,8 +151,9 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, ai::WorkListD
 					cout << edgeState;
 #endif
 					edgeState = edgeState.onBranch(e->isTaken());
-					if (edgeState.isBottom())
+					if (edgeState.isBottom()) {
 						continue;
+}
 #ifdef POLY_DEBUG			
 					cout << "FILTERED STATE: " << endl;
 					cout << edgeState;
@@ -164,7 +170,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, ai::WorkListD
 					}
 				}
 
-				if (LOOP_EXIT_EDGE(e)) {
+				if (LOOP_EXIT_EDGE(e) != nullptr) {
 					/* Exit edge: remove virtual loop counter, and apply loop bound constraint on state */
 					Block *bb = LOOP_EXIT_EDGE(e);
 
@@ -175,8 +181,9 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, ai::WorkListD
 #endif
 					if (bound >= 0) {
 						edgeState = edgeState.onLoopExit(bb->id(), bound);
-						if (edgeState.isBottom())
+						if (edgeState.isBottom()) {
 							continue;
+}
 					}
 				}
 				edgeState.doFinalizeUpdate();
@@ -226,4 +233,5 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 		}
 	}
 }
-} } 
+}  // namespace poly
+ } // namespace otawa 

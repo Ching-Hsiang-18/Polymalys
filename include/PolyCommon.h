@@ -1,15 +1,15 @@
-#ifndef OTAWA_POLY_COMMON_H
-#define OTAWA_POLY_COMMON_H 1
+#ifndef POLYCOMMON_H
+#define POLYCOMMON_H 1
 
-#include <otawa/otawa.h>
-#include <otawa/ipet.h>
 #include <otawa/cfg.h>
 #include <otawa/cfg/features.h>
+#include <otawa/ipet.h>
+#include <otawa/otawa.h>
 #include <otawa/prog/sem.h>
 #include <elm/util/BitVector.h>
 #include <ppl.hh>
 
-#define POLY_DEBUG 1
+// #define POLY_DEBUG 1
 
 namespace otawa { namespace poly {
 using namespace otawa;
@@ -19,6 +19,7 @@ extern Identifier<int> NUM_LOC_VARS;
 extern Identifier<int> LOC_VAR_SIZE;
 extern Identifier<int> MAX_AXIS;
 extern p::feature POLY_ANALYSIS_FEATURE;
-} } // namespace otawa::poly
+} // namespace poly
+ } // namespace otawa
 #endif
 

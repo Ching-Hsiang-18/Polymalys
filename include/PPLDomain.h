@@ -1,12 +1,12 @@
 // #define POLY_DEBUG 1
 //
-#ifndef OTAWA_POLY_DOMAIN_H
-#define OTAWA_POLY_DOMAIN_H 1
+#ifndef PPLDOMAIN_H
+#define PPLDOMAIN_H 1
 
-#include <otawa/otawa.h>
 #include <otawa/ipet.h>
 #include <otawa/cfg.h>
 #include <otawa/cfg/features.h>
+#include <otawa/otawa.h>
 #include <otawa/prog/sem.h>
 #include <elm/util/BitVector.h>
 #include <ppl.hh>
@@ -20,7 +20,7 @@ using namespace otawa::util;
 
 namespace PPL = Parma_Polyhedra_Library;
 using Variable = PPL::Variable;
-Output& operator<<(Output& o, const Variable pv);
+Output& operator<<(Output& o, Variable pv);
 
 enum bound_t : signed long {
 	UNREACHABLE = -1,
@@ -54,7 +54,7 @@ class Ident {
 		};
 		inline Ident() : _type(ID_INVALID) { }
 		inline Ident(int id, IdentType typ) : _id(id), _type(typ) { }
-		inline ~Ident() { } 
+		inline ~Ident() = default; 
 		inline int getId() const { return _id; }
 		inline IdentType getType() const { return _type; }
 		inline bool equals(const Ident &b) const {
@@ -71,7 +71,7 @@ class Ident {
 		}
 
 	private:
-		int _id;
+		int _id{};
 		IdentType _type;
 };
 inline Output& operator<<(Output& o, const Ident &i) { i.print(o); return o; }
@@ -106,7 +106,7 @@ private:
 	Ident compare_reg; ///< Register holding the last comparison result
 	sem::cond_t compare_op; ///< Last comparison semantics
 
-	int mem_ref; ///< Highest pointer ID + 1
+	int mem_ref{}; ///< Highest pointer ID + 1
 	int num_axis; ///<Highest poly variable ID + 1
 
 	BitVector trash;  ///< Bitvector representing the set of variables scheduled to be destroyed
@@ -140,7 +140,7 @@ private:
 	 */
 	class RemoveMarked {
 		public:
-			inline ~RemoveMarked() { }
+			inline ~RemoveMarked() = default;
 			inline RemoveMarked(BitVector &bv, int size) : _bv(bv), _size(size) { }
 			bool maps(PPL::dimension_type i, PPL::dimension_type &j) const;
 		private:
@@ -156,12 +156,13 @@ private:
 	 */
 	class MapWithHash {
 		public:
-			inline MapWithHash(genstruct::HashTable<int,int> &map) : _map(map) { }
+			inline explicit MapWithHash(genstruct::HashTable<int,int> &map) : _map(map) { }
 			inline bool maps(PPL::dimension_type i, PPL::dimension_type &j) const {
 				if (_map.hasKey(i)) {
 					j = _map[i];
 					return true;
-				} else return false;
+				} { return false;
+}
 			}
 		private:
 			genstruct::HashTable<int,int> &_map;
@@ -185,7 +186,7 @@ public:
 	 * Builds a top state
 	 * @param maxAxis Maximum number of variables this state can hold
 	 */
-	inline PPLDomain(int maxAxis) {
+	inline explicit PPLDomain(int maxAxis) {
 		num_axis = 0;
 		mem_ref = 0;
 		trash = BitVector(maxAxis);
@@ -206,7 +207,7 @@ public:
 	}
 
 	inline ~PPLDomain() { 
-		// TODO
+		// TODO(clement): 
 	}
 
 	inline void operator=(const PPLDomain& dom) {
@@ -221,7 +222,7 @@ public:
 	
 	}
 
-	bool equals(const PPLDomain &) const;
+	bool equals(const PPLDomain & /*b*/) const;
 
 	/* Operations that reads the state and returns information about it */
 
@@ -259,7 +260,7 @@ public:
 	 * @param bsup_n Reference for storing the numerator for the upper bound
 	 * @param bsup_d eference for storing the denominator for the upper bound
 	 */
-	void getRange(const Variable &v, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d) const;
+	void getRange(const Variable &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d) const;
 
 	/**
 	 * Display a fraction on output stream. 
@@ -332,7 +333,7 @@ public:
 	 * @param cst_d Reference for storing the denominator
 	 * @return true if successful, false if the value cannot be determined.
 	 */
-	bool getConstant(const Variable &var, PPL::Coefficient &cst, PPL::Coefficient &cst_d) const;
+	bool getConstant(const Variable &var, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d) const;
 
 	/**
 	 * Attempts to get the current loop bound estimation, in the current state.
@@ -446,7 +447,7 @@ public:
 	 * @param allow_replace true if we allow replacing an existing variable that was mapped to id, false otherwise
 	 * @return The new variable.
 	 */
-	Variable varNew(const Ident &id, bool allow_replace = false);
+	Variable varNew(const Ident &ident, bool allow_replace = false);
 
 	/**
 	 * Schedule a variable (associated with an identifier) to be destroyed.
@@ -471,7 +472,7 @@ public:
 	 * @param allow_varNew if true, and the identifier is unknown, create a new variable
 	 * @return The variable.
 	 */
-	Variable getVarOrNew(const Ident& id, bool allow_varNew = true);
+	Variable getVarOrNew(const Ident& ident, bool allow_varNew = true);
 
 	/**
 	 * Gets the variable associated with an identifier (i.e. lookup). 
@@ -479,7 +480,7 @@ public:
 	 * @param id The target identifier
 	 * @return The variable.
 	 */
-	Variable getVar(const Ident&) const;
+	Variable getVar(const Ident& /*ident*/) const;
 
 	/**
 	 * Tests if a variable is associated with an identifier.
@@ -487,7 +488,9 @@ public:
 	 * @param v Variable to test
 	 * @return true if the variable is mapped to an identifier, false otherwise
 	 */
-	inline bool isVarMapped(const Variable& v) const { return (axis2id.length() > v.id()) && (axis2id[v.id()].getType() != Ident::ID_INVALID); }
+	inline bool isVarMapped(const Variable& v) const { 
+		return (axis2id.length() > v.id()) && (axis2id[v.id()].getType() != Ident::ID_INVALID) && id2axis.hasKey(axis2id[v.id()]); 
+	}
 
 	/**
 	 * Returns the identifier associated with a variable
@@ -503,7 +506,7 @@ public:
 	 * @param id The identifier
 	 * @return true if the identifier exists, false otherwise
 	 */
-	bool hasIdent(const Ident&) const;
+	bool hasIdent(const Ident& /*ident*/) const;
 
 	/**
 	 * Performs garbage-collection of variables scheduled to be destroyed.
@@ -515,7 +518,7 @@ public:
 	/**
 	 * Create new memory address/value variable and identifiers.
 	 */
-	void varCreatePtr(Ident&, Ident&);
+	void varCreatePtr(Ident& /*addr*/, Ident& /*val*/);
 
 
 	/**
@@ -555,7 +558,7 @@ public:
 
 private: 
 	/* Private helper functions. Subject to changes, and should not be used directly. */
-	int _doAllocAxis(const Ident&, bool allow_replace = false);
+	int _doAllocAxis(const Ident& /*ident*/, bool allow_replace = false);
 	void _doFreeAxis(int axis); 
 #ifdef POLY_DEBUG
 	void _sanityChecks();
@@ -568,7 +571,7 @@ private:
 	 * Indexes the pointer in dom, by their expression in terms of registers referenced in map_regs. 
 	 * Stores the result in map_ptr.
 	 */
-	void _indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, HashCons> &map_ptr, genstruct::HashTable<int, int>& map_regs) const;
+	void _indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, HashCons> &map_ptr, genstruct::HashTable<int, int>& commonRegs) const;
 
 	void _identifyAncestorVars(PPLDomain &l, genstruct::HashTable<int, int> &commonVarsL, PPLDomain &r, genstruct::HashTable<int, int> &commonVarsR) const;
 
@@ -590,13 +593,14 @@ private:
 	 * @param l First state to unify
 	 * @param r Second state to unify
 	 */
-	void _doUnify(PPLDomain&l, PPLDomain &r) const;
+	void _doUnify(PPLDomain&l1, PPLDomain &r1) const;
 
 };
 inline Output& operator<<(Output& o, const PPLDomain &dom) { dom.print(o); return o; }
 inline bool operator==(const PPLDomain &a, const PPLDomain &b) { return a.equals(b); }
 inline bool operator!=(const PPLDomain &a, const PPLDomain &b) { return !(a == b); }
 
-} } // namespace otawa::poly
+}  // namespace poly
+ }  // namespace otawa
 #endif
 

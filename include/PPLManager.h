@@ -1,17 +1,17 @@
 
-#ifndef OTAWA_POLY_MANAGER_H
-#define OTAWA_POLY_MANAGER_H 1
+#ifndef PPLMANAGER_H
+#define PPLMANAGER_H 1
 
-#include <otawa/otawa.h>
-#include <otawa/ipet.h>
 #include <otawa/cfg.h>
 #include <otawa/cfg/features.h>
+#include <otawa/ipet.h>
+#include <otawa/otawa.h>
 #include <otawa/prog/sem.h>
 #include <elm/util/BitVector.h>
 #include <ppl.hh>
 
-#include "PolyCommon.h"
 #include "PPLDomain.h"
+#include "PolyCommon.h"
 
 namespace otawa { namespace poly {
 
@@ -30,13 +30,13 @@ public:
 	/**
 	 * Create PPLManager using a fresh init state.
 	 */
-	PPLManager(const PropList &props);
+	explicit PPLManager(const PropList &props);
 
-	inline ~PPLManager() { }
+	inline ~PPLManager() = default;
 
-	inline t& init(void) { return _init; }
-	inline t& bot(void) { return _bot; }
-	inline t& top(void) { return _top; }
+	inline t& init() { return _init; }
+	inline t& bot() { return _bot; }
+	inline t& top() { return _top; }
 
 	inline t join(t& v1, const t& v2) { return v1.onMerge(v2, false); }
 	inline t widening(t& v1, const t& v2) { return v1.onMerge(v2, true); }
@@ -48,6 +48,7 @@ private:
 	t _top;
 };
 
-} } 
+} // namespace poly
+ } // namespace otawa 
 #endif
 
