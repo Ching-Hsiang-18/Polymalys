@@ -271,7 +271,7 @@ void PPLDomain::displayLocVars(io::Output &out) {
 	}
 	Ident id_ssp(Ident::ID_START_SP, Ident::ID_SPECIAL);
 	Variable ssp = getVar(id_ssp);
-	out << " Local variables: " << endl;
+	out << "Local variables: " << endl;
 	for (int i = 0 ; i < NUM_LOC_VARS(_props)*LOC_VAR_SIZE(_props); i += LOC_VAR_SIZE(_props)) {
 		PPL::Constraint_System cons = mcons;
 		Variable v(num_axis);
@@ -284,16 +284,30 @@ void PPLDomain::displayLocVars(io::Output &out) {
 			Variable vsnd = Variable(p.snd);
 			if (p.fst.getType() == Ident::ID_MEM_ADDR) {
 				PPL::C_Polyhedron poly(cons);
-				PPL::Coefficient bsup_n, bsup_d;
-				PPL::Coefficient binf_n, binf_d;
+				PPL::Coefficient infNumAddr, infDenAddr, supNumAddr, supDenAddr;
 				bool maximum, minimum;
-				poly.maximize(v - vsnd, bsup_n, bsup_d, maximum);
-				poly.minimize(v - vsnd, binf_n, binf_d, minimum);
-				if ((bsup_n == 0) && (binf_n == 0) && (bsup_d != 0) && (binf_d != 0)) {
+				poly.maximize(v - vsnd, supNumAddr, supDenAddr, maximum);
+				poly.minimize(v - vsnd, infNumAddr, infDenAddr, minimum);
+				if ((supNumAddr == 0) && (infNumAddr == 0) && (supDenAddr != 0) && (infDenAddr != 0)) {
 					found = true;
 					Ident idval(p.fst.getId(), Ident::ID_MEM_VAL);
-					PPL::Coefficient num, den;
-					getConstant(idval, num, den, true);
+					PPL::Coefficient supNumVal, supDenVal, infNumVal, infDenVal;
+					getRange(idval, infNumVal, infDenVal, supNumVal, supDenVal);
+
+					if (infDenVal == 0) {
+						out << "]-∞";
+					} else {
+						out << "[";
+						displayFrac(out, infNumVal, infDenVal);
+					}
+					out << ";";
+					if (supDenVal == 0) {
+						out << "+∞[";
+					} else {
+						displayFrac(out, supNumVal, supDenVal);
+						out << "]";
+					}
+
 					out <<  " (aka " << idval << ")";
 					break;
 				}
@@ -307,9 +321,9 @@ void PPLDomain::displayLocVars(io::Output &out) {
 
 }
 
-bool PPLDomain::getConstant(Variable &var, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d, bool display) {
+bool PPLDomain::getConstant(Variable &var, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d) {
 	PPL::Coefficient binf_d, binf_n, bsup_d, bsup_n;
-	getRange(var, bsup_n, bsup_d, binf_n, binf_d, display); 
+	getRange(var, bsup_n, bsup_d, binf_n, binf_d);
 	if ((binf_d == bsup_d) && (binf_n == bsup_n) && (binf_d != 0)) {
 		cst_n = binf_n;
 		cst_d = binf_d;
@@ -317,20 +331,30 @@ bool PPLDomain::getConstant(Variable &var, PPL::Coefficient &cst_n, PPL::Coeffic
 	}
 	return false;
 }
-bool PPLDomain::getConstant(Ident &id, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d, bool display) {
+bool PPLDomain::getConstant(Ident &id, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d) {
 	Variable v = getVar(id);
-	return getConstant(v, cst_n, cst_d, display);
+	return getConstant(v, cst_n, cst_d);
 }
-void PPLDomain::getRange(Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display) {
-#ifdef POLY_DEBUG			
-	cout << "get_range(" << id << ") = ";
-#endif
+void PPLDomain::getRange(Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d) {
 	Variable v = getVar(id);
-	getRange(v, binf_n, binf_d, bsup_n, bsup_d, display);
+	getRange(v, binf_n, binf_d, bsup_n, bsup_d);
 }
 
 
-void PPLDomain::getRange(Variable &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display) {
+void PPLDomain::displayFrac(io::Output &out, const PPL::Coefficient &num, const PPL::Coefficient &den) const {
+	static char buf[16];
+	ASSERT(den != 0);
+	gmp_snprintf(buf, sizeof(buf), "%Zd", &PPL::raw_value(num));
+	buf[sizeof(buf) - 1] = 0;
+	out << buf;
+	if (den != 1) {
+		gmp_snprintf(buf, sizeof(buf), "/%Zd", &PPL::raw_value(den));
+		buf[sizeof(buf) - 1] = 0;
+		out << buf;
+	}
+}
+
+void PPLDomain::getRange(Variable &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d) {
 	bool maximum, minimum;
 	if (var.id() >= poly.space_dimension()) {
 		bsup_n = 0;
@@ -341,31 +365,6 @@ void PPLDomain::getRange(Variable &var, PPL::Coefficient &binf_n, PPL::Coefficie
 	}
 	poly.maximize(var, bsup_n, bsup_d, maximum);
 	poly.minimize(var, binf_n, binf_d, minimum);
-#ifdef POLY_DEBUG			
-	display = true;
-#endif
-	if (display) {
-		gmp_printf("[");
-		if (binf_d != 0) {
-			gmp_printf("%Zd", &PPL::raw_value(binf_n));
-			if (binf_d != 1) {
-				gmp_printf("/%Zd", &PPL::raw_value(binf_d));
-			}
-		} else { 
-			gmp_printf("-inf");
-		}
-		gmp_printf("..");
-		if (bsup_d != 0) {
-			gmp_printf("%Zd", &PPL::raw_value(bsup_n));
-			if (bsup_d != 1) {
-				gmp_printf("/%Zd", &PPL::raw_value(bsup_d));
-			}
-		} else { 
-			gmp_printf("+inf");
-		}
-		gmp_printf("]");
-		fflush(stdout);
-	}
 }
 
 void PPLDomain::doScratch(Ident &id) {

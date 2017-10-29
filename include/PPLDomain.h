@@ -202,8 +202,9 @@ public:
 	void print(io::Output & out) const;
 	void displayLocVars(io::Output &out);
 	void displayIdentMap(io::Output &out);
-	void getRange(Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
-	void getRange(Variable &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d, bool display = false);
+	void getRange(Ident &id, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d);
+	void getRange(Variable &v, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d);
+	void displayFrac(io::Output &out, const PPL::Coefficient &num, const PPL::Coefficient &den) const;
 
 	inline int getVarIDCount() { return poly.space_dimension(); }
 	inline bool isBottom() const { return (num_axis == -1) || poly.is_empty(); } 
@@ -211,8 +212,8 @@ public:
 	inline bool hasFilter() { return (compare_reg.getType() != Ident::ID_INVALID); }
 	bool mayAlias(const Variable &v1, const Variable &v2, int offset = 0) const;
 	bool mustAlias(const Variable &v1, const Variable &v2, int offset = 0) const;
-	bool getConstant(Ident &id, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d, bool display = false);
-	bool getConstant(Variable &var, PPL::Coefficient &cst, PPL::Coefficient &cst_d, bool display = false);
+	bool getConstant(Ident &id, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d);
+	bool getConstant(Variable &var, PPL::Coefficient &cst, PPL::Coefficient &cst_d);
 	bound_t getLoopBound(int loopId);
 
 	/* High-level update operations. They return the modified state. */
