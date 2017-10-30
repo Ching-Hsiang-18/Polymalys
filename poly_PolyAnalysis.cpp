@@ -5,7 +5,6 @@
 #include <otawa/flowfact/features.h>
 #include <otawa/graph/Graph.h>
 #include <otawa/otawa.h>
-#include <otawa/poly/features.h>
 #include <otawa/util/HalfAbsInt.h>
 #include <otawa/util/WideningFixPoint.h>
 #include <otawa/util/WideningListener.h>
@@ -230,7 +229,7 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	processCFG(*entry, dummy, true);
 
 	cout << "LOOP BOUNDS: " << endl;
-	for (CFGCollection::Iterator iter2(coll); iter2; iter2++) {
+	for (CFGCollection::Iter iter2(coll); iter2; iter2++) {
 		for (CFG::BlockIter iter((*iter2)->blocks()); iter; iter++) {
 			Block *bb = (*iter);
 			if (LOOP_HEADER(bb)) {

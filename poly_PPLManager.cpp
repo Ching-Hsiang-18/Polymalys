@@ -5,7 +5,6 @@
 #include <otawa/flowfact/features.h>
 #include <otawa/graph/Graph.h>
 #include <otawa/otawa.h>
-#include <otawa/poly/features.h>
 #include <otawa/util/HalfAbsInt.h>
 #include <otawa/util/WideningFixPoint.h>
 #include <otawa/util/WideningListener.h>

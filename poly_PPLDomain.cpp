@@ -5,7 +5,6 @@
 #include <otawa/flowfact/features.h>
 #include <otawa/graph/Graph.h>
 #include <otawa/otawa.h>
-#include <otawa/poly/features.h>
 #include <otawa/util/HalfAbsInt.h>
 #include <otawa/util/WideningFixPoint.h>
 #include <otawa/util/WideningListener.h>
@@ -740,9 +739,9 @@ template <class F> void PPLDomain::doMapIdents(F pfunc) {
 #endif
 				n = new_axis;
 			}
-			axis2id[new_axis] = it.key();
+			axis2id[new_axis] = axis2id[old_axis];
 		} else {
-			todel.add(it.key());
+			todel.add(axis2id[old_axis]);
 		}
 	}
 #ifdef POLY_DEBUG

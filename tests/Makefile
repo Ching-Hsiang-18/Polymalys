@@ -1,5 +1,5 @@
-CXXFLAGS=`otawa-config otawa/display otawa/poly --cflags`
-LIBS=`otawa-config otawa/display otawa/poly --libs`
+CXXFLAGS=`otawa-config otawa/poly --cflags`
+LIBS=`otawa-config otawa/poly --libs`
 
 all: poly
 

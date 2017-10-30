@@ -7,7 +7,6 @@
 #include <otawa/ilp/System.h>
 #include <otawa/stats/StatInfo.h>
 #include <otawa/cfg/features.h>
-#include <otawa/poly/features.h>
 #include <otawa/proc/DynFeature.h>   
 #include <otawa/proc/DynProcessor.h>  
 #include <otawa/cfg/Virtualizer.h>
@@ -15,7 +14,6 @@
 
 using namespace otawa;
 using namespace elm::option;
-using namespace otawa::poly;
 
 int main(int argc, char **argv) {
 	WorkSpace *ws;
@@ -28,7 +26,6 @@ int main(int argc, char **argv) {
 	otawa::Processor::TIMED(props) = true;
 	ws = manager.load("./cible", props);
 	ws->require(COLLECTED_CFG_FEATURE, props);
-//	ws->require(VIRTUALIZED_CFG_FEATURE, props);
 
 	ws->require(DynFeature("otawa::poly::POLY_ANALYSIS_FEATURE"), props);
 	ws->require(DynFeature("otawa::ipet::WCET_FEATURE"), props);
