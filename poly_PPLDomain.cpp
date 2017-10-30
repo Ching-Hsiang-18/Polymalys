@@ -749,13 +749,18 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 						<< "), attempting to read value from initial state" << endl;
 #endif
 
-					if (initState->isInitialized(concreteAddress)) {
+					try {
 						uint32_t initValue;
-						initState->process().get(concreteAddress, initValue);
+						initState->get(concreteAddress, initValue);
 #ifdef POLY_DEBUG
 						cout << "LOAD: Initial state contains a value for this address: " << initValue << endl;
 #endif
 						s_out.doNewConstraint(loadReg == initValue);
+					} catch (Exception ex) { 
+						/* TODO(clement): Find the exact exception that is thrown in this case, it appears to be undocumented */
+#ifdef POLY_DEBUG
+						cout << "LOAD: Could not find value (address out of bounds?)" << endl;
+#endif
 					}
 				}
 			}

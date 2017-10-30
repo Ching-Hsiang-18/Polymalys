@@ -23,6 +23,7 @@ p::declare PolyAnalysis::reg = p::init("otawa::poly::PolyAnalysis", Version(1, 0
                                    .require(COLLECTED_CFG_FEATURE)
                                    .require(LOOP_INFO_FEATURE)
                                    .require(dfa::INITIAL_STATE_FEATURE)
+								   .require(MEMORY_ACCESS_FEATURE)
                                    .provide(POLY_ANALYSIS_FEATURE);
 
 PolyAnalysis::PolyAnalysis(p::declare &r) : Processor(r) {}
