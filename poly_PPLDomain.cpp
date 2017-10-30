@@ -204,7 +204,7 @@ bool PPLDomain::RemoveMarked::maps(PPL::dimension_type i, PPL::dimension_type &j
 	}
 
 	int shift_amount = 0;
-	for (int k = 0; k < i; k++) {
+	for (unsigned int k = 0; k < i; k++) {
 		if (_bv.bit(k)) {
 			shift_amount++;
 		}
@@ -905,6 +905,7 @@ void PPLDomain::_doFreeAxis(int axis) {
 }
 
 int PPLDomain::_doAllocAxis(const Ident &ident, bool allow_replace) {
+	ASSERT(!isBottom());
 	ASSERT(num_axis < trash.size())
 	ASSERT(allow_replace || !id2axis.hasKey(ident));
 	if (id2axis.hasKey(ident)) {
@@ -923,7 +924,7 @@ int PPLDomain::_doAllocAxis(const Ident &ident, bool allow_replace) {
 	cout << "New variable " << Variable(num_axis) << " created for identifier " << ident << endl;
 #endif
 	num_axis++;
-	if (poly.space_dimension() < num_axis) {
+	if (poly.space_dimension() < (unsigned)num_axis) {
 		poly.add_space_dimensions_and_embed(num_axis - poly.space_dimension());
 	}
 	return num_axis - 1;
@@ -994,7 +995,7 @@ void PPLDomain::_indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, 
 }
 
 void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1) const {
-	int axis = 0;
+	unsigned int axis = 0;
 
 #ifdef POLY_DEBUG
 	cout << "Unify phase." << endl;

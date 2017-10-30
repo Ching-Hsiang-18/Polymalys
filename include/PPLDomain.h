@@ -492,7 +492,7 @@ class PPLDomain {
 	 * @return true if the variable is mapped to an identifier, false otherwise
 	 */
 	inline bool isVarMapped(const Variable &v) const {
-		return (axis2id.length() > v.id()) && (axis2id[v.id()].getType() != Ident::ID_INVALID) &&
+		return ((unsigned)axis2id.length() > v.id()) && (axis2id[v.id()].getType() != Ident::ID_INVALID) &&
 		       id2axis.hasKey(axis2id[v.id()]);
 	}
 
