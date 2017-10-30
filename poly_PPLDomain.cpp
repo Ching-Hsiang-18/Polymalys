@@ -881,7 +881,7 @@ Variable PPLDomain::memReplace(const Variable &address, const Variable &valueSou
 	return newAddress;
 }
 
-Variable PPLDomain::memCreate(const Variable &address, const Variable &valueSource) {
+Variable PPLDomain::memCreate(const PPL::Linear_Expression & address , const PPL::Linear_Expression &valueSource) {
 	Ident idNewAddress, idNewValue;
 	varCreatePtr(idNewAddress, idNewValue);
 	const Variable &newAddress = varNew(idNewAddress);
@@ -1106,6 +1106,7 @@ void PPLDomain::_doMatchGlobals(PPLDomain &l1, PPLDomain &r1, unsigned int& axis
 				Variable addrL = Variable((*it).snd);
 				Variable valL = l1.getVar(Ident((*it).fst.getId(), Ident::ID_MEM_VAL));
 				Ident idAddrR, idValR;
+
 				r1.varCreatePtr(idAddrR, idValR);
 				Variable addrR = r1.varNew(idAddrR);
 				Variable valR = r1.varNew(idValR);
@@ -1199,7 +1200,6 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1) const {
 	/*
 	 * Add pointer-from-initial-state for each global variable without a corresponding ptr in other state
 	 */
-
 	_doMatchGlobals(l1, r1, axis, mappingL, mappingR);
 	_doMatchGlobals(l1, r1, axis, mappingL, mappingR);
 

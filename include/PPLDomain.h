@@ -560,7 +560,7 @@ class PPLDomain {
 	 * @param newValue A variable representing the memory value.
 	 * @return new address variable
 	 */
-	Variable memCreate(const Variable & address , const Variable & newValue);
+	Variable memCreate(const PPL::Linear_Expression & address , const PPL::Linear_Expression &newValue);
 
 	/**
 	 * Associate a new value to the address variable, merging with existing value.
