@@ -7,6 +7,8 @@
 #include <otawa/ipet.h>
 #include <otawa/otawa.h>
 #include <otawa/prog/sem.h>
+#include <otawa/dfa/ai.h>
+#include <otawa/dfa/State.h>
 #include <ppl.hh>
 
 #include "PolyCommon.h"
@@ -105,6 +107,8 @@ class PPLDomain {
 
 	BitVector trash; ///< Bitvector representing the set of variables scheduled to be destroyed
 
+	dfa::State *initState; ///< Process init state
+
 	/* Nested classes */
 
 	/**
@@ -177,16 +181,18 @@ class PPLDomain {
 		poly = PPL::C_Polyhedron(0, PPL::EMPTY);
 		compare_reg = Ident();
 		compare_op = sem::EQ;
+		initState = NULL;
 	}
 
 	/**
 	 * Builds a top state
 	 * @param maxAxis Maximum number of variables this state can hold
 	 */
-	inline explicit PPLDomain(int maxAxis) {
+	inline explicit PPLDomain(int maxAxis, dfa::State *istate) {
 		num_axis = 0;
 		mem_ref = 0;
 		trash = BitVector(maxAxis);
+		initState = istate;
 		poly = PPL::C_Polyhedron(0, PPL::UNIVERSE);
 		compare_reg = Ident();
 		compare_op = sem::EQ;
@@ -201,6 +207,7 @@ class PPLDomain {
 		compare_reg = src.compare_reg;
 		compare_op = src.compare_op;
 		trash = src.trash;
+		initState = src.initState;
 	}
 
 	inline ~PPLDomain() {
@@ -216,6 +223,7 @@ class PPLDomain {
 		compare_op = dom.compare_op;
 		mem_ref = dom.mem_ref;
 		trash = dom.trash;
+		initState = dom.initState;
 		return *this;
 	}
 

@@ -7,6 +7,7 @@
 #include <otawa/otawa.h>
 #include <otawa/util/HalfAbsInt.h>
 #include <otawa/util/WideningFixPoint.h>
+#include <otawa/hard/Memory.h>
 #include <otawa/util/WideningListener.h>
 #include <ppl.hh>
 
@@ -193,7 +194,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 }
 
 void PolyAnalysis::processCFG(CFG &cfg, state_t &s, bool isEntryCFG) {
-	PPLManager *man = isEntryCFG ? (new PPLManager(*_props)) : (new PPLManager(s, *_props));
+	PPLManager *man = isEntryCFG ? (new PPLManager(*_props, initState)) : (new PPLManager(s, *_props, initState));
 	;
 	genstruct::HashTable<int, state_t> headerState;
 	ai::CFGGraph graph(&cfg);
@@ -222,6 +223,10 @@ void PolyAnalysis::processCFG(CFG &cfg, state_t &s, bool isEntryCFG) {
 void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	const CFGCollection *coll = INVOLVED_CFGS(ws);
 	ASSERT(coll);
+
+	initState = dfa::INITIAL_STATE(ws);
+	ASSERT(initState != nullptr);
+
 	cout << "CFG count: " << coll->count() << endl;
 
 	CFG *entry = coll->get(0);

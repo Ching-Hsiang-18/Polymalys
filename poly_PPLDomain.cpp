@@ -154,9 +154,12 @@ void PPLDomain::print(io::Output &out) const {
 }
 
 bool PPLDomain::equals(const PPLDomain &b) const {
+	ASSERT((initState == nullptr) || (b.initState == nullptr) || (initState == b.initState));
+
 	if (!((poly == b.poly) && (id2axis.count() == b.id2axis.count()))) {
 		return false;
 	}
+
 	if (trash != b.trash) {
 		return false;
 	}
@@ -688,9 +691,30 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 
 			if (!found) {
 #ifdef POLY_DEBUG
-				cout << "LOAD: Not found, creating new unconstrained ptr..." << endl;
+				cout << "LOAD: Not found, creating new ptr..." << endl;
 #endif
 				s_out.memCreate(loadAddr, loadReg);
+
+				PPL::Coefficient num, den;
+
+				/* TODO(clement) : use correct size  */
+				if (s_out.getConstant(loadAddr, num, den)) {
+					uint32_t concreteAddress = PPL::raw_value(num).get_ui() / PPL::raw_value(den).get_ui();
+#ifdef POLY_DEBUG
+					cout << "LOAD: Address is statically known (" 
+						<< hex(concreteAddress) 
+						<< "), attempting to read value from initial state" << endl;
+#endif
+
+					if (initState->isInitialized(concreteAddress)) {
+						uint32_t initValue;
+						initState->process().get(concreteAddress, initValue);
+#ifdef POLY_DEBUG
+						cout << "LOAD: Initial state contains a value for this address: " << initValue << endl;
+#endif
+						s_out.doNewConstraint(loadReg == initValue);
+					}
+				}
 			}
 			break;
 		} 
@@ -735,7 +759,7 @@ template <class F> void PPLDomain::doMapIdents(F pfunc) {
 		if (pfunc.maps(old_axis, new_axis)) {
 			if (old_axis != new_axis) {
 #ifdef POLY_DEBUG
-				cout << it.key() << "[" << Variable(old_axis) << "->" << Variable(new_axis) << "] ";
+				cout << axis2id[old_axis] << "[" << Variable(old_axis) << "->" << Variable(new_axis) << "] ";
 #endif
 				n = new_axis;
 			}

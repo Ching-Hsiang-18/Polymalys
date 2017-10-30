@@ -24,12 +24,13 @@ class PPLManager {
 	/**
 	 * Create PPLManager for existing init state.
 	 */
-	inline PPLManager(t &init, const PropList &props) : _init(init), _bot(), _top(MAX_AXIS(props)) {}
+	inline PPLManager(t &init, const PropList &props, dfa::State *iState) 
+		: _init(init), _bot(), _top(MAX_AXIS(props), iState) {}
 
 	/**
 	 * Create PPLManager using a fresh init state.
 	 */
-	explicit PPLManager(const PropList &props);
+	explicit PPLManager(const PropList &props, dfa::State *iState);
 
 	inline ~PPLManager() = default;
 

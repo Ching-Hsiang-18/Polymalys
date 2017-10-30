@@ -2,6 +2,7 @@
 #include <otawa/cfg/Edge.h>
 #include <otawa/dfa/FastState.h>
 #include <otawa/dfa/ai.h>
+#include <otawa/dfa/State.h>
 #include <otawa/flowfact/features.h>
 #include <otawa/graph/Graph.h>
 #include <otawa/otawa.h>
@@ -22,7 +23,8 @@ using namespace util;
 /**
  * Create PPLManager using a fresh init state.
  */
-PPLManager::PPLManager(const PropList &props) : _init(MAX_AXIS(props)), _bot(), _top(MAX_AXIS(props)) {
+PPLManager::PPLManager(const PropList &props, dfa::State *iState) 
+	: _init(MAX_AXIS(props), iState), _bot(), _top(MAX_AXIS(props), iState) {
 	PPL::Constraint_System initcons;
 
 	Variable var_sp = _init.varNew(Ident(13, Ident::ID_REG));

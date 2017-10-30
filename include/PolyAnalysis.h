@@ -5,6 +5,7 @@
 #include <otawa/cfg.h>
 #include <otawa/cfg/features.h>
 #include <otawa/dfa/ai.h>
+#include <otawa/dfa/State.h>
 #include <otawa/ipet.h>
 #include <otawa/otawa.h>
 #include <otawa/prog/sem.h>
@@ -33,6 +34,8 @@ class PolyAnalysis : public Processor {
 	               ai::WorkListDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>> &ana,
 	               genstruct::HashTable<int, state_t> &headerState);
 	const PropList *_props{};
+
+	dfa::State *initState = NULL;
 };
 
 } // namespace poly
