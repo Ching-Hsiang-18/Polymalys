@@ -722,9 +722,9 @@ template <class F> void PPLDomain::doMapPoly(F pfunc) {
 
 template <class F> void PPLDomain::doMapIdents(F pfunc) {
 	genstruct::Vector<Ident> todel;
-	int old_length = axis2id.length();
-	axis2id.clear();
-	axis2id.setLength(old_length);
+	genstruct::Vector<Ident> newAxis2id;
+	newAxis2id.setLength(axis2id.length());
+
 #ifdef POLY_DEBUG
 	cout << "Remapping: ";
 #endif
@@ -739,7 +739,7 @@ template <class F> void PPLDomain::doMapIdents(F pfunc) {
 #endif
 				n = new_axis;
 			}
-			axis2id[new_axis] = axis2id[old_axis];
+			newAxis2id[new_axis] = axis2id[old_axis];
 		} else {
 			todel.add(axis2id[old_axis]);
 		}
@@ -750,6 +750,8 @@ template <class F> void PPLDomain::doMapIdents(F pfunc) {
 	for (genstruct::Vector<Ident>::Iterator it(todel); it; it++) {
 		id2axis.remove(*it);
 	}
+
+	axis2id = newAxis2id;
 }
 template <class F> void PPLDomain::doMap(F pfunc) {
 	doMapPoly(pfunc);
