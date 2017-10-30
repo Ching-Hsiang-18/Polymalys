@@ -37,6 +37,10 @@ PPLManager::PPLManager(const PropList &props, dfa::State *iState)
 	_init.doNewConstraint(var_ssp == var_sp);
 	_init.doNewConstraint(var_sfp == var_fp);
 	_init.doNewConstraint(var_slr == var_lr);
+
+	/* TODO(clement): get real stack base address */
+	_init.doNewConstraint(var_ssp >= 0x7000000);
+	_init.doNewConstraint(var_sfp >= 0x7000000);
 }
 
 } // namespace poly

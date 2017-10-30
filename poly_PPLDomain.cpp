@@ -150,6 +150,7 @@ void PPLDomain::print(io::Output &out) const {
 	out << "Space dimension: " << poly.space_dimension() << ", Constraints count: " << ncons << endl;
 	displayIdentMap(out);
 	displayLocVars(out);
+	displayGlobVars(out);
 	out << endl;
 }
 
@@ -220,7 +221,7 @@ void PPLDomain::displayLocVars(io::Output &out) const {
 	const PropList _props;
 	PPL::Constraint_System mcons = poly.minimized_constraints();
 	if (isBottom()) {
-		out << "diplay_loc_vars: Nothing to display (state is BOTTOM)" << endl;
+		out << "diplayGlobVars: Nothing to display (state is BOTTOM)" << endl;
 		return;
 	}
 	Ident id_ssp(Ident::ID_START_SP, Ident::ID_SPECIAL);
@@ -273,6 +274,48 @@ void PPLDomain::displayLocVars(io::Output &out) const {
 	}
 }
 
+void PPLDomain::displayGlobVars(io::Output &out) const {
+	const PropList _props;
+	PPL::Constraint_System mcons = poly.minimized_constraints();
+	if (isBottom()) {
+		out << "diplayGlobVars: Nothing to display (state is BOTTOM)" << endl;
+		return;
+	}
+	Ident id_ssp(Ident::ID_START_SP, Ident::ID_SPECIAL);
+	out << "Global variables: " << endl;
+	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
+		elm::Pair<Ident, int> p = *it;
+		if (p.fst.getType() == Ident::ID_MEM_ADDR) {
+			PPL::Coefficient num, den;
+			if (getConstant(p.fst, num, den)) {
+				out << " @addr 0x";
+				displayFrac(out, num, den, true);
+				out << ", value = ";
+				Ident idval(p.fst.getId(), Ident::ID_MEM_VAL);
+				PPL::Coefficient supNumVal, supDenVal, infNumVal, infDenVal;
+				getRange(idval, infNumVal, infDenVal, supNumVal, supDenVal);
+
+				if (infDenVal == 0) {
+					out << "]-∞";
+				} else {
+					out << "[";
+					displayFrac(out, infNumVal, infDenVal);
+				}
+				out << ";";
+				if (supDenVal == 0) {
+					out << "+∞[";
+				} else {
+					displayFrac(out, supNumVal, supDenVal);
+					out << "]";
+				}
+
+				out << endl;
+
+			}
+		}
+	}
+}
+
 bool PPLDomain::getConstant(const Variable &var, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d) const {
 	PPL::Coefficient binf_d, binf_n, bsup_d, bsup_n;
 	getRange(var, bsup_n, bsup_d, binf_n, binf_d);
@@ -293,14 +336,14 @@ void PPLDomain::getRange(const Ident &id, PPL::Coefficient &binf_n, PPL::Coeffic
 	getRange(v, binf_n, binf_d, bsup_n, bsup_d);
 }
 
-void PPLDomain::displayFrac(io::Output &out, const PPL::Coefficient &num, const PPL::Coefficient &den) const {
+void PPLDomain::displayFrac(io::Output &out, const PPL::Coefficient &num, const PPL::Coefficient &den, bool hex) const {
 	static char buf[16];
 	ASSERT(den != 0);
-	gmp_snprintf(buf, sizeof(buf), "%Zd", &PPL::raw_value(num));
+	gmp_snprintf(buf, sizeof(buf), hex ? "%Zx" : "%Zd", &PPL::raw_value(num));
 	buf[sizeof(buf) - 1] = 0;
 	out << buf;
 	if (den != 1) {
-		gmp_snprintf(buf, sizeof(buf), "/%Zd", &PPL::raw_value(den));
+		gmp_snprintf(buf, sizeof(buf), hex ? "/%Zx" : "/%Zd", &PPL::raw_value(den));
 		buf[sizeof(buf) - 1] = 0;
 		out << buf;
 	}

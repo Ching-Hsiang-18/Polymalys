@@ -242,6 +242,11 @@ class PPLDomain {
 	void displayLocVars(io::Output &out) const;
 
 	/**
+	 * Display global variables in this state
+	 */
+	void displayGlobVars(io::Output &out) const;
+
+	/**
 	 * Display mappings in this state
 	 */
 	void displayIdentMap(io::Output &out) const;
@@ -275,8 +280,9 @@ class PPLDomain {
 	 * @param out The output stream
 	 * @param num Numerator
 	 * @param den Denominator
+	 * @param hex display in hex if true
 	 */
-	void displayFrac(io::Output &out, const PPL::Coefficient &num, const PPL::Coefficient &den) const;
+	void displayFrac(io::Output &out, const PPL::Coefficient &num, const PPL::Coefficient &den, bool hex = false) const;
 
 	/**
 	 * Gets the space dimension of the polyhedron in the current state
