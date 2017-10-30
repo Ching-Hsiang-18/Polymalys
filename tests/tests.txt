@@ -15,4 +15,8 @@ fonction2
 ptr1
 ptr2
 ptr3
+global1
+global2
+global3
+global4
 pile

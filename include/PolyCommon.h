@@ -9,7 +9,7 @@
 #include <otawa/prog/sem.h>
 #include <ppl.hh>
 
-#define POLY_DEBUG 1
+// #define POLY_DEBUG 1
 
 namespace otawa {
 namespace poly {

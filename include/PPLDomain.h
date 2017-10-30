@@ -575,6 +575,16 @@ class PPLDomain {
 	 */
 	Variable memMerge(const Variable &address, const Variable &newValue);
 
+	/**
+	 * Attempts to use process initial state to discover value associated with a constant address-variable
+	 *
+	 * @param id The identifier associated with the constant address-varialbe
+	 * @param address The constant address (detected from polyhedron)
+	 * @param value The value at the address (recovered from process initial state)
+	 * @return true if success, false otherwise
+	 */
+	bool memGetInitial(const Ident &id, uint32_t &address, uint32_t &value);
+
   private:
 	/* Private helper functions. Subject to changes, and should not be used directly. */
 	int _doAllocAxis(const Ident & /*ident*/, bool allow_replace = false);
@@ -616,6 +626,13 @@ class PPLDomain {
 	 * @param r Second state to unify
 	 */
 	void _doUnify(PPLDomain &l1, PPLDomain &r1) const;
+
+	/**
+	 * To be documented
+	 */
+	void _doMatchGlobals(PPLDomain &l1, PPLDomain &r1, unsigned int &axis, 
+			genstruct::HashTable <int,int> &mappingL, genstruct::HashTable<int,int> &mappingR) const;
+
 };
 inline Output &operator<<(Output &o, const PPLDomain &dom) {
 	dom.print(o);

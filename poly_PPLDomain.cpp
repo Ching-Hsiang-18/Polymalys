@@ -308,7 +308,7 @@ void PPLDomain::displayGlobVars(io::Output &out) const {
 					displayFrac(out, supNumVal, supDenVal);
 					out << "]";
 				}
-
+				out << " (aka " << idval << ")";
 				out << endl;
 
 			}
@@ -738,31 +738,9 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 #endif
 				s_out.memCreate(loadAddr, loadReg);
 
-				PPL::Coefficient num, den;
-
-				/* TODO(clement) : use correct size  */
-				if (s_out.getConstant(loadAddr, num, den)) {
-					uint32_t concreteAddress = PPL::raw_value(num).get_ui() / PPL::raw_value(den).get_ui();
-#ifdef POLY_DEBUG
-					cout << "LOAD: Address is statically known (" 
-						<< hex(concreteAddress) 
-						<< "), attempting to read value from initial state" << endl;
-#endif
-
-					try {
-						uint32_t initValue;
-						initState->get(concreteAddress, initValue);
-#ifdef POLY_DEBUG
-						cout << "LOAD: Initial state contains a value for this address: " << initValue << endl;
-#endif
-						s_out.doNewConstraint(loadReg == initValue);
-					} catch (Exception ex) { 
-						/* TODO(clement): Find the exact exception that is thrown in this case, it appears to be undocumented */
-#ifdef POLY_DEBUG
-						cout << "LOAD: Could not find value (address out of bounds?)" << endl;
-#endif
-					}
-				}
+				uint32_t concreteAddress, initialValue;
+				if (s_out.memGetInitial(idLoadAddr, concreteAddress, initialValue))
+					s_out.doNewConstraint(loadReg == initialValue);
 			}
 			break;
 		} 
@@ -930,6 +908,34 @@ Variable PPLDomain::memMerge(const Variable &address, const Variable &newValue) 
 	return newAddr1;
 }
 
+bool PPLDomain::memGetInitial(const Ident &id, uint32_t &address, uint32_t &value) {
+	PPL::Coefficient num, den;
+	/* TODO(clement) : use correct size  */
+	if (getConstant(id, num, den)) {
+		address = PPL::raw_value(num).get_ui() / PPL::raw_value(den).get_ui();
+#ifdef POLY_DEBUG
+		cout << "Address is statically known (" 
+			<< hex(address) 
+			<< "), attempting to read value from initial state" << endl;
+#endif
+
+		try {
+			initState->get(address, value);
+#ifdef POLY_DEBUG
+			cout << "Initial state contains a value for this address: " << value << endl;
+#endif
+			return true;
+		} catch (Exception ex) { 
+			/* TODO(clement): Find the exact exception that is thrown in this case, it appears to be undocumented */
+#ifdef POLY_DEBUG
+			cout << "Could not find value (address out of bounds?)" << endl;
+			return false;
+#endif
+		}
+	}
+	return false;
+}
+
 #ifdef POLY_DEBUG
 void PPLDomain::_sanityChecks() {
 	int max_axis = -1;
@@ -1066,6 +1072,58 @@ void PPLDomain::_indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, 
 	}
 }
 
+void PPLDomain::_doMatchGlobals(PPLDomain &l1, PPLDomain &r1, unsigned int& axis, 
+		genstruct::HashTable<int,int> &mappingL, genstruct::HashTable<int,int> &mappingR) const {
+	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(l1.id2axis); it; it++) {
+		if ((*it).fst.getType() != Ident::ID_MEM_ADDR)
+			continue;
+		uint32_t addressL, valueL;
+		if (l1.memGetInitial((*it).fst, addressL, valueL)) {
+			bool found = false;
+			for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it2(r1.id2axis); it2; it2++) {
+				if ((*it2).fst.getType() != Ident::ID_MEM_ADDR)
+					continue;
+				uint32_t addressR, valueR;
+				if (r1.memGetInitial((*it2).fst, addressR, valueR)) {
+					if (addressR ==  addressL) {
+						found = true;
+						break;
+					}
+				}
+			}
+
+			if (!found) {
+				/*
+				 * Found a static address variable in l1 that was not in l2, and it is possible to
+				 * recover the value from the initial state. So we create the corresponding memory location
+				 * on r2 and initialize it with the value recovered from the initial state.
+				 */
+#ifdef POLY_DEBUG
+				cout << "Left-side identifier " << (*it).fst << " has static address 0x" << hex(addressL)
+					<< " and no corresponding identifier in right-side state." << endl;
+
+#endif
+				Variable addrL = Variable((*it).snd);
+				Variable valL = l1.getVar(Ident((*it).fst.getId(), Ident::ID_MEM_VAL));
+				Ident idAddrR, idValR;
+				r1.varCreatePtr(idAddrR, idValR);
+				Variable addrR = r1.varNew(idAddrR);
+				Variable valR = r1.varNew(idValR);
+
+				r1.doNewConstraint(addrR == addressL);
+				r1.doNewConstraint(valR == valueL);
+
+				mappingL[addrL.id()] = axis;
+				mappingR[addrR.id()] = axis;
+				mappingL[valL.id()] = axis + 1;
+				mappingR[valR.id()] = axis + 1;
+				axis += 2;
+			}
+		}
+	}
+}
+
+
 void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1) const {
 	unsigned int axis = 0;
 
@@ -1114,7 +1172,6 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1) const {
 #ifdef POLY_DEBUG
 	cout << "Memory locations appearing on both states: ";
 #endif
-	int mem_ref = 0;
 	for (genstruct::HashTable<PPL::Constraint, int, HashCons>::PairIterator it(indexedPtrsL); it; it++) {
 		const PPL::Constraint &cons = (*it).fst;
 		if (indexedPtrsR.hasKey(cons)) {
@@ -1129,7 +1186,6 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1) const {
 			mappingR[addrR.id()] = axis;
 			mappingL[valL.id()] = axis + 1;
 			mappingR[valR.id()] = axis + 1;
-			mem_ref++;
 #ifdef POLY_DEBUG
 			cout << "ptr" << ptrIdxL << "/ptr" << ptrIdxR << ", ";
 #endif
@@ -1141,8 +1197,11 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1) const {
 #endif
 
 	/*
-	 * TODO(clement): also add pointer-from-initial-state for each global variable without a corresponding ptr in other state
+	 * Add pointer-from-initial-state for each global variable without a corresponding ptr in other state
 	 */
+
+	_doMatchGlobals(l1, r1, axis, mappingL, mappingR);
+	_doMatchGlobals(l1, r1, axis, mappingL, mappingR);
 
 	/*
 	 * Finally, add a substitution for each register that appears in both states.
