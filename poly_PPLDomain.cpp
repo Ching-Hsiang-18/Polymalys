@@ -1141,6 +1141,10 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1) const {
 #endif
 
 	/*
+	 * TODO(clement): also add pointer-from-initial-state for each global variable without a corresponding ptr in other state
+	 */
+
+	/*
 	 * Finally, add a substitution for each register that appears in both states.
 	 */
 
