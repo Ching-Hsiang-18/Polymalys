@@ -252,7 +252,7 @@ class PPLDomain {
 	/**
 	 * Attempts to get the range of possible values for a variable.
 	 *
-	 * @param v The target variable
+	 * @param var The target variable
 	 * @param binf_n Reference for storing the numerator for the lower bound
 	 * @param binf_d Reference for storing the denominator for the lower bound
 	 * @param bsup_n Reference for storing the numerator for the upper bound
@@ -450,7 +450,7 @@ class PPLDomain {
 	 * @param allow_replace true if we allow replacing an existing variable that was mapped to id, false otherwise
 	 * @return The new variable.
 	 */
-	Variable varNew(const Ident &ident, bool allow_replace = false);
+	Variable varNew(const Ident &id, bool allow_replace = false);
 
 	/**
 	 * Schedule a variable (associated with an identifier) to be destroyed.
@@ -475,7 +475,7 @@ class PPLDomain {
 	 * @param allow_varNew if true, and the identifier is unknown, create a new variable
 	 * @return The variable.
 	 */
-	Variable getVarOrNew(const Ident &ident, bool allow_varNew = true);
+	Variable getVarOrNew(const Ident &id, bool allow_varNew = true);
 
 	/**
 	 * Gets the variable associated with an identifier (i.e. lookup).
@@ -483,7 +483,7 @@ class PPLDomain {
 	 * @param id The target identifier
 	 * @return The variable.
 	 */
-	Variable getVar(const Ident & /*ident*/) const;
+	Variable getVar(const Ident &id) const;
 
 	/**
 	 * Tests if a variable is associated with an identifier.
@@ -510,7 +510,7 @@ class PPLDomain {
 	 * @param id The identifier
 	 * @return true if the identifier exists, false otherwise
 	 */
-	bool hasIdent(const Ident & /*ident*/) const;
+	bool hasIdent(const Ident & id) const;
 
 	/**
 	 * Performs garbage-collection of variables scheduled to be destroyed.
@@ -537,16 +537,16 @@ class PPLDomain {
 	 * @param newValue A variable representing the new memory value.
 	 * @return new address variable
 	 */
-	Variable memReplace(const Variable & /* address */, const Variable & /* newValue */);
+	Variable memReplace(const Variable & address, const Variable & newValue);
 
 	/**
 	 * Create a new abstract memory location at specified address, with the specified value.
 	 *
 	 * @param address A variable representing the memory address.
-	 * @param value A variable representing the memory value.
+	 * @param newValue A variable representing the memory value.
 	 * @return new address variable
 	 */
-	Variable memCreate(const Variable & /* address */, const Variable & /* newValue */);
+	Variable memCreate(const Variable & address , const Variable & newValue);
 
 	/**
 	 * Associate a new value to the address variable, merging with existing value.
@@ -559,7 +559,7 @@ class PPLDomain {
 	 * @param newValue A variable representing the new memory value.
 	 * @return new address variable
 	 */
-	Variable memMerge(const Variable & /* address */, const Variable & /* newValue */);
+	Variable memMerge(const Variable &address, const Variable &newValue);
 
   private:
 	/* Private helper functions. Subject to changes, and should not be used directly. */

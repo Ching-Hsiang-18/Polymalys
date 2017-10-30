@@ -27,6 +27,7 @@ poly_PlugHook.o: poly_PlugHook.cpp
 
 clean:
 	rm -f *~ core* poly.so *.o
+	rm -rf doc
 	make -C tests clean
 
 install: poly.so
@@ -44,6 +45,9 @@ douter: install
 uninstall:
 	rm -f $(HOME)/.otawa/proc/otawa/poly.eld
 	rm -f $(HOME)/.otawa/proc/otawa/poly.so
+
+doc:
+	doxygen
 
 clang-tidy:
 	rm -f tidy.txt
