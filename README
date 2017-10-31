@@ -4,9 +4,22 @@ Requirements:
 - Parma Polyhedra Library (PPL): http://bugseng.com/products/ppl/
 - Having otawa-config in $PATH: export PATH=$PATH:/path/to/otawa/binaries/
 - Having otawa lib dir in $LD_LIBRARY_PATH: export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(otawa-config --libdir)
+- For testing, you will need an ARM cross-compiler
 
 Compiling: make
 
 Installing (in home directory, no root required): make install
 
 Testing: make test
+
+Using: 
+
+cd tests
+./do.sh filename #where filename.c is a C program
+
+
+Known limitations (future works):
+- No modular analysis
+- No support for integer wrap/overflow
+- We assume that each memory access has 32bits-size, and is 32bits-aligned
+- Lots of speed optimization needs to be done

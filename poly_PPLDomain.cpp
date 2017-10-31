@@ -965,7 +965,7 @@ void PPLDomain::_sanityChecks() {
 		ASSERT(id2axis[ident] == i);
 	}
 	ASSERT(max_axis + 1 == num_axis);
-	ASSERT(poly.space_dimension() <= num_axis); // unused axis can exist at the end
+	ASSERT(poly.space_dimension() <= (unsigned)num_axis); // unused axis can exist at the end
 	ASSERT(trash.size() >= num_axis);
 	ASSERT(trash.countOnes() <= num_axis);
 }
