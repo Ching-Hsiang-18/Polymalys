@@ -166,6 +166,9 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 					} else {
 						/* Entry-Edge: initialize virtal loop counter */
 						edgeState = edgeState.onLoopEntry(e->sink()->id());
+
+						/* Avoid unnecessary widening before first loop iteration of inner loops */
+						headerState.remove(e->sink()->id()); 
 					}
 				}
 
