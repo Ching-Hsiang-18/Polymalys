@@ -809,7 +809,7 @@ template <class F> void PPLDomain::doMap(F pfunc) {
 }
 
 void PPLDomain::doScratch(Ident &id) {
-	if (hasIdent(id)) {
+	if (!hasIdent(id)) {
 		return;
 	}
 
