@@ -28,6 +28,6 @@ int main(int argc, char **argv) {
 
 	ws->require(COLLECTED_CFG_FEATURE, props); //Launch CFG construction
 	ws->require(DynFeature("otawa::poly::POLY_ANALYSIS_FEATURE"), props); //Launch polyhedra analysis
-	ws->require(DynFeature("otawa::ipet::WCET_FEATURE"), props); //Compute WCET
+//	ws->require(DynFeature("otawa::ipet::WCET_FEATURE"), props); //Compute WCET
 
 }
