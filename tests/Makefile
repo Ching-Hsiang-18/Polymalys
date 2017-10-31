@@ -7,7 +7,7 @@ poly: poly.cpp
 	c++ -o poly poly.cpp $(CXXFLAGS) $(LIBS) -g -O0
 	
 clean:
-	rm -f *~ core* cible poly *.o cible.ffx *.dot *.orange `cat tests.txt` tmp
+	rm -f *~ core* target poly *.o target.ffx *.dot *.orange `cat tests.txt` tmp
 
 douter: poly
 	@./douter.sh

@@ -1,25 +1,65 @@
 
 Requirements:
+=============
+
 - OTAWA version 2: http://www.otawa.fr
 - Parma Polyhedra Library (PPL): http://bugseng.com/products/ppl/
 - Having otawa-config in $PATH: export PATH=$PATH:/path/to/otawa/binaries/
 - Having otawa lib dir in $LD_LIBRARY_PATH: export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(otawa-config --libdir)
 - For testing, you will need an ARM cross-compiler
 
-Compiling: make
 
-Installing (in home directory, no root required): make install
+Compiling: 
+==========
 
-Testing: make test
+make
 
-Using: 
+
+Installing (in home directory, no root required):
+=================================================
+
+make install
+
+
+Automated tests:
+================
+
+make test
+
+
+Testing with a source code target program: 
+==========================================
 
 cd tests
-./do.sh filename #where filename.c is a C program
+./do.sh <filename> # where <filename>.c is a C program
+
+
+Testing with a binary target program:
+=====================================
+
+cd tests
+./poly <binary> # where <binary> is an ARM binary program
+
+
+Using in your program:
+======================
+
+Read tests/poly.cpp
 
 
 Known limitations (future works):
-- No modular analysis
+=================================
+
+- No modular inter-procedural analysis
 - No support for integer wrap/overflow
+- Loops with equality (instead of inequality) in loop condition will have pessimistic bounds
 - We assume that each memory access has 32bits-size, and is 32bits-aligned
 - Lots of speed optimization needs to be done
+
+
+Questions:
+==========
+
+mail: Clement.Ballabriga@univ-lille1.fr
+
+

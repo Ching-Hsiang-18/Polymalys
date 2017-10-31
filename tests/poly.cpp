@@ -19,15 +19,15 @@ int main(int argc, char **argv) {
 	WorkSpace *ws;
 	otawa::Manager manager;
 	PropList props;
-	NO_SYSTEM(props) = true; //Pas de systeme d'exploitation (programme "standalone") 
-	otawa::Processor::VERBOSE(props) = true; //Affichage verbose
-	TASK_ENTRY(props) = "main"; //C'est le point d'entree du programme a analyser 
-	PROCESSOR_PATH(props) = "/home/clement/code/dist/linux-x86_64/otawa-core/share/Otawa/procs/op1.xml";
-	otawa::Processor::TIMED(props) = true;
-	ws = manager.load("./cible", props);
-	ws->require(COLLECTED_CFG_FEATURE, props);
 
-	ws->require(DynFeature("otawa::poly::POLY_ANALYSIS_FEATURE"), props);
-	ws->require(DynFeature("otawa::ipet::WCET_FEATURE"), props);
+	NO_SYSTEM(props) = true; //No operating system (standalone program)
+	otawa::Processor::VERBOSE(props) = true; //Verbose display
+	TASK_ENTRY(props) = "main"; //Target program entry point
+	otawa::Processor::TIMED(props) = true; //Show analysis time
+	ws = manager.load((argc > 1) ? argv[1] : "./target", props); //Load target binary
+
+	ws->require(COLLECTED_CFG_FEATURE, props); //Launch CFG construction
+	ws->require(DynFeature("otawa::poly::POLY_ANALYSIS_FEATURE"), props); //Launch polyhedra analysis
+	ws->require(DynFeature("otawa::ipet::WCET_FEATURE"), props); //Compute WCET
 
 }
