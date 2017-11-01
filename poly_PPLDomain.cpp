@@ -1209,6 +1209,7 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1) const {
 	/*
 	 * Add pointer-from-initial-state for each global variable without a corresponding ptr in other state
 	 */
+
 	_doMatchGlobals(l1, r1, axis, mappingL, mappingR);
 	_doMatchGlobals(l1, r1, axis, mappingL, mappingR);
 

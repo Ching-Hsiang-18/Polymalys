@@ -77,6 +77,18 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 			if ((MAX_ITERATION(bl) != bound_t::UNBOUNDED) &&
 			    ((MAX_ITERATION(bl) < bound) || (bound == bound_t::UNBOUNDED))) {
 				MAX_ITERATION(bl) = bound;
+				for (genstruct::Vector<Edge*>::Iterator exitedge(**EXIT_LIST(bl)); exitedge; exitedge++) {
+#ifdef POLY_DEBUG			
+					cout << "Trigger exit edge with bound: " << bound << "(" << *exitedge << ")" << endl;
+#endif
+					Block::EdgeIter e = exitedge->source()->ins();
+					
+					/*
+					 * Should be unnecessary, but appears to improve performance.
+					 * TODO(clement): implement smart block processing order in OTAWA ai
+					 */
+					ana.change(e);
+				}
 			}
 
 			/* We record state at each loop header to be able to handle widening */
