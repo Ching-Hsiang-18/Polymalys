@@ -239,7 +239,7 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	processCFG(*entry, dummy, true);
 
 	cout << "LOOP BOUNDS: " << endl;
-	for (CFGCollection::Iter iter2(coll); iter2; iter2++) {
+	for (CFGCollection::Iterator iter2(coll); iter2; iter2++) {
 		for (CFG::BlockIter iter((*iter2)->blocks()); iter; iter++) {
 			Block *bb = (*iter);
 			if (LOOP_HEADER(bb)) {
