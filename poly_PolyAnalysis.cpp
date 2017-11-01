@@ -122,6 +122,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 			cout << "State after cleanup: " << endl << s << endl;
 #endif
 		}
+		cout << "Processing basic block: " << bl << " spaceDimension=" << s.getVarIDCount() << ", numCons=" << s.getConsCount() << "\n";
 
 		/* Edge Processing, propagate updated state to successors */
 		for (ai::CFGGraph::Successor e(graph, *ana); e; e++) {

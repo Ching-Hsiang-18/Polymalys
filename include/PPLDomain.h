@@ -292,6 +292,13 @@ class PPLDomain {
 	inline int getVarIDCount() const { return poly.space_dimension(); }
 
 	/**
+	 * Gets the number of constraints in the current state
+	 *
+	 * @return The constraint count.
+	 */
+	 int getConsCount() const;
+
+	/**
 	 * Tests if the current state is equivalent to Bottom.
 	 *
 	 * @return true if bottom, false otherwise.

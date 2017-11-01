@@ -316,6 +316,13 @@ void PPLDomain::displayGlobVars(io::Output &out) const {
 	}
 }
 
+int PPLDomain::getConsCount() const {
+	const PPL::Constraint_System &cons = poly.minimized_constraints();
+	int ncons = 0;
+	for (PPL::Constraint_System::const_iterator it = cons.begin(); it != cons.end(); it++, ncons++);
+	return ncons;
+}
+
 bool PPLDomain::getConstant(const Variable &var, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d) const {
 	PPL::Coefficient binf_d, binf_n, bsup_d, bsup_n;
 	getRange(var, bsup_n, bsup_d, binf_n, binf_d);
@@ -538,6 +545,7 @@ PPLDomain PPLDomain::onMerge(const PPLDomain &r, bool widen) const {
 
 	_doUnify(l1, r1);
 
+	cout << "before " << (widen ? "widening" : "join") << ", l= " << l1.getConsCount() << " r=" << r1.getConsCount() << endl;
 	l1.poly.poly_hull_assign(r1.poly);
 	if (widen) {
 #ifdef POLY_DEBUG
@@ -552,6 +560,7 @@ PPLDomain PPLDomain::onMerge(const PPLDomain &r, bool widen) const {
 		PPL::Constraint_System dummy;
 		l1.poly.bounded_BHRZ03_extrapolation_assign(r1.poly, dummy);
 	}
+	cout << "after" << (widen ? "widening" : "join") << ", l= " << l1.getConsCount() << endl;
 #ifdef POLY_DEBUG
 	cout << "Merge finished." << endl;
 	cout << "result state:";
