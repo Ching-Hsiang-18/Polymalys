@@ -293,9 +293,9 @@ void PolyAnalysis::_topoNodeHelper(const ai::CFGGraph &graph, Block *end) {
 	}
 
 	if (inloop != -1) {
-		(*_rank)[end->index()] += 100000 * _rankLoop[inloop];
+		(*_rank)[end->index()] |= (_rankLoop[inloop] << 16);
 	} else {
-		(*_rank)[end->index()] += 99900000;
+		(*_rank)[end->index()] |= (0x7FFF << 16);
 	}
 
 	_current++;
