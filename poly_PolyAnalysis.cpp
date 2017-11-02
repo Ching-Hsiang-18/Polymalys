@@ -349,7 +349,11 @@ void PolyAnalysis::processCFG(CFG &cfg, state_t &s, bool isEntryCFG) {
 	if (isEntryCFG) {
 		cout << "FINAL STATE: " << endl;
 		cout << s;
+	} else {
+		s.doLeaveFunction();
+		s.doFinalizeUpdate();
 	}
+
 }
 
 void PolyAnalysis::processWorkSpace(WorkSpace *ws) {

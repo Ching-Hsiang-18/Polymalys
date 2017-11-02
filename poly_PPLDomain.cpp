@@ -882,6 +882,50 @@ void PPLDomain::doKillTemporaries() {
 	}
 }
 
+void PPLDomain::doLeaveFunction() {
+	Vector<Ident> toDel;
+
+	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
+		elm::Pair<Ident, int> p = *it;
+		Variable v = Variable(p.snd);
+
+		if (p.fst.getType() == Ident::ID_MEM_ADDR) {
+			Ident idSp(13, Ident::ID_REG);
+			Variable sp = getVar(idSp);
+/*
+					Ident idval((*it).fst);
+					PPL::Coefficient supNumVal, supDenVal, infNumVal, infDenVal;
+					getRange(idval, infNumVal, infDenVal, supNumVal, supDenVal);
+
+					if (infDenVal == 0) {
+						cout << "]-∞";
+					} else {
+						cout << "[";
+						displayFrac(cout, infNumVal, infDenVal, true);
+					}
+					cout << ";";
+					if (supDenVal == 0) {
+						cout << "+∞[";
+					} else {
+						displayFrac(cout, supNumVal, supDenVal, true);
+						cout << "]";
+					}
+
+					cout << " (aka " << idval << ")" << endl;
+					*/
+
+			if (poly.relation_with(v < sp).implies(PPL::Poly_Con_Relation::is_included()) &&
+				poly.relation_with(v >= int(stackconf_t::STACK_TOP - stackconf_t::STACK_SIZE)).implies(PPL::Poly_Con_Relation::is_included())) {
+				toDel.add(p.fst);
+				toDel.add(Ident(p.fst.getId(), Ident::ID_MEM_VAL));
+			}
+		}
+	}
+
+	for (Vector<Ident>::Iter it(toDel); it; it++)
+		varKill(*it);
+}
+
 void PPLDomain::doFinalizeUpdate() {
 	/* Sets any bottom-equivalent state to the canonical bottom representation */
 	if (isBottom()) {

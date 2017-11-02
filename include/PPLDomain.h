@@ -28,6 +28,12 @@ enum bound_t : signed long {
 	UNBOUNDED = -2,
 };
 
+/* TODO(clement): detect stack conf. from OTAWA */ 
+enum stackconf_t : uint32_t {
+	STACK_TOP = 0x70000000,
+	STACK_SIZE = 0x10000000,
+};
+
 /**
  * @class Ident
  *
@@ -560,6 +566,11 @@ class PPLDomain {
 	 * Schedule all OTAWA semantic-instruction temporary registers to be destroyed.
 	 */
 	void doKillTemporaries();
+
+	/**
+	 * Schedule the local variables to be destroyed, when leaving a function.
+	 */
+	void doLeaveFunction();
 
 	/**
 	 * Performs garbage-collection of variables scheduled to be destroyed.

@@ -20,4 +20,3 @@ global1
 global2
 global3
 global4
-pile

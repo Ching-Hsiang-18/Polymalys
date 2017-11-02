@@ -18,6 +18,7 @@ namespace poly {
 using namespace otawa;
 using namespace otawa::util;
 
+
 class PolyAnalysis : public Processor {
   public:
 	static p::declare reg;
