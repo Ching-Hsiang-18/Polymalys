@@ -557,6 +557,11 @@ class PPLDomain {
 	bool hasIdent(const Ident & id) const;
 
 	/**
+	 * Schedule all OTAWA semantic-instruction temporary registers to be destroyed.
+	 */
+	void doKillTemporaries();
+
+	/**
 	 * Performs garbage-collection of variables scheduled to be destroyed.
 	 */
 	void doFinalizeUpdate();

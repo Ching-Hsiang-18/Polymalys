@@ -205,7 +205,6 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 	if (l.poly != r.poly)
 		return false;
 	
-
 	/*
 	 * At this point we are almost sure that the states are equal. We do a full unification (costly) to detect if the states are equal.
 	 */
@@ -222,26 +221,6 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 		return false;
 
 	return true;
-
-	/*
-	if (poly != b.poly)
-		return false;
-
-	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
-		const Pair<Ident, int> &p = *it;
-		if ((p.fst.getType() == Ident::ID_MEM_VAL) || (p.fst.getType() == Ident::ID_MEM_ADDR)) {
-			continue;
-		}
-		if (!b.id2axis.hasKey(p.fst)) {
-			return false;
-		}
-		int b_axis = b.id2axis[p.fst];
-		if (b_axis != p.snd) {
-			return false;
-		}
-	}
-	return true;
-	*/
 }
 
 template <class F>
@@ -600,7 +579,7 @@ PPLDomain PPLDomain::onMerge(const PPLDomain &r, bool widen) const {
 
 	_doUnify(l1, r1);
 
-	cout << "before " << (widen ? "widening" : "join") << ", l= " << l1.getConsCount() << " r=" << r1.getConsCount() << endl;
+//	cout << "before " << (widen ? "widening" : "join") << ", l= " << l1.getConsCount() << " r=" << r1.getConsCount() << endl;
 	for (int i = 0; i < r1.bounds.length(); i++)
 		l1.setBound(i, r1.getBound(i));
 
@@ -619,7 +598,7 @@ PPLDomain PPLDomain::onMerge(const PPLDomain &r, bool widen) const {
 		//l1.poly.BHRZ03_widening_assign(r1.poly);
 		l1.poly.bounded_H79_extrapolation_assign(r1.poly, dummy);
 	}
-	cout << "after" << (widen ? "widening" : "join") << ", l= " << l1.getConsCount() << endl;
+//	cout << "after" << (widen ? "widening" : "join") << ", l= " << l1.getConsCount() << endl;
 #ifdef POLY_DEBUG
 	cout << "Merge finished." << endl;
 	cout << "result state:";
@@ -889,6 +868,18 @@ void PPLDomain::doScratch(Ident &id) {
 
 void PPLDomain::doIntegerWrap() {
 	// TODO(clement): integer wrap not supported yet
+}
+
+void PPLDomain::doKillTemporaries() {
+	Vector<Ident> toDel;
+
+	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++)
+		if ((((*it).fst.getType() == Ident::ID_REG) && (*it).fst.getId() < 0))
+			toDel.add((*it).fst);
+
+	for (Vector<Ident>::Iter it(toDel); it; it++) {
+		varKill(*it);
+	}
 }
 
 void PPLDomain::doFinalizeUpdate() {
@@ -1271,8 +1262,9 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 		/*
 		 * Add pointer-from-initial-state for each global variable without a corresponding ptr in other state
 		 */
+
 		_doMatchGlobals(l1, r1, axis, mappingL, mappingR);
-		_doMatchGlobals(l1, r1, axis, mappingL, mappingR);
+		_doMatchGlobals(l1, r1, axis, mappingL, mappingR); 
 	}
 
 	/*

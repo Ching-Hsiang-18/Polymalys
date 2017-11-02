@@ -37,8 +37,31 @@ class PolyAnalysis : public Processor {
 	const PropList *_props{};
 	state_t processHeader(ai::CFGGraph &graph, BasicBlock *header, PPLManager& man, ai::EdgeStore<PPLManager, ai::CFGGraph>& store, genstruct::HashTable<int, state_t> &headerState);
 
+
+	/**
+	 * Computes a pseudo-topological order on the CFG. 
+	 *
+	 * This order is a topological order on the DAG that is the CFG where the back-edges have been removed.
+	 * In addition, if blocks b1,b2 are respectively in loops l1,l2 and l1 is inside l2, then b2 comes before b1 in the order.
+	 *
+	 * This is useful for speeding up the abstract interpretation by using a smart processing order in the worklist.
+	 *
+	 * @param graph The CFG
+	 * @return map associating each block index to its pseudo-topological order.
+	 */
+	genstruct::HashTable<int, int>* _getPseudoTopo(const ai::CFGGraph &graph);
+	void _topoLoopHelper(const ai::CFGGraph &graph, Block *start, int currentLoop);
+	void _topoNodeHelper(const ai::CFGGraph &graph, Block *end);
+
+	BitVector *_visited{};
+	int _current;
+	genstruct::HashTable<int,int> _rankLoop;
+	genstruct::HashTable<int,int> *_rank;
+
 	dfa::State *initState = NULL;
 };
+
+extern Identifier<genstruct::HashTable<int, int>* > WORKLIST_PRIORITY;
 
 } // namespace poly
 } // namespace otawa
