@@ -106,6 +106,8 @@ class PPLDomain {
 	int num_axis;  ///<Highest poly variable ID + 1
 
 	BitVector trash; ///< Bitvector representing the set of variables scheduled to be destroyed
+	
+	Vector<bound_t> bounds;
 
 	dfa::State *initState; ///< Process init state
 
@@ -207,6 +209,7 @@ class PPLDomain {
 		compare_reg = src.compare_reg;
 		compare_op = src.compare_op;
 		trash = src.trash;
+		bounds = src.bounds;
 		initState = src.initState;
 	}
 
@@ -223,6 +226,7 @@ class PPLDomain {
 		compare_op = dom.compare_op;
 		mem_ref = dom.mem_ref;
 		trash = dom.trash;
+		bounds = dom.bounds;
 		initState = dom.initState;
 		return *this;
 	}
@@ -365,6 +369,25 @@ class PPLDomain {
 	 * bounded.
 	 */
 	bound_t getLoopBound(int loopId) const;
+
+	inline bound_t getBound(int loopId) const { 
+		if (bounds.length() <= loopId)
+			return bound_t(0);
+		return bounds[loopId]; 
+	}
+	inline void setBound(int loopId, bound_t b) { 
+		if (b == bound_t(0))
+			return;
+		if (bounds.length() <= loopId) {
+			bounds.setLength(loopId + 1);
+			bounds[loopId] = b;
+		} else {
+			if ((bounds[loopId] != bound_t::UNBOUNDED) &&
+			    ((bounds[loopId] < b) || (b == bound_t::UNBOUNDED))) {
+				bounds[loopId] = b;
+			}
+		}
+	}
 
 	/* High-level update operations. They return the modified state. */
 

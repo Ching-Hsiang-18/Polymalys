@@ -34,8 +34,68 @@ void PolyAnalysis::configure(const PropList &props) {
 	_props = &props;
 }
 
+PolyAnalysis::state_t PolyAnalysis::processHeader(ai::CFGGraph &graph, BasicBlock *header, PPLManager& man, ai::EdgeStore<PPLManager, ai::CFGGraph>& store, genstruct::HashTable<int, state_t> &headerState) { 
+	state_t entryState = man.bot();
+	state_t backState = man.bot();
+
+	for (ai::CFGGraph::Predecessor e(graph, header); e; e++) {
+		state_t edgeState = store.get(*e);
+
+		if (Dominance::dominates(e->sink(), e->source())) {
+			/* back edge */
+			backState = man.join(backState, edgeState);
+		} else {
+			/* entry edge */
+			entryState = man.join(entryState, edgeState);
+		}
+	}
+
+	if (!headerState.hasKey(header->id())) {
+		headerState[header->id()] = man.bot();
+	}
+
+#ifdef POLY_DEBUG
+	cout << "Widening, backState = " << backState << endl;
+	cout << "Widening, entryState = " << entryState << endl;
+	cout << "Widening, oldHeaderState = " << state_t(headerState[header->id()]) << endl;
+#endif
+	//state_t oldState = headerState[header->id()];
+
+	bound_t bound = backState.getLoopBound(header->id());
+	backState.setBound(header->id(), bound);
+
+#ifdef POLY_DEBUG
+			cout << "ITERATION: " << int(bound) << endl;
+#endif
+	if ((MAX_ITERATION(header) != bound_t::UNBOUNDED) &&
+		((MAX_ITERATION(header) < bound) || (bound == bound_t::UNBOUNDED)))
+		MAX_ITERATION(header) = bound;
+
+	headerState[header->id()] = man.widening(backState, headerState[header->id()]);
+
+#ifdef POLY_DEBUG
+	cout << "Widening, after Widening = " << headerState[header->id()] << endl;
+#endif
+
+	headerState[header->id()] = man.join(headerState[header->id()], entryState);
+
+#ifdef POLY_DEBUG
+	cout << "Widening, after Join with entryState = " << headerState[header->id()] << endl;
+#endif
+	/*
+	cout << "Widening, newHeaderState = " << state_t(headerState[header->id()]) << endl;
+	if (oldState.equals(headerState[header->id()])) {
+		cout << "EQUAL" << endl;
+	} else {
+		cout << "NOT EQUAL" << endl;
+	}
+	*/
+	return headerState[header->id()];
+}
+
 void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
                              ai::WorkListDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>> &ana,
+							 ai::EdgeStore<PPLManager, ai::CFGGraph>& store,
                              genstruct::HashTable<int, state_t> &headerState) {
 	/*
 	 * The processing is made up of two main parts:
@@ -43,11 +103,12 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 	 * 1. Basic Block processing: Performing the actual abstract Update on the current basic block.
 	 * 2. Edge Processing: Propagating state on successors, potentially taking care of filtering (conditional branches).
 	 */
-
-	state_t s = ana.input();
+	state_t s = man->bot();
 
 	if ((*ana)->isSynth()) {
 		/* Handle call to another function */
+		s = ana.input();
+
 		CFG *subCFG = (*ana)->toSynth()->callee();
 		cout << "Call from " << (*ana)->toSynth()->caller()->name() << " to " << subCFG->name() << endl;
 
@@ -69,33 +130,9 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 #ifdef POLY_DEBUG
 			cout << "Basic block is loop header: " << bl->id() << endl;
 #endif
-			bound_t bound = s.getLoopBound(bl->id());
-
-#ifdef POLY_DEBUG
-			cout << "ITERATION: " << int(bound) << endl;
-#endif
-			if ((MAX_ITERATION(bl) != bound_t::UNBOUNDED) &&
-			    ((MAX_ITERATION(bl) < bound) || (bound == bound_t::UNBOUNDED))) {
-				MAX_ITERATION(bl) = bound;
-				for (genstruct::Vector<Edge*>::Iterator exitedge(**EXIT_LIST(bl)); exitedge; exitedge++) {
-#ifdef POLY_DEBUG			
-					cout << "Trigger exit edge with bound: " << bound << "(" << *exitedge << ")" << endl;
-#endif
-					Block::EdgeIter e = exitedge->source()->ins();
-					
-					/*
-					 * Should be unnecessary, but appears to improve performance.
-					 * TODO(clement): implement smart block processing order in OTAWA ai
-					 */
-					ana.change(e);
-				}
-			}
-
-			/* We record state at each loop header to be able to handle widening */
-			if (headerState.hasKey(bl->id())) {
-				s = man->widening(s, headerState[bl->id()]);
-			}
-			headerState[bl->id()] = s;
+			s = processHeader(graph, bl, *man, store, headerState);
+		} else {
+			s = ana.input();
 		}
 
 		if (s.isBottom()) {
@@ -181,7 +218,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 						edgeState = edgeState.onLoopEntry(e->sink()->id());
 
 						/* Avoid unnecessary widening before first loop iteration of inner loops */
-						headerState.remove(e->sink()->id()); 
+						// headerState.remove(e->sink()->id()); 
 					}
 				}
 
@@ -192,7 +229,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 					/* 
 					 * FIXME: should be bound = s.getLoopBound(bb->id()) but we need to fix the widening to make it work
 					 */
-					int bound = MAX_ITERATION(bb); // HACK
+					int bound = edgeState.getBound(bb->id());
 #ifdef POLY_DEBUG
 					cout << "Bound on loop exit: " << bound << endl;
 #endif
@@ -221,7 +258,7 @@ void PolyAnalysis::processCFG(CFG &cfg, state_t &s, bool isEntryCFG) {
 	cout << "Entering CFG: " << cfg.name() << endl;
 
 	while (ana) {
-		processBB(man, graph, ana, headerState);
+		processBB(man, graph, ana, store, headerState);
 		ana++;
 	}
 

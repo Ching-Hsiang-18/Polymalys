@@ -157,11 +157,20 @@ void PPLDomain::print(io::Output &out) const {
 bool PPLDomain::equals(const PPLDomain &b) const {
 	ASSERT((initState == nullptr) || (b.initState == nullptr) || (initState == b.initState));
 
-	if (!((poly == b.poly) && (id2axis.count() == b.id2axis.count()))) {
+	if (poly != b.poly) {
+		cout << "poly different!" << endl;
+		return false;
+	}
+	if (id2axis.count() != b.id2axis.count()) {
+		cout << "axis count different!" << endl;
 		return false;
 	}
 
 	if (trash != b.trash) {
+		return false;
+	}
+
+	if (bounds != b.bounds) {
 		return false;
 	}
 
@@ -546,6 +555,9 @@ PPLDomain PPLDomain::onMerge(const PPLDomain &r, bool widen) const {
 	_doUnify(l1, r1);
 
 	cout << "before " << (widen ? "widening" : "join") << ", l= " << l1.getConsCount() << " r=" << r1.getConsCount() << endl;
+	for (int i = 0; i < r1.bounds.length(); i++)
+		l1.setBound(i, r1.getBound(i));
+
 	l1.poly.poly_hull_assign(r1.poly);
 	if (widen) {
 #ifdef POLY_DEBUG
@@ -1209,7 +1221,6 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1) const {
 	/*
 	 * Add pointer-from-initial-state for each global variable without a corresponding ptr in other state
 	 */
-
 	_doMatchGlobals(l1, r1, axis, mappingL, mappingR);
 	_doMatchGlobals(l1, r1, axis, mappingL, mappingR);
 

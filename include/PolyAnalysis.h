@@ -32,8 +32,10 @@ class PolyAnalysis : public Processor {
 	void processCFG(CFG & /* cfg */, state_t & /* s */, bool /* isEntryCFG */);
 	void processBB(PPLManager *man, ai::CFGGraph &graph,
 	               ai::WorkListDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>> &ana,
+				   ai::EdgeStore<PPLManager, ai::CFGGraph> &store,
 	               genstruct::HashTable<int, state_t> &headerState);
 	const PropList *_props{};
+	state_t processHeader(ai::CFGGraph &graph, BasicBlock *header, PPLManager& man, ai::EdgeStore<PPLManager, ai::CFGGraph>& store, genstruct::HashTable<int, state_t> &headerState);
 
 	dfa::State *initState = NULL;
 };
