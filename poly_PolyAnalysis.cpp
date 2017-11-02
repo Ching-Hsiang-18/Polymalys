@@ -174,7 +174,13 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 		cout << "Processing basic block: " << bl << " spaceDimension=" << s.getVarIDCount() << ", numCons=" << s.getConsCount() << "\n";
 
 		/* Edge Processing, propagate updated state to successors */
+		for (int doExit = 0; doExit < 2; doExit++) {
+
 		for (ai::CFGGraph::Successor e(graph, *ana); e; e++) {
+			if ((LOOP_EXIT_EDGE(e) == nullptr) && !doExit)
+				continue;
+			if ((LOOP_EXIT_EDGE(e) != nullptr) && doExit)
+				continue;
 #ifdef POLY_DEBUG
 			cout << "OutEdge: " << *e << ", taken= " << (e->isTaken()) << endl;
 #endif
@@ -243,6 +249,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 				edgeState.doFinalizeUpdate();
 				ana.check(*e, edgeState);
 			}
+		}
 		}
 	}
 }

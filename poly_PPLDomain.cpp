@@ -506,6 +506,7 @@ PPLDomain PPLDomain::onBranch(bool taken) const {
 		default:
 			break;
 	};
+	trash.set(res.getVar(res.compare_reg).id());
 	res.compare_reg = Ident();
 	if (res.isBottom()) {
 #ifdef POLY_DEBUG
@@ -570,7 +571,8 @@ PPLDomain PPLDomain::onMerge(const PPLDomain &r, bool widen) const {
 		ASSERT(l1.poly.contains(r1.poly));
 #endif
 		PPL::Constraint_System dummy;
-		l1.poly.bounded_BHRZ03_extrapolation_assign(r1.poly, dummy);
+		//l1.poly.BHRZ03_widening_assign(r1.poly);
+		l1.poly.bounded_H79_extrapolation_assign(r1.poly, dummy);
 	}
 	cout << "after" << (widen ? "widening" : "join") << ", l= " << l1.getConsCount() << endl;
 #ifdef POLY_DEBUG
