@@ -655,7 +655,7 @@ class PPLDomain {
 	 * @param l First state to unify
 	 * @param r Second state to unify
 	 */
-	void _doUnify(PPLDomain &l1, PPLDomain &r1) const;
+	void _doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtre=false) const;
 
 	/**
 	 * To be documented

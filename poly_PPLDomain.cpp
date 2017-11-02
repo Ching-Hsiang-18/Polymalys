@@ -156,33 +156,77 @@ void PPLDomain::print(io::Output &out) const {
 
 bool PPLDomain::equals(const PPLDomain &b) const {
 	ASSERT((initState == nullptr) || (b.initState == nullptr) || (initState == b.initState));
+	ASSERT(trash.countOnes() == 0);
 
-	if (poly != b.poly) {
-		cout << "poly different!" << endl;
+	/*
+	 * First, attempt to show that the states are different using quick checks.
+	 */
+	if (poly.space_dimension() != b.poly.space_dimension())
+		return false;
+
+	if (compare_reg != b.compare_reg)
+		return false;
+
+	if (compare_op != b.compare_op)
+		return false;
+
+	if (id2axis.count() != b.id2axis.count())
+		return false;
+
+	if (trash != b.trash)
+		return false;
+
+	if (bounds != b.bounds)
+		return false;
+
+	/*
+	 * Try to show that the states are equals when ignoring memory locations (faster)
+	 */
+	PPLDomain r = b;
+	PPLDomain l = *this;
+
+	int expectedVarCount = 0;
+	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
+		const Pair<Ident, int> &p = *it;
+		if ((p.fst.getType() == Ident::ID_MEM_VAL) || (p.fst.getType() == Ident::ID_MEM_ADDR)) {
+			continue;
+		}
+		expectedVarCount++;
+	}
+
+	_doUnify(l, r, true);
+
+	if ((l.id2axis.count() != expectedVarCount) || (r.id2axis.count() != expectedVarCount)) {
+		/* There was some unmatched registers */ 
 		return false;
 	}
-	if (id2axis.count() != b.id2axis.count()) {
-		cout << "axis count different!" << endl;
+
+
+	if (l.poly != r.poly)
+		return false;
+	
+
+	/*
+	 * At this point we are almost sure that the states are equal. We do a full unification (costly) to detect if the states are equal.
+	 */
+	r = b;
+	l = *this;
+	_doUnify(l, r);
+
+	if ((l.id2axis.count() != id2axis.count()) || (r.id2axis.count() != b.id2axis.count())) {
+		/* There was some unmatched memory locations */
 		return false;
 	}
 
-	if (trash != b.trash) {
+	if (l.poly != r.poly)
 		return false;
-	}
 
-	if (bounds != b.bounds) {
+	return true;
+
+	/*
+	if (poly != b.poly)
 		return false;
-	}
 
-	if (compare_reg != b.compare_reg) {
-		return false;
-	}
-
-	if (compare_op != b.compare_op) {
-		return false;
-	}
-
-	// TODO(clement) should return true if there exists a substitution that makes the two states equivalent
 	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
 		const Pair<Ident, int> &p = *it;
 		if ((p.fst.getType() == Ident::ID_MEM_VAL) || (p.fst.getType() == Ident::ID_MEM_ADDR)) {
@@ -197,6 +241,7 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 		}
 	}
 	return true;
+	*/
 }
 
 template <class F>
@@ -789,8 +834,10 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 }
 
 template <class F> void PPLDomain::doMapPoly(F pfunc) {
-	MapHelper<F> a(pfunc, poly.space_dimension() - 1);
-	poly.map_space_dimensions(a);
+	if (poly.space_dimension() > 0) {
+		MapHelper<F> a(pfunc, poly.space_dimension() - 1);
+		poly.map_space_dimensions(a);
+	}
 }
 
 template <class F> void PPLDomain::doMapIdents(F pfunc) {
@@ -1148,7 +1195,7 @@ void PPLDomain::_doMatchGlobals(PPLDomain &l1, PPLDomain &r1, unsigned int& axis
 }
 
 
-void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1) const {
+void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 	unsigned int axis = 0;
 
 #ifdef POLY_DEBUG
@@ -1172,59 +1219,61 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1) const {
 	/* Create substitution entries for common vars created in merge ancestor */
 	_identifyAncestorVars(l1, mappingL, r1, mappingR);
 
+	if (!noPtr) {
 #ifdef POLY_DEBUG
-	cout << "Identifying address expressions appearing on both sides\n";
+		cout << "Identifying address expressions appearing on both sides\n";
 #endif
 
-	/*
-	 * Attempts to index each pointer by the expression of their address in terms of ancestor variables
-	 *
-	 * The hashkey is the linear expression
-	 * The hashvalue is the (original) memory location index.
-	 * */
-	genstruct::HashTable<PPL::Constraint, int, HashCons> indexedPtrsL;
-	genstruct::HashTable<PPL::Constraint, int, HashCons> indexedPtrsR;
+		/*
+		 * Attempts to index each pointer by the expression of their address in terms of ancestor variables
+		 *
+		 * The hashkey is the linear expression
+		 * The hashvalue is the (original) memory location index.
+		 * */
+		genstruct::HashTable<PPL::Constraint, int, HashCons> indexedPtrsL;
+		genstruct::HashTable<PPL::Constraint, int, HashCons> indexedPtrsR;
 
-	l1._indexPointersByExpr(indexedPtrsL, mappingL);
-	r1._indexPointersByExpr(indexedPtrsR, mappingR);
+		l1._indexPointersByExpr(indexedPtrsL, mappingL);
+		r1._indexPointersByExpr(indexedPtrsR, mappingR);
 
-	/*
-	 * Pointer pairs with the same expression are equivalent, so we add a substitution for each one of them, so
-	 * they will be mapped to the same variable number.
-	 */
-	axis = mappingL.count();
+		/*
+		 * Pointer pairs with the same expression are equivalent, so we add a substitution for each one of them, so
+		 * they will be mapped to the same variable number.
+		 */
+		axis = mappingL.count();
 #ifdef POLY_DEBUG
-	cout << "Memory locations appearing on both states: ";
+		cout << "Memory locations appearing on both states: ";
 #endif
-	for (genstruct::HashTable<PPL::Constraint, int, HashCons>::PairIterator it(indexedPtrsL); it; it++) {
-		const PPL::Constraint &cons = (*it).fst;
-		if (indexedPtrsR.hasKey(cons)) {
-			int ptrIdxL = (*it).snd;
-			int ptrIdxR = indexedPtrsR[cons];
-			/* pointer with index ptrIdxL in l represents the same address as pointer with index ptrIdxR in r */
-			Variable addrL = l1.getVar(Ident(ptrIdxL, Ident::ID_MEM_ADDR));
-			Variable valL = l1.getVar(Ident(ptrIdxL, Ident::ID_MEM_VAL));
-			Variable addrR = r1.getVar(Ident(ptrIdxR, Ident::ID_MEM_ADDR));
-			Variable valR = r1.getVar(Ident(ptrIdxR, Ident::ID_MEM_VAL));
-			mappingL[addrL.id()] = axis;
-			mappingR[addrR.id()] = axis;
-			mappingL[valL.id()] = axis + 1;
-			mappingR[valR.id()] = axis + 1;
+		for (genstruct::HashTable<PPL::Constraint, int, HashCons>::PairIterator it(indexedPtrsL); it; it++) {
+			const PPL::Constraint &cons = (*it).fst;
+			if (indexedPtrsR.hasKey(cons)) {
+				int ptrIdxL = (*it).snd;
+				int ptrIdxR = indexedPtrsR[cons];
+				/* pointer with index ptrIdxL in l represents the same address as pointer with index ptrIdxR in r */
+				Variable addrL = l1.getVar(Ident(ptrIdxL, Ident::ID_MEM_ADDR));
+				Variable valL = l1.getVar(Ident(ptrIdxL, Ident::ID_MEM_VAL));
+				Variable addrR = r1.getVar(Ident(ptrIdxR, Ident::ID_MEM_ADDR));
+				Variable valR = r1.getVar(Ident(ptrIdxR, Ident::ID_MEM_VAL));
+				mappingL[addrL.id()] = axis;
+				mappingR[addrR.id()] = axis;
+				mappingL[valL.id()] = axis + 1;
+				mappingR[valR.id()] = axis + 1;
 #ifdef POLY_DEBUG
-			cout << "ptr" << ptrIdxL << "/ptr" << ptrIdxR << ", ";
+				cout << "ptr" << ptrIdxL << "/ptr" << ptrIdxR << ", ";
 #endif
-			axis += 2;
+				axis += 2;
+			}
 		}
-	}
 #ifdef POLY_DEBUG
-	cout << endl;
+		cout << endl;
 #endif
 
-	/*
-	 * Add pointer-from-initial-state for each global variable without a corresponding ptr in other state
-	 */
-	_doMatchGlobals(l1, r1, axis, mappingL, mappingR);
-	_doMatchGlobals(l1, r1, axis, mappingL, mappingR);
+		/*
+		 * Add pointer-from-initial-state for each global variable without a corresponding ptr in other state
+		 */
+		_doMatchGlobals(l1, r1, axis, mappingL, mappingR);
+		_doMatchGlobals(l1, r1, axis, mappingL, mappingR);
+	}
 
 	/*
 	 * Finally, add a substitution for each register that appears in both states.
