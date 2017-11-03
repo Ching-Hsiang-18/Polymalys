@@ -708,6 +708,41 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 			Ident idStoreValue(src, Ident::ID_REG);
 			Variable storeValue = s_out.getVarOrNew(idStoreValue);
 
+/*
+			for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++)
+			{
+				elm::Pair<Ident, int> p = *it;
+				if (p.fst.getType() == Ident::ID_LOOP) {
+					genstruct::HashTable<int,int> map;
+					Ident id_frame(Ident::ID_START_SP, Ident::ID_SPECIAL);
+					Variable v_frame = s_out.getVar(id_frame);
+					Variable v_bound = s_out.getVar(p.fst);
+					map[storeAddr.id()] = 0;
+					map[v_frame.id()] = 1;
+					map[v_bound.id()] = 2;
+					PPLDomain tmp = s_out;
+					tmp.doMapPoly(MapWithHash(map));
+					const PPL::Constraint_System &cons = tmp.poly.minimized_constraints();
+					for (PPL::Constraint_System::const_iterator it2 = cons.begin(); it2 != cons.end(); it2++) {
+						const PPL::Constraint &c = *it2;
+						const PPL::Coefficient &coef = c.coefficient(Variable(2));
+						const PPL::Coefficient &coef2 = c.coefficient(Variable(0));
+						if ((coef != 0) && (coef2 != 0) && c.is_equality()) {
+							cout << "[DEBUG] loop-indexed array write! " ;
+							fflush(stdout);
+							(*it2).print();
+							fflush(stdout);
+							cout << endl;
+							break;
+						}
+					} 
+				}
+			}
+*/
+
+
+
+
 			Ident idEquiv;                          /* Identifier equivalent to the store addr, if any. */
 			elm::genstruct::Vector<Ident> overlaps; /* List of identifiers overlapping the store addr. */
 
@@ -874,8 +909,38 @@ void PPLDomain::doKillTemporaries() {
 	Vector<Ident> toDel;
 
 	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++)
-		if ((((*it).fst.getType() == Ident::ID_REG) && (*it).fst.getId() < 0))
+		if ((((*it).fst.getType() == Ident::ID_REG) && (*it).fst.getId() < 0)) {
 			toDel.add((*it).fst);
+#ifdef POLY_DEBUG
+			cout << "Killing temporary register: " << (*it).fst << endl;
+#endif
+		}
+
+	for (Vector<Ident>::Iter it(toDel); it; it++) {
+		varKill(*it);
+	}
+}
+
+void PPLDomain::doKillRegisters(BitVector bv) {
+	Vector<Ident> toDel;
+
+	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++)
+		if (((*it).fst.getType() == Ident::ID_REG) && 
+			(*it).fst.getId() >= 0 &&
+			(*it).fst.getId() < bv.size() &&
+			!bv.bit((*it).fst.getId())) {
+
+			if ((*it).fst == compare_reg)
+				continue; // skip compare_reg, as this will be handled in PPLDomain::filter()
+
+			if ((*it).fst.getId() == 13)
+				continue; // never kill SP, as we need it to detect out-of-scope stack variables
+
+#ifdef POLY_DEBUG
+			cout << "Killing dead register: " << (*it).fst << endl;
+#endif
+			toDel.add((*it).fst);
+		}
 
 	for (Vector<Ident>::Iter it(toDel); it; it++) {
 		varKill(*it);
@@ -892,32 +957,14 @@ void PPLDomain::doLeaveFunction() {
 		if (p.fst.getType() == Ident::ID_MEM_ADDR) {
 			Ident idSp(13, Ident::ID_REG);
 			Variable sp = getVar(idSp);
-/*
-					Ident idval((*it).fst);
-					PPL::Coefficient supNumVal, supDenVal, infNumVal, infDenVal;
-					getRange(idval, infNumVal, infDenVal, supNumVal, supDenVal);
-
-					if (infDenVal == 0) {
-						cout << "]-∞";
-					} else {
-						cout << "[";
-						displayFrac(cout, infNumVal, infDenVal, true);
-					}
-					cout << ";";
-					if (supDenVal == 0) {
-						cout << "+∞[";
-					} else {
-						displayFrac(cout, supNumVal, supDenVal, true);
-						cout << "]";
-					}
-
-					cout << " (aka " << idval << ")" << endl;
-					*/
 
 			if (poly.relation_with(v < sp).implies(PPL::Poly_Con_Relation::is_included()) &&
 				poly.relation_with(v >= int(stackconf_t::STACK_TOP - stackconf_t::STACK_SIZE)).implies(PPL::Poly_Con_Relation::is_included())) {
 				toDel.add(p.fst);
 				toDel.add(Ident(p.fst.getId(), Ident::ID_MEM_VAL));
+#ifdef POLY_DEBUG
+				cout << "Killing out-of-scope stack variable: " << (*it).fst << endl;
+#endif
 			}
 		}
 	}

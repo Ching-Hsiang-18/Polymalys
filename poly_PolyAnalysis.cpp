@@ -9,6 +9,7 @@
 #include <otawa/util/WideningFixPoint.h>
 #include <otawa/hard/Memory.h>
 #include <otawa/util/WideningListener.h>
+#include <otawa/oslice/features.h>
 #include <ppl.hh>
 
 #include "include/PPLDomain.h"
@@ -24,6 +25,7 @@ p::declare PolyAnalysis::reg = p::init("otawa::poly::PolyAnalysis", Version(1, 0
                                    .require(LOOP_INFO_FEATURE)
                                    .require(dfa::INITIAL_STATE_FEATURE)
 								   .require(MEMORY_ACCESS_FEATURE)
+								   .require(oslice::LIVENESS_FEATURE)
                                    .provide(POLY_ANALYSIS_FEATURE);
 
 PolyAnalysis::PolyAnalysis(p::declare &r) : Processor(r) {}
@@ -172,6 +174,9 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 			cout << "State after cleanup: " << endl << s << endl;
 #endif
 		}
+
+		s.doKillRegisters(oslice::REG_BB_END_IN(bl));
+		s.doFinalizeUpdate();
 
 		/* Edge Processing, propagate updated state to successors */
 		for (int doExit = 0; doExit < 2; doExit++) {

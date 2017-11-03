@@ -11,6 +11,7 @@
 #include <otawa/proc/DynProcessor.h>  
 #include <otawa/cfg/Virtualizer.h>
 #include <otawa/prop/DynIdentifier.h>
+#include <otawa/oslice/features.h>
 
 using namespace otawa;
 using namespace elm::option;

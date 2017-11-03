@@ -568,6 +568,13 @@ class PPLDomain {
 	void doKillTemporaries();
 
 	/**
+	 * Schedule all hardware registers in bitset to be destroyed (Ri is destroyed if bit i is set in bv)
+	 *
+	 * @param bv Bitset indicating which registers to destroy
+	 */
+	void doKillRegisters(BitVector bv);
+
+	/**
 	 * Schedule the local variables to be destroyed, when leaving a function.
 	 */
 	void doLeaveFunction();
