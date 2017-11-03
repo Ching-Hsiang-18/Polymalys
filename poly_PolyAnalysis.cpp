@@ -96,7 +96,7 @@ PolyAnalysis::state_t PolyAnalysis::processHeader(ai::CFGGraph &graph, BasicBloc
 }
 
 void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
-                             ai::WorkListDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>> &ana,
+                             OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>> &ana,
 							 ai::EdgeStore<PPLManager, ai::CFGGraph>& store,
                              genstruct::HashTable<int, state_t> &headerState) {
 	/*
@@ -168,6 +168,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 #ifdef POLY_DEBUG
 			cout << "Finished update for CPU (concrete) instruction: " << *inst << endl;
 #endif
+
 			s.doKillTemporaries();
 			s.doFinalizeUpdate();
 #ifdef POLY_DEBUG
@@ -338,7 +339,7 @@ void PolyAnalysis::processCFG(CFG &cfg, state_t &s, bool isEntryCFG) {
 	ai::EdgeStore<PPLManager, ai::CFGGraph> store(*man, graph);
 
 	cout << "Entering CFG: " << cfg.name() << endl;
-	ai::WorkListDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>> ana(*man, graph, store, WORKLIST_PRIORITY(cfg));
+	OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>> ana(*man, graph, store, WORKLIST_PRIORITY(cfg));
 
 	while (ana) {
 		processBB(man, graph, ana, store, headerState);
@@ -368,7 +369,7 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	initState = dfa::INITIAL_STATE(ws);
 	ASSERT(initState != nullptr);
 
-	for (CFGCollection::Iterator iter2(coll); iter2; iter2++) {
+	for (CFGCollection::Iter iter2(coll); iter2; iter2++) {
 		cout << "Preparing CFG: " << (*iter2)->name() << endl;
 		ai::CFGGraph graph((*iter2));
 		WORKLIST_PRIORITY(*iter2) = _getPseudoTopo(graph);
@@ -380,7 +381,7 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	processCFG(*entry, dummy, true);
 
 	cout << "LOOP BOUNDS: " << endl;
-	for (CFGCollection::Iterator iter2(coll); iter2; iter2++) {
+	for (CFGCollection::Iter iter2(coll); iter2; iter2++) {
 		for (CFG::BlockIter iter((*iter2)->blocks()); iter; iter++) {
 			Block *bb = (*iter);
 			if (LOOP_HEADER(bb)) {

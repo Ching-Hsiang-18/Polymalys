@@ -740,9 +740,6 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 			}
 */
 
-
-
-
 			Ident idEquiv;                          /* Identifier equivalent to the store addr, if any. */
 			elm::genstruct::Vector<Ident> overlaps; /* List of identifiers overlapping the store addr. */
 
@@ -1300,6 +1297,7 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 
 	/* Create substitution entries for common vars created in merge ancestor */
 	_identifyAncestorVars(l1, mappingL, r1, mappingR);
+	axis = mappingL.count();
 
 	if (!noPtr) {
 #ifdef POLY_DEBUG
@@ -1322,7 +1320,6 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 		 * Pointer pairs with the same expression are equivalent, so we add a substitution for each one of them, so
 		 * they will be mapped to the same variable number.
 		 */
-		axis = mappingL.count();
 #ifdef POLY_DEBUG
 		cout << "Memory locations appearing on both states: ";
 #endif

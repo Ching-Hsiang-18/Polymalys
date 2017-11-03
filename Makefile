@@ -2,7 +2,7 @@ CXXFLAGS=`otawa-config otawa/oslice --cflags`
 LIBS=`otawa-config otawa/oslice --libs`
 LIBS+=-lppl
 
-CXXFLAGS+=-fPIC -Wall -DUSE_CLANG_COMPLETER -std=c++11 -march=native -O3
+CXXFLAGS+=-fPIC -Wall -DUSE_CLANG_COMPLETER -std=c++11 -g -O0
 
 all: poly.so
 
@@ -10,13 +10,13 @@ poly.so: poly_PolyAnalysis.o poly_PlugHook.o poly_PPLDomain.o poly_PPLManager.o
 	$(CC) -shared -o poly.so poly_PolyAnalysis.o poly_PlugHook.o poly_PPLDomain.o poly_PPLManager.o $(LIBS)
 	
 
-poly_PolyAnalysis.o: poly_PolyAnalysis.cpp include/PolyAnalysis.h include/PPLDomain.h include/PPLManager.h include/PolyCommon.h
+poly_PolyAnalysis.o: poly_PolyAnalysis.cpp include/PolyAnalysis.h include/PPLDomain.h include/PPLManager.h include/PolyCommon.h include/MyHTable.h include/OrderedDriver.h
 	$(CXX) $(CXXFLAGS) -c poly_PolyAnalysis.cpp -o poly_PolyAnalysis.o
 
-poly_PPLManager.o: poly_PPLManager.cpp include/PolyAnalysis.h include/PPLDomain.h include/PPLManager.h include/PolyCommon.h
+poly_PPLManager.o: poly_PPLManager.cpp include/PolyAnalysis.h include/PPLDomain.h include/PPLManager.h include/PolyCommon.h include/MyHTable.h include/OrderedDriver.h
 	$(CXX) $(CXXFLAGS) -c poly_PPLManager.cpp -o poly_PPLManager.o
 
-poly_PPLDomain.o: poly_PPLDomain.cpp include/PolyAnalysis.h include/PPLDomain.h include/PPLManager.h include/PolyCommon.h
+poly_PPLDomain.o: poly_PPLDomain.cpp include/PolyAnalysis.h include/PPLDomain.h include/PPLManager.h include/PolyCommon.h include/MyHTable.h include/OrderedDriver.h
 	$(CXX) $(CXXFLAGS) -c poly_PPLDomain.cpp -o poly_PPLDomain.o
 
 poly_PlugHook.o: poly_PlugHook.cpp

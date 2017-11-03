@@ -2,6 +2,7 @@
 #define POLYANALYSIS_H 1
 
 #include <elm/util/BitVector.h>
+#include <elm/data/Vector.h>
 #include <otawa/cfg.h>
 #include <otawa/cfg/features.h>
 #include <otawa/dfa/ai.h>
@@ -12,12 +13,13 @@
 #include <ppl.hh>
 
 #include "PPLManager.h"
+#include "OrderedDriver.h"
 
 namespace otawa {
 namespace poly {
 using namespace otawa;
 using namespace otawa::util;
-
+using namespace elm;
 
 class PolyAnalysis : public Processor {
   public:
@@ -32,7 +34,7 @@ class PolyAnalysis : public Processor {
 	using state_t = PPLManager::t;
 	void processCFG(CFG & /* cfg */, state_t & /* s */, bool /* isEntryCFG */);
 	void processBB(PPLManager *man, ai::CFGGraph &graph,
-	               ai::WorkListDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>> &ana,
+	               OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>> &ana,
 				   ai::EdgeStore<PPLManager, ai::CFGGraph> &store,
 	               genstruct::HashTable<int, state_t> &headerState);
 	const PropList *_props{};
