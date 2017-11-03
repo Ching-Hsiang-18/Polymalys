@@ -14,5 +14,5 @@ class Plugin : public ProcessorPlugin {
 } // namespace poly
 } // namespace otawa
 
-otawa::poly::Plugin OTAWA_PROC_HOOK;
-otawa::poly::Plugin &otawa_poly = OTAWA_PROC_HOOK;
+otawa::poly::Plugin otawa_poly_plugin;
+ELM_PLUGIN(otawa_poly_plugin, OTAWA_PROC_HOOK);
