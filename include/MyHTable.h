@@ -1,5 +1,5 @@
 /*
- *	This is a modified version of the OTAWA/ELM genstruct::HashTable.
+ *	This is a modified version of the OTAWA/ELM MyHTable.
  *	The modification prevents the reading of the hashtable from invalidating iterators.
  *
  *	This file is derived work from OTAWA
@@ -30,12 +30,13 @@
 #include <elm/util/Pair.h>
 #include <elm/array.h>
 
-namespace otawa { namespace poly { 
+namespace otawa { namespace poly {
+using namespace elm;
 
-// InHashTable class
+// InMyHTable class
 template <class K, class T, class H = HashKey<K> >
-class HashTable {
-	typedef HashTable<K, T, H> self_t;
+class MyHTable {
+	typedef MyHTable<K, T, H> self_t;
 
 	typedef struct node_t {
 		inline node_t(const K& k): next(0), key(k)  { }
@@ -46,7 +47,7 @@ class HashTable {
 
 	node_t *find(const K& key) const {
 		int i = H::hash(key) % size;
-		for(node_t *node = tab[i], *prev = 0; node; prev = node, node = node->next)
+		for(node_t *node = tab[i] /*, *prev = 0 */; node; /* prev = node , */ node = node->next)
 			if(H::equals(node->key, key)) {
 				// This may cause an infinite loop if it is done while we are using an iterator on the hashtable.
 				/* 
@@ -63,33 +64,33 @@ class HashTable {
 
 	class InternIterator {
 	public:
-		inline InternIterator(const HashTable<K, T, H>& _htab): htab(&_htab) { i = 0; step(); }
+		inline InternIterator(const MyHTable<K, T, H>& _htab): node(nullptr), htab(&_htab) { i = 0; step(); }
 		inline bool ended(void) const { return i >= htab->size; }
 		inline void next(void) { node = node->next; if(!node) { i++; step(); }  }
 	protected:
 		node_t *node;
 	private:
 		inline void step(void) { for(; i < htab->size; i++) if(htab->tab[i]) { node = htab->tab[i]; break; } }
-		const HashTable<K, T, H> *htab;
+		const MyHTable<K, T, H> *htab;
 		int i;
 
-		friend const T& HashTable::operator[] (const InternIterator& iter) const;
-		friend T& HashTable::operator[](const InternIterator& iter);
+		friend const T& MyHTable::operator[] (const InternIterator& iter) const;
+		friend T& MyHTable::operator[](const InternIterator& iter);
 	};
 
 	class CstRef {
 	public:
-		inline CstRef(const HashTable<K, T, H>& tab, const K& key): t(tab), k(key) { }
+		inline CstRef(const MyHTable<K, T, H>& tab, const K& key): t(tab), k(key) { }
 		inline operator const T&(void) const { return get(); }
 		inline const T& operator*(void) const { return get(); }
 	private:
 		inline const T& get(void) const { node_t *node = t.find(k); ASSERTP(node, "key " << k << " not in hashtab"); return node->value; }
-		const HashTable<K, T, H>& t;
+		const MyHTable<K, T, H>& t;
 		const K& k;
 	};
 	class Ref {
 	public:
-		inline Ref(HashTable<K, T, H>& tab, const K& key): t(tab), k(key) { }
+		inline Ref(MyHTable<K, T, H>& tab, const K& key): t(tab), k(key) { }
 		inline operator T&(void) const { return get(); }
 		inline T& operator*(void) const { return get(); }
    		inline T& operator->(void) const { return get(); }
@@ -98,18 +99,18 @@ class HashTable {
 			  else node->value = v; return node->value; }
 	private:
 		inline T& get(void) const { node_t *node = t.find(k); ASSERTP(node, "key " << k << " not in hashtab"); return node->value; }
-		HashTable<K, T, H>& t;
+		MyHTable<K, T, H>& t;
 		const K& k;
 	};
 
 public:
-	HashTable(int _size = 211): size(_size), tab(new node_t *[_size])
+	MyHTable(int _size = 211): size(_size), tab(new node_t *[_size])
 		{ array::fast<node_t*>::clear(tab, size); }
-	HashTable(const self_t& h): size(h.size), tab(new node_t *[h.size])
+	MyHTable(const self_t& h): size(h.size), tab(new node_t *[h.size])
 		{ array::fast<node_t*>::clear(tab, size); putAll(h); }
-	HashTable(const self_t& h, int _size): size(_size), tab(new node_t *[_size])
+	MyHTable(const self_t& h, int _size): size(_size), tab(new node_t *[_size])
 		{ array::fast<node_t*>::clear(tab, size); putAll(h); }
-	~HashTable(void)
+	~MyHTable(void)
 		{ clear(); delete [] tab; }
 
 	bool isEmpty(void) const
@@ -135,7 +136,7 @@ public:
 	void put(const K& key, const T& value)
 		{ node_t *node = find(key); if(node) node->value = value; else add(key, value); }
 	void add(const K& key, const T& value) { make(key, value); }
-	void putAll(const HashTable<K, T, H>& htab)
+	void putAll(const MyHTable<K, T, H>& htab)
 		{ for(int i = 0; i < htab.size; i++) for(node_t *node = htab.tab[i]; node; node = node->next)  put(type_info<K>::get(node->key), type_info<T>::get(node->value)); }
 
 	void remove(const K& key) {
@@ -161,14 +162,14 @@ public:
 	// KeyIterator class
 	class KeyIterator: public InternIterator, public PreIterator<KeyIterator, K> {
 	public:
-		inline KeyIterator(const HashTable<K, T, H>& htab): InternIterator(htab) { };
+		inline KeyIterator(const MyHTable<K, T, H>& htab): InternIterator(htab) { };
 		inline const K& item(void) const { return type_info<K>::get(this->node->key); }
 	};
 
 	// Iterator class
 	class Iterator: public InternIterator, public PreIterator<Iterator, T> {
 	public:
-		inline Iterator(const HashTable<K, T, H>& htab): InternIterator(htab) { };
+		inline Iterator(const MyHTable<K, T, H>& htab): InternIterator(htab) { };
 		inline const T& item(void) const { return type_info<T>::get(this->node->value); }
 		inline const T& useItem(void) const { return type_info<T>::get(this->node->value); }
 		inline const K& key(void) const { return type_info<K>::get(this->node->key); };
@@ -177,25 +178,25 @@ public:
 	// MutableIter class
 	class MutableIter: public InternIterator, public PreIterator<MutableIter, T> {
 	public:
-		inline MutableIter(HashTable<K, T, H>& htab): InternIterator(htab) { }
+		inline MutableIter(MyHTable<K, T, H>& htab): InternIterator(htab) { }
 		inline T& item(void) const { return this->node->value; }
 	};
 
 	// PairIterator class
 	class PairIterator: public InternIterator, public PreIterator<PairIterator, Pair<K, T> > {
 	public:
-		inline PairIterator(const HashTable<K, T, H>& htab): InternIterator(htab) { };
+		inline PairIterator(const MyHTable<K, T, H>& htab): InternIterator(htab) { };
 		inline Pair<K, T> item(void) const { return pair(type_info<K>::get(this->node->key), this->node->value); }
 	};
 
 	// SameKeyIterator
 	class SameKeyIterator: public PreIterator<SameKeyIterator, T> {
-		const HashTable<K, T, H>& htab;
+		const MyHTable<K, T, H>& htab;
 		K key;
 		node_t *node;
 		int i;
 	public:
-		inline SameKeyIterator(const HashTable<K, T, H>& _htab, const K& _key)
+		inline SameKeyIterator(const MyHTable<K, T, H>& _htab, const K& _key)
 			: htab(_htab)
 			{	type_info<K>::put(key, _key); i = H::hash(key) % size;
 				for (node = htab.tab[i]; node && (node->key != key); node = node->next)

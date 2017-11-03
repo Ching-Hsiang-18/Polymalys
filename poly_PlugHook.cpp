@@ -8,7 +8,7 @@ using namespace otawa;
 // Plugin declaration
 class Plugin : public ProcessorPlugin {
   public:
-	Plugin() : ProcessorPlugin("otawa::poly::PolyAnalysis", Version(1, 0, 0), OTAWA_PROC_VERSION) {}
+	Plugin() : ProcessorPlugin("otawa::poly", Version(1, 0, 0), OTAWA_PROC_VERSION) {}
 };
 
 } // namespace poly

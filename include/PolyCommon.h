@@ -9,6 +9,8 @@
 #include <otawa/prog/sem.h>
 #include <ppl.hh>
 
+#include "MyHTable.h"
+
 // #define POLY_DEBUG 1
 
 namespace otawa {

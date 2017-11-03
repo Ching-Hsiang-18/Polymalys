@@ -24,6 +24,14 @@
 #ifndef ORDERED_DRIVER_H 
 #define ORDERED_DRIVER_H 1
 
+#include <elm/genstruct/Vector.h>
+#include <elm/util/Pair.h>
+#include <elm/util/BitVector.h>
+#include <elm/PreIterator.h>
+#include <otawa/cfg.h>
+
+#include "MyHTable.h"
+
 namespace otawa {
 namespace poly {
 
@@ -32,10 +40,11 @@ namespace poly {
  * @param D		Current domain (must implement otawa::ai::Domain concept).
  * @param G		Graph (must implement otawa::ai::Graph concept).
  * @param S		Storage.
+ * @param O		Basic block order
  */
 
-template <class D, class G, class S>
-class OrderedDriver: public PreIterator<OrderedDriver<D, G, S>, typename G::vertex_t > {
+template <class D, class G, class S, class O>
+class OrderedDriver: public PreIterator<OrderedDriver<D, G, S, O>, typename G::vertex_t > {
 public:
 	typedef typename G::vertex_t vertex_t;
 
@@ -46,7 +55,7 @@ public:
 	 * @param store	Storage to get domain values.
 	 * @param order Optional order
 	 */
-	OrderedDriver(D& dom, const G& graph, S& store, genstruct::HashTable<int, int> *order)
+	OrderedDriver(D& dom, const G& graph, S& store, O *order)
 	: _dom(dom), _graph(graph), _store(store), wl_set(graph.count()), end(false), _order(order) {
 		store.set(_graph.entry(), dom.init());
 		for(typename G::Successor succ(graph, _graph.entry()); succ; succ++)
@@ -174,21 +183,16 @@ public:
 	}
 
 private:
-	inline int rankOf(typename G::vertex_t v) {
-			return (*_order)[v->index()];
-	}
-
 	inline void push(typename G::vertex_t v) {
 			if(!wl_set.bit(_graph.index(v))) {
 					if (_order != nullptr) {
 						int i;
-						for (i = 0; i < wl_vertices.count() && (rankOf(v) < rankOf(wl_vertices[i])); i++);
+						for (i = 0; i < wl_vertices.count() && _order->isBefore(v, wl_vertices[i]); i++);
 						wl_vertices.insert(i, v);
 					} else wl_vertices.push(v);
 					wl_set.set(_graph.index(v));
 			}
 	}
-
 
 	inline typename G::vertex_t pop(void) {
 		typename G::vertex_t v = wl_vertices.pop();
@@ -207,7 +211,7 @@ private:
 	BitVector wl_set;
 	typename G::vertex_t cur;
 	bool end;
-	genstruct::HashTable<int, int> *_order;
+	O *_order;
 };
 
 } // namespace poly

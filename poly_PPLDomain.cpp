@@ -186,7 +186,7 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 	PPLDomain l = *this;
 
 	int expectedVarCount = 0;
-	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
+	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
 		const Pair<Ident, int> &p = *it;
 		if ((p.fst.getType() == Ident::ID_MEM_VAL) || (p.fst.getType() == Ident::ID_MEM_ADDR)) {
 			continue;
@@ -266,7 +266,7 @@ void PPLDomain::displayLocVars(io::Output &out) const {
 		cons.insert(v == ssp - i - LOC_VAR_SIZE(_props));
 		out << " [SP - " << hex(i) << "] == ";
 		bool found = false;
-		for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
+		for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
 			elm::Pair<Ident, int> p = *it;
 			Variable vsnd = Variable(p.snd);
 			if (p.fst.getType() == Ident::ID_MEM_ADDR) {
@@ -316,7 +316,7 @@ void PPLDomain::displayGlobVars(io::Output &out) const {
 	}
 	Ident id_ssp(Ident::ID_START_SP, Ident::ID_SPECIAL);
 	out << "Global variables: " << endl;
-	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
+	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
 		elm::Pair<Ident, int> p = *it;
 		if (p.fst.getType() == Ident::ID_MEM_ADDR) {
 			PPL::Coefficient num, den;
@@ -413,7 +413,7 @@ bool PPLDomain::mustAlias(const Variable &v1, const Variable &v2) const {
 
 void PPLDomain::displayIdentMap(io::Output &out) const {
 	out << "Mapping: ";
-	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
+	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
 		const Ident &ident = (*it).fst;
 		out << ident << ":" << Variable((*it).snd) << ", ";
 	}
@@ -709,11 +709,11 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 			Variable storeValue = s_out.getVarOrNew(idStoreValue);
 
 /*
-			for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++)
+			for (MyHTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++)
 			{
 				elm::Pair<Ident, int> p = *it;
 				if (p.fst.getType() == Ident::ID_LOOP) {
-					genstruct::HashTable<int,int> map;
+					MyHTable<int,int> map;
 					Ident id_frame(Ident::ID_START_SP, Ident::ID_SPECIAL);
 					Variable v_frame = s_out.getVar(id_frame);
 					Variable v_bound = s_out.getVar(p.fst);
@@ -743,7 +743,7 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 			Ident idEquiv;                          /* Identifier equivalent to the store addr, if any. */
 			elm::genstruct::Vector<Ident> overlaps; /* List of identifiers overlapping the store addr. */
 
-			for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++) {
+			for (MyHTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++) {
 				const Ident &idCurrent = (*it).fst;
 				if (idCurrent.getType() == Ident::ID_MEM_ADDR) {
 					const Variable &current = Variable((*it).snd);
@@ -794,7 +794,7 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 			/*
 			 * Looking for existing abstract location equivalent to load address.
 			 */
-			for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++) {
+			for (MyHTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++) {
 				if ((*it).fst.getType() == Ident::ID_MEM_ADDR) {
 					Variable current = Variable((*it).snd);
 
@@ -859,7 +859,7 @@ template <class F> void PPLDomain::doMapIdents(F pfunc) {
 #ifdef POLY_DEBUG
 	cout << "Remapping: ";
 #endif
-	for (elm::genstruct::HashTable<Ident, int, HashIdent>::MutableIter it(id2axis); it; it++) {
+	for (MyHTable<Ident, int, HashIdent>::MutableIter it(id2axis); it; it++) {
 		int &n = it.item();
 		PPL::dimension_type old_axis = n;
 		PPL::dimension_type new_axis = n;
@@ -905,7 +905,7 @@ void PPLDomain::doIntegerWrap() {
 void PPLDomain::doKillTemporaries() {
 	Vector<Ident> toDel;
 
-	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++)
+	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++)
 		if ((((*it).fst.getType() == Ident::ID_REG) && (*it).fst.getId() < 0)) {
 			toDel.add((*it).fst);
 #ifdef POLY_DEBUG
@@ -921,7 +921,7 @@ void PPLDomain::doKillTemporaries() {
 void PPLDomain::doKillRegisters(BitVector bv) {
 	Vector<Ident> toDel;
 
-	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++)
+	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++)
 		if (((*it).fst.getType() == Ident::ID_REG) && 
 			(*it).fst.getId() >= 0 &&
 			(*it).fst.getId() < bv.size() &&
@@ -947,7 +947,7 @@ void PPLDomain::doKillRegisters(BitVector bv) {
 void PPLDomain::doLeaveFunction() {
 	Vector<Ident> toDel;
 
-	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
+	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
 		elm::Pair<Ident, int> p = *it;
 		Variable v = Variable(p.snd);
 
@@ -1093,7 +1093,7 @@ void PPLDomain::_sanityChecks() {
 		return;
 	}
 	ASSERT(!poly.is_empty());
-	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
+	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
 		ASSERT((*it).snd < num_axis);
 		if (trash.bit((*it).snd)) {
 			continue;
@@ -1176,13 +1176,13 @@ const PPL::Constraint *PPLDomain::_getConstraintFor(int axis) const {
  * Identify variables that were created in common ancstor of l and r 
  * (TODO now limited to starting register values, i.e.  * SP/BP)
  */
-void PPLDomain::_identifyAncestorVars(PPLDomain &l, genstruct::HashTable<int, int> &commonVarsL, PPLDomain &r,
-                                      genstruct::HashTable<int, int> &commonVarsR) const {
+void PPLDomain::_identifyAncestorVars(PPLDomain &l, MyHTable<int, int> &commonVarsL, PPLDomain &r,
+                                      MyHTable<int, int> &commonVarsR) const {
 	int idx = 0;
 #ifdef POLY_DEBUG
 	cout << "Identifying common variables\n";
 #endif
-	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(l.id2axis); it; it++) {
+	for (MyHTable<Ident, int, HashIdent>::PairIterator it(l.id2axis); it; it++) {
 		const Ident &ident = (*it).fst;
 		if (ident.getType() != Ident::ID_SPECIAL) {
 			continue;
@@ -1202,10 +1202,10 @@ void PPLDomain::_identifyAncestorVars(PPLDomain &l, genstruct::HashTable<int, in
  * Indexes the pointer in dom, by their expression in terms of registers referenced in map_regs.
  * Stores the result in map_ptr.
  */
-void PPLDomain::_indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, HashCons> &map_ptr,
-                                     genstruct::HashTable<int, int> &commonRegs) const {
+void PPLDomain::_indexPointersByExpr(MyHTable<PPL::Constraint, int, HashCons> &map_ptr,
+                                     MyHTable<int, int> &commonRegs) const {
 	int axis = commonRegs.count();
-	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
+	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
 		if ((*it).fst.getType() == Ident::ID_MEM_ADDR) {
 			commonRegs.put((*it).snd, axis);
 			PPLDomain dom(*this); /* make a working copy to do the projections */
@@ -1222,14 +1222,14 @@ void PPLDomain::_indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, 
 }
 
 void PPLDomain::_doMatchGlobals(PPLDomain &l1, PPLDomain &r1, unsigned int& axis, 
-		genstruct::HashTable<int,int> &mappingL, genstruct::HashTable<int,int> &mappingR) const {
-	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(l1.id2axis); it; it++) {
+		MyHTable<int,int> &mappingL, MyHTable<int,int> &mappingR) const {
+	for (MyHTable<Ident, int, HashIdent>::PairIterator it(l1.id2axis); it; it++) {
 		if ((*it).fst.getType() != Ident::ID_MEM_ADDR)
 			continue;
 		uint32_t addressL, valueL;
 		if (l1.memGetInitial((*it).fst, addressL, valueL)) {
 			bool found = false;
-			for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it2(r1.id2axis); it2; it2++) {
+			for (MyHTable<Ident, int, HashIdent>::PairIterator it2(r1.id2axis); it2; it2++) {
 				if ((*it2).fst.getType() != Ident::ID_MEM_ADDR)
 					continue;
 				uint32_t addressR, valueR;
@@ -1292,8 +1292,8 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 	 * Hashtable keys contains original numbering of the common variables in each states.
 	 * Hashtable values contains a (new) common numbering of these varialbes.
 	 */
-	genstruct::HashTable<int, int> mappingL;
-	genstruct::HashTable<int, int> mappingR;
+	MyHTable<int, int> mappingL;
+	MyHTable<int, int> mappingR;
 
 	/* Create substitution entries for common vars created in merge ancestor */
 	_identifyAncestorVars(l1, mappingL, r1, mappingR);
@@ -1310,8 +1310,8 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 		 * The hashkey is the linear expression
 		 * The hashvalue is the (original) memory location index.
 		 * */
-		genstruct::HashTable<PPL::Constraint, int, HashCons> indexedPtrsL;
-		genstruct::HashTable<PPL::Constraint, int, HashCons> indexedPtrsR;
+		MyHTable<PPL::Constraint, int, HashCons> indexedPtrsL;
+		MyHTable<PPL::Constraint, int, HashCons> indexedPtrsR;
 
 		l1._indexPointersByExpr(indexedPtrsL, mappingL);
 		r1._indexPointersByExpr(indexedPtrsR, mappingR);
@@ -1323,7 +1323,7 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 #ifdef POLY_DEBUG
 		cout << "Memory locations appearing on both states: ";
 #endif
-		for (genstruct::HashTable<PPL::Constraint, int, HashCons>::PairIterator it(indexedPtrsL); it; it++) {
+		for (MyHTable<PPL::Constraint, int, HashCons>::PairIterator it(indexedPtrsL); it; it++) {
 			const PPL::Constraint &cons = (*it).fst;
 			if (indexedPtrsR.hasKey(cons)) {
 				int ptrIdxL = (*it).snd;
@@ -1359,7 +1359,7 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 	 * Finally, add a substitution for each register that appears in both states.
 	 */
 
-	for (elm::genstruct::HashTable<Ident, int, HashIdent>::PairIterator it(l1.id2axis); it; it++) {
+	for (MyHTable<Ident, int, HashIdent>::PairIterator it(l1.id2axis); it; it++) {
 		const Ident &ident = (*it).fst;
 		if ((ident.getType() != Ident::ID_REG) && (ident.getType() != Ident::ID_LOOP)) {
 			continue;

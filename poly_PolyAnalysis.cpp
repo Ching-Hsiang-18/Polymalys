@@ -36,7 +36,7 @@ void PolyAnalysis::configure(const PropList &props) {
 	_props = &props;
 }
 
-PolyAnalysis::state_t PolyAnalysis::processHeader(ai::CFGGraph &graph, BasicBlock *header, PPLManager& man, ai::EdgeStore<PPLManager, ai::CFGGraph>& store, genstruct::HashTable<int, state_t> &headerState) { 
+PolyAnalysis::state_t PolyAnalysis::processHeader(ai::CFGGraph &graph, BasicBlock *header, PPLManager& man, ai::EdgeStore<PPLManager, ai::CFGGraph>& store, MyHTable<int, state_t> &headerState) { 
 	state_t entryState = man.bot();
 	state_t backState = man.bot();
 
@@ -96,9 +96,9 @@ PolyAnalysis::state_t PolyAnalysis::processHeader(ai::CFGGraph &graph, BasicBloc
 }
 
 void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
-                             OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>> &ana,
+                             OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> &ana,
 							 ai::EdgeStore<PPLManager, ai::CFGGraph>& store,
-                             genstruct::HashTable<int, state_t> &headerState) {
+                             MyHTable<int, state_t> &headerState) {
 	/*
 	 * The processing is made up of two main parts:
 	 *
@@ -262,7 +262,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 }
 
 
-void PolyAnalysis::_topoLoopHelper(const ai::CFGGraph &graph, Block *start, int currentLoop) {
+void PolyAnalysis::PseudoTopoOrder::_topoLoopHelper(const ai::CFGGraph &graph, Block *start, int currentLoop) {
 	for (ai::CFGGraph::Iterator it(graph); !it.ended(); it++) {
 		Block *bb = (*it);
 		if (LOOP_HEADER(bb)) {
@@ -274,14 +274,32 @@ void PolyAnalysis::_topoLoopHelper(const ai::CFGGraph &graph, Block *start, int 
 	}
 
 	if (currentLoop != -1) {
-		_rankLoop[currentLoop] = _current;
+		_loopOrder[currentLoop] = _current;
 		_current++;
 	}
 }
 
-void PolyAnalysis::_topoNodeHelper(const ai::CFGGraph &graph, Block *end) {
-	int inloop;
+bool PolyAnalysis::PseudoTopoOrder::isBefore(const Block *b1, const Block *b2) const {
+	if (_belongsToLoop.hasKey(b1->index()) && !_belongsToLoop.hasKey(b2->index()))
+		return true;
 
+	if (!_belongsToLoop.hasKey(b1->index()) && _belongsToLoop.hasKey(b2->index()))
+		return false;
+
+	if (_belongsToLoop.hasKey(b1->index())) {
+		int loopId = _belongsToLoop[b1->index()];
+
+		if (_loopOrder[loopId] < _loopOrder[loopId]) 
+			return true;
+
+		if (_loopOrder[loopId] > _loopOrder[loopId]) 
+			return false;
+	}
+
+	return (_blockOrder[b1->index()] < _blockOrder[b2->index()]);
+}
+
+void PolyAnalysis::PseudoTopoOrder::_topoNodeHelper(const ai::CFGGraph &graph, Block *end) {
 	if (_visited->bit(end->index()))
 		return;
 
@@ -290,29 +308,18 @@ void PolyAnalysis::_topoNodeHelper(const ai::CFGGraph &graph, Block *end) {
 			_topoNodeHelper(graph, e->source());
 	}
 
-	(*_rank)[end->index()] = _current;
-	inloop = -1;
 	if (LOOP_HEADER(end)) {
-		inloop = end->index();
-	} else if (ENCLOSING_LOOP_HEADER(end) != nullptr) {
-		inloop = ENCLOSING_LOOP_HEADER(end)->index();
-	}
+		_belongsToLoop[end->index()] = end->index();
+	} else if (ENCLOSING_LOOP_HEADER(end) != nullptr)
+		_belongsToLoop[end->index()] = ENCLOSING_LOOP_HEADER(end)->index();
 
-	if (inloop != -1) {
-		(*_rank)[end->index()] |= (_rankLoop[inloop] << 16);
-	} else {
-		(*_rank)[end->index()] |= (0x7FFF << 16);
-	}
-
+	_blockOrder[end->index()] = _current;
 	_current++;
 	_visited->set(end->index());
 }
 
-genstruct::HashTable<int, int>* PolyAnalysis::_getPseudoTopo(const ai::CFGGraph &graph) {
-	ASSERT(_visited == nullptr);
+void PolyAnalysis::PseudoTopoOrder::_getPseudoTopo(const ai::CFGGraph &graph) {
 	_visited = new BitVector(graph.count());
-	_rank = new genstruct::HashTable<int, int>();
-	_rankLoop.clear();
 
 	_current = 0;
 	_topoLoopHelper(graph, graph.entry(), -1);
@@ -329,17 +336,16 @@ genstruct::HashTable<int, int>* PolyAnalysis::_getPseudoTopo(const ai::CFGGraph 
 	}
 	delete _visited;
 	_visited = nullptr;
-	return _rank;
 }
 
 void PolyAnalysis::processCFG(CFG &cfg, state_t &s, bool isEntryCFG) {
 	PPLManager *man = isEntryCFG ? (new PPLManager(*_props, initState)) : (new PPLManager(s, *_props, initState));
-	genstruct::HashTable<int, state_t> headerState;
+	MyHTable<int, state_t> headerState;
 	ai::CFGGraph graph(&cfg);
 	ai::EdgeStore<PPLManager, ai::CFGGraph> store(*man, graph);
 
 	cout << "Entering CFG: " << cfg.name() << endl;
-	OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>> ana(*man, graph, store, WORKLIST_PRIORITY(cfg));
+	OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> ana(*man, graph, store, _orders[cfg.index()]);
 
 	while (ana) {
 		processBB(man, graph, ana, store, headerState);
@@ -369,10 +375,12 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	initState = dfa::INITIAL_STATE(ws);
 	ASSERT(initState != nullptr);
 
+	_orders.setLength(coll->count());
 	for (CFGCollection::Iter iter2(coll); iter2; iter2++) {
 		cout << "Preparing CFG: " << (*iter2)->name() << endl;
 		ai::CFGGraph graph((*iter2));
-		WORKLIST_PRIORITY(*iter2) = _getPseudoTopo(graph);
+		PseudoTopoOrder *pto = new PseudoTopoOrder(graph);
+		_orders[(*iter2)->index()] = pto;
 	}
 
 
@@ -391,10 +399,9 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 				     << "TOTAL_ITERATION(" << bb->id() << ") = " << TOTAL_ITERATION(bb) << endl;
 			}
 		}
+		delete _orders[(*iter2)->index()];
 	}
 }
-
-Identifier<genstruct::HashTable<int,int>* > WORKLIST_PRIORITY("otawa::poly::WORKLIST_PRIORITY");
 
 } // namespace poly
 } // namespace otawa

@@ -101,7 +101,7 @@ class PPLDomain {
 	/* Abstract state */
 	PPL::C_Polyhedron poly;
 
-	genstruct::HashTable<Ident, int, HashIdent>
+	MyHTable<Ident, int, HashIdent>
 	    id2axis;                      ///< Mapping from identifier (register/pointers) to polyhedron variable
 	genstruct::Vector<Ident> axis2id; ///< Reverse identifier mapping
 
@@ -165,7 +165,7 @@ class PPLDomain {
 	 */
 	class MapWithHash {
 	  public:
-		inline explicit MapWithHash(genstruct::HashTable<int, int> &map) : _map(map) {}
+		inline explicit MapWithHash(MyHTable<int, int> &map) : _map(map) {}
 		inline bool maps(PPL::dimension_type i, PPL::dimension_type &j) const {
 			if (_map.hasKey(i)) {
 				j = _map[i];
@@ -175,7 +175,7 @@ class PPLDomain {
 		}
 
 	  private:
-		genstruct::HashTable<int, int> &_map;
+		MyHTable<int, int> &_map;
 	};
 
   public:
@@ -653,11 +653,11 @@ class PPLDomain {
 	 * Indexes the pointer in dom, by their expression in terms of registers referenced in map_regs.
 	 * Stores the result in map_ptr.
 	 */
-	void _indexPointersByExpr(genstruct::HashTable<PPL::Constraint, int, HashCons> &map_ptr,
-	                          genstruct::HashTable<int, int> &commonRegs) const;
+	void _indexPointersByExpr(MyHTable<PPL::Constraint, int, HashCons> &map_ptr,
+	                          MyHTable<int, int> &commonRegs) const;
 
-	void _identifyAncestorVars(PPLDomain &l, genstruct::HashTable<int, int> &commonVarsL, PPLDomain &r,
-	                           genstruct::HashTable<int, int> &commonVarsR) const;
+	void _identifyAncestorVars(PPLDomain &l, MyHTable<int, int> &commonVarsL, PPLDomain &r,
+	                           MyHTable<int, int> &commonVarsR) const;
 
 	/**
 	 * Computes the convex hull of two polyhedron of different space dimension, extending the smaller if needed.
@@ -684,7 +684,7 @@ class PPLDomain {
 	 * To be documented
 	 */
 	void _doMatchGlobals(PPLDomain &l1, PPLDomain &r1, unsigned int &axis, 
-			genstruct::HashTable <int,int> &mappingL, genstruct::HashTable<int,int> &mappingR) const;
+			MyHTable <int,int> &mappingL, MyHTable<int,int> &mappingR) const;
 
 };
 inline Output &operator<<(Output &o, const PPLDomain &dom) {
