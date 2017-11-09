@@ -5,6 +5,7 @@
 #include <elm/data/Vector.h>
 #include <otawa/cfg.h>
 #include <otawa/cfg/features.h>
+#include <otawa/ai/WorkListDriver.h>
 #include <otawa/dfa/ai.h>
 #include <otawa/dfa/State.h>
 #include <otawa/ipet.h>
@@ -13,13 +14,13 @@
 #include <ppl.hh>
 
 #include "PPLManager.h"
-#include "OrderedDriver.h"
 
 namespace otawa {
 namespace poly {
 using namespace otawa;
 using namespace otawa::util;
 using namespace elm;
+using namespace otawa::ai;
 
 class PolyAnalysis : public Processor {
   private:
@@ -73,7 +74,7 @@ class PolyAnalysis : public Processor {
 	using state_t = PPLManager::t;
 	void processCFG(CFG & /* cfg */, state_t & /* s */, bool /* isEntryCFG */);
 	void processBB(PPLManager *man, ai::CFGGraph &graph,
-	               OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> &ana,
+	               WorkListDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> &ana,
 				   ai::EdgeStore<PPLManager, ai::CFGGraph> &store,
 	               MyHTable<int, state_t> &headerState);
 	const PropList *_props{};

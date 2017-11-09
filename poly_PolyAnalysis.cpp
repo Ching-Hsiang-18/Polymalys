@@ -10,6 +10,7 @@
 #include <otawa/hard/Memory.h>
 #include <otawa/util/WideningListener.h>
 #include <otawa/oslice/features.h>
+#include <otawa/ai/WorkListDriver.h>
 #include <ppl.hh>
 
 #include "include/PPLDomain.h"
@@ -96,7 +97,7 @@ PolyAnalysis::state_t PolyAnalysis::processHeader(ai::CFGGraph &graph, BasicBloc
 }
 
 void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
-                             OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> &ana,
+                             WorkListDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> &ana,
 							 ai::EdgeStore<PPLManager, ai::CFGGraph>& store,
                              MyHTable<int, state_t> &headerState) {
 	/*
@@ -345,7 +346,7 @@ void PolyAnalysis::processCFG(CFG &cfg, state_t &s, bool isEntryCFG) {
 	ai::EdgeStore<PPLManager, ai::CFGGraph> store(*man, graph);
 
 	cout << "Entering CFG: " << cfg.name() << endl;
-	OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> ana(*man, graph, store, _orders[cfg.index()]);
+	WorkListDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> ana(*man, graph, store, _orders[cfg.index()]);
 
 	while (ana) {
 		processBB(man, graph, ana, store, headerState);
