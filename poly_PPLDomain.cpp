@@ -47,11 +47,21 @@ void Ident::print(io::Output &out) const {
 			out << "R" << _id;
 		}
 		break;
+	case ID_REG_INPUT:
+		if (_id < 0) {
+			out << "T" << -_id << "_0";
+		} else {
+			out << "R" << _id << "_0";
+		}
+		break;
 	case ID_MEM_ADDR:
 		out << "ptr" << _id;
 		break;
 	case ID_MEM_VAL:
 		out << "*ptr" << _id;
+		break;
+	case ID_MEM_VAL_INPUT:
+		out << "*ptr" << _id << "_0";
 		break;
 	case ID_LOOP:
 		out << "bound" << _id;
@@ -91,6 +101,10 @@ Output &operator<<(Output &o, const Variable pv) {
 	return o;
 }
 
+PPLDomain::~PPLDomain() {
+	delete _summary;
+}
+
 void PPLDomain::print(io::Output &out) const {
 	static char buf[64];
 
@@ -103,10 +117,11 @@ void PPLDomain::print(io::Output &out) const {
 	int ncons = 0;
 
 	out << "Constraints: ";
-	;
+
 	for (PPL::Constraint_System::const_iterator it = cons.begin(); it != cons.end(); it++, ncons++) {
 		const PPL::Constraint &c = *it;
 
+		bool firstTerm = true;
 		for (PPL::dimension_type i = 0; i < cons.space_dimension(); i++) {
 			const PPL::Coefficient &coef = c.coefficient(Variable(i));
 
@@ -115,10 +130,14 @@ void PPLDomain::print(io::Output &out) const {
 
 				if (coef == -1) {
 					out << "- ";
-				} else if (coef != 1) {
-					gmp_snprintf(buf, sizeof(buf), "%Zd", &PPL::raw_value(coef));
-					buf[sizeof(buf) - 1] = 0;
-					out << buf << ".";
+				} else {
+					if (!firstTerm)
+						out << "+ ";
+					if (coef != 1) {
+						gmp_snprintf(buf, sizeof(buf), "%Zd", &PPL::raw_value(coef));
+						buf[sizeof(buf) - 1] = 0;
+						out << buf << ".";
+					}
 				}
 
 				if (isVarMapped(v)) {
@@ -128,6 +147,7 @@ void PPLDomain::print(io::Output &out) const {
 				}
 
 				out << " ";
+				firstTerm = false;
 			}
 		}
 
@@ -152,11 +172,40 @@ void PPLDomain::print(io::Output &out) const {
 	displayLocVars(out);
 	displayGlobVars(out);
 	out << endl;
+
+	if (_summary != nullptr) {
+		cout << "Summary info: " << endl;
+		cout << "- Inputs: ";
+		for (elm::genstruct::Vector<Ident>::Iterator it(_summary->_inputs); it; it++) {
+			cout << *it << ", ";
+		}
+		cout << endl;
+
+		cout << "- Damaged: ";
+		for (elm::genstruct::Vector<Ident>::Iterator it(_summary->_damaged); it; it++) {
+			cout << *it << ", ";
+		}
+		cout << endl;
+
+		
+	}
 }
 
 bool PPLDomain::equals(const PPLDomain &b) const {
 	ASSERT((initState == nullptr) || (b.initState == nullptr) || (initState == b.initState));
 	ASSERT(trash.countOnes() == 0);
+
+	if (isBottom() != b.isBottom())
+		return false;
+
+	/*
+	 * If we are summarizing, test if the summaries are equivalent
+	 */
+	ASSERT((_summary == nullptr) == (b._summary == nullptr));
+	if (_summary != nullptr) {
+		if (!_summary->equals(*b._summary))
+			return false;
+	}
 
 	/*
 	 * First, attempt to show that the states are different using quick checks.
@@ -605,6 +654,27 @@ PPLDomain PPLDomain::onMerge(const PPLDomain &r, bool widen) const {
 	cout << l1;
 #endif
 
+	// also merge summaries
+	if (r1._summary != nullptr) {
+		if (l1._summary == nullptr)
+			l1._summary = new PPLSummary();
+		for (elm::genstruct::Vector<Ident>::Iterator it(r1._summary->_damaged); it; it++) {
+			if (!l1._summary->_damaged.contains(*it)) {
+				l1._summary->_damaged.add(*it);
+			}
+		}
+		for (elm::genstruct::Vector<Ident>::Iterator it(r1._summary->_inputs); it; it++) {
+			if (!l1._summary->_inputs.contains(*it)) {
+				l1._summary->_inputs.add(*it);
+			}
+		}
+	} else {
+		if (l1._summary != nullptr) {
+			delete l1._summary;
+			l1._summary = nullptr;
+		}
+	}
+
 	return l1;
 }
 
@@ -651,7 +721,7 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 
 			sem::reg_t dest = si.d();
 			Ident id(dest, Ident::ID_REG);
-			Variable v = s_out.varNew(id, true);
+			Variable v = s_out.varNew(id, true, true);
 
 			s_out.poly.add_constraint(v == vs);
 			break;
@@ -702,11 +772,11 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 
 			sem::reg_t addr = si.a();
 			Ident idStoreAddr(addr, Ident::ID_REG);
-			Variable storeAddr = s_out.getVarOrNew(idStoreAddr);
+			Variable storeAddr = s_out.getVarOrNew(idStoreAddr, true);
 
 			sem::reg_t src = si.d();
 			Ident idStoreValue(src, Ident::ID_REG);
-			Variable storeValue = s_out.getVarOrNew(idStoreValue);
+			Variable storeValue = s_out.getVarOrNew(idStoreValue, true);
 
 /*
 			for (MyHTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++)
@@ -815,11 +885,24 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 #ifdef POLY_DEBUG
 				cout << "LOAD: Not found, creating new ptr..." << endl;
 #endif
-				s_out.memCreate(loadAddr, loadReg);
+				const Variable &v = s_out.memCreate(loadAddr, loadReg, false);
 
 				uint32_t concreteAddress, initialValue;
-				if (s_out.memGetInitial(idLoadAddr, concreteAddress, initialValue))
+				if (s_out.memGetInitial(idLoadAddr, concreteAddress, initialValue) && initialValue /* TODO test */) {
 					s_out.doNewConstraint(loadReg == initialValue);
+				} else if (s_out._summary != nullptr) {
+					// Unknown LOAD value. If we are summarizing, create an input.
+					Ident idInputAddr = s_out.getIdent(v);
+					Ident idInputVal = Ident(idInputAddr.getId(), Ident::ID_MEM_VAL_INPUT);
+					Ident idCurrentVal = Ident(idInputAddr.getId(), Ident::ID_MEM_VAL);
+					Variable currentVal = s_out.getVar(idCurrentVal);
+					Variable inputVal = s_out.varNew(idInputVal);
+#ifdef POLY_DEBUG
+					cout << "Summarizing: creating new input memory: " << " what= " << idInputVal << " where=" << idInputAddr << endl;
+#endif
+					s_out._summary->_inputs.add(idInputVal);
+					s_out.doNewConstraint(currentVal == inputVal);
+				}
 			}
 			break;
 		} 
@@ -933,6 +1016,10 @@ void PPLDomain::doKillRegisters(BitVector bv) {
 			if ((*it).fst.getId() == 13)
 				continue; // never kill SP, as we need it to detect out-of-scope stack variables
 
+			if ((*it).fst.getId() == 0)
+				continue; // avoid killing R0 as it holds the return value 
+			// TODO performance: preserver R0 uniquement s'il atteint la fin de la fonction
+
 #ifdef POLY_DEBUG
 			cout << "Killing dead register: " << (*it).fst << endl;
 #endif
@@ -991,15 +1078,52 @@ void PPLDomain::doFinalizeUpdate() {
 	_sanityChecks();
 }
 
-Variable PPLDomain::varNew(const Ident &ident, bool allow_replace) {
+Variable PPLDomain::varNew(const Ident &ident, bool allow_replace, bool create_damaged) {
+	if (_summary != nullptr && create_damaged) {
+		if ((ident.getType() == Ident::ID_REG) && (ident.getId() == 0)) {
+			// TODO tester les registres qu'il faut garder en fonction de la convention d'appel
+			_summary->_damaged.add(ident);
+		}
+		if ((ident.getType() == Ident::ID_MEM_VAL)) { 
+			Variable v = getVar(Ident(ident.getId(), Ident::ID_MEM_ADDR));
+
+			Ident idSsp(Ident::ID_START_SP, Ident::ID_SPECIAL);
+			Variable ssp = getVar(idSsp);
+
+			if (poly.relation_with(v < ssp).implies(PPL::Poly_Con_Relation::is_included()) &&
+				poly.relation_with(v >= int(stackconf_t::STACK_TOP - stackconf_t::STACK_SIZE)).implies(PPL::Poly_Con_Relation::is_included())) {
+				// is local variable.. do not add in damaged set
+#ifdef POLY_DEBUG
+				cout << "Variable " << ident << " not added to damaged set because it is local var." << endl;
+#endif
+			} else {
+#ifdef POLY_DEBUG
+				cout << "Variable " << ident << " added to damaged set because it may be a non-local var." << endl;
+#endif
+				_summary->_damaged.add(ident);
+			}
+		}
+	}
 	return Variable(_doAllocAxis(ident, allow_replace));
 }
 
 Variable PPLDomain::getVar(const Ident &ident) const { return Variable(id2axis[ident]); }
 
-Variable PPLDomain::getVarOrNew(const Ident &ident, bool allow_varNew) {
-	if (allow_varNew && !hasIdent(ident)) {
-		return varNew(ident, false);
+Variable PPLDomain::getVarOrNew(const Ident &ident, bool create_input) {
+	if (!hasIdent(ident)) {
+		Variable v = varNew(ident, false);
+		if (create_input && _summary != nullptr) {
+			/* Read from untracked register. If we are summarizing, create a new input register */
+			ASSERT(ident.getType() == Ident::ID_REG);
+			Ident idInput(ident.getId(), Ident::ID_REG_INPUT);
+			_summary->_inputs.add(idInput);
+			Variable input = varNew(idInput);
+			doNewConstraint(input == v);
+#ifdef POLY_DEBUG
+			cout << "Summarizing: creating new input register " << input << endl;
+#endif
+		}
+		return v;
 	}
 	return getVar(ident);
 }
@@ -1019,25 +1143,43 @@ Variable PPLDomain::memReplace(const Variable &address, const Variable &valueSou
 
 	Ident idNewAddress, idNewValue;
 	varCreatePtr(idNewAddress, idNewValue);
-	const Variable &newAddress = varNew(idNewAddress);
-	const Variable &newValue = varNew(idNewValue);
 
+	const Variable &newAddress = varNew(idNewAddress, false);
 	doNewConstraint(address == newAddress);
+
+	const Variable &newValue = varNew(idNewValue, false, true);
 	doNewConstraint(newValue == valueSource);
+
+	const Ident &idOldInput = Ident(idOldAddress.getId(), Ident::ID_MEM_VAL_INPUT);
+	if (hasIdent(idOldInput)) {
+		ASSERT(_summary);
+		const Variable &oldInput = getVar(idOldInput);
+		const Ident idNewInput(idNewAddress.getId(), Ident::ID_MEM_VAL_INPUT);
+		const Variable &newInput= varNew(idNewInput, false, false);
+		doNewConstraint(newInput == oldInput);
+		_summary->_inputs.remove(idOldInput);
+		_summary->_inputs.add(idNewInput);
+#ifdef POLY_DEBUG
+		cout << "Summarizing: migrating input from " << idOldInput << " to " << idNewInput << endl;
+#endif
+		varKill(oldInput);
+	}
 
 	varKill(oldValue);
 	varKill(address);
 	return newAddress;
 }
 
-Variable PPLDomain::memCreate(const PPL::Linear_Expression & address , const PPL::Linear_Expression &valueSource) {
+Variable PPLDomain::memCreate(const PPL::Linear_Expression & address , const PPL::Linear_Expression &valueSource, bool damage) {
 	Ident idNewAddress, idNewValue;
 	varCreatePtr(idNewAddress, idNewValue);
-	const Variable &newAddress = varNew(idNewAddress);
-	const Variable &newValue = varNew(idNewValue);
 
-	doNewConstraint(newValue == valueSource);
+	const Variable &newAddress = varNew(idNewAddress, false);
 	doNewConstraint(newAddress == address);
+
+	const Variable &newValue = varNew(idNewValue, false, damage);
+	doNewConstraint(newValue == valueSource);
+
 	return newAddress;
 }
 
@@ -1113,7 +1255,8 @@ void PPLDomain::_sanityChecks() {
 		Ident &ident = axis2id[i];
 		ASSERT(id2axis[ident] == i);
 	}
-	ASSERT(max_axis + 1 == num_axis);
+	ASSERT(max_axis + 1 <= num_axis);
+	ASSERT(max_axis + 1 + trash.countOnes() >= num_axis);
 	ASSERT(poly.space_dimension() <= (unsigned)num_axis); // unused axis can exist at the end
 	ASSERT(trash.size() >= num_axis);
 	ASSERT(trash.countOnes() <= num_axis);
@@ -1462,6 +1605,9 @@ void PPLDomain::_doBinaryOp(int op, Variable *v, Variable *vs1, Variable *vs2) {
 	}
 }
 
+void PPLDomain::enableSummary() {
+	_summary = new PPLSummary();
+}
 p::feature POLY_ANALYSIS_FEATURE("otawa::poly::POLY_ANALYSIS_FEATURE", new Maker<PolyAnalysis>());
 
 Identifier<int> LOC_VAR_SIZE("otawa::poly::LOC_VAR_SIZE", 4);

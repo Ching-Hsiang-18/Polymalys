@@ -48,8 +48,10 @@ class Ident {
   public:
 	enum IdentType {
 		ID_REG = 0,
+		ID_REG_INPUT,
 		ID_MEM_ADDR,
 		ID_MEM_VAL,
+		ID_MEM_VAL_INPUT,
 		ID_SPECIAL,
 		ID_LOOP,
 		ID_INVALID,
@@ -95,6 +97,37 @@ class HashCons {
 	}
 };
 
+
+/**
+ * @class PPLInput
+ *
+ * Represents an input (register, or memory location) to a summarized function
+ *
+ */
+/*
+class PPLInput {
+	public:
+		Ident _input;
+		Ident _where;
+	bool operator==(const PPLInput &a) const {
+		return false;
+	}
+};
+*/
+
+/**
+ * @class PPLSummary
+ *
+ * Represents a partial result (summary) computed for a function.
+ */
+class PPLSummary {
+	public:
+		genstruct::Vector<Ident> _damaged; ///< The list of output (or side-effects) variables (registers or pointers)
+		genstruct::Vector<Ident> _inputs; ///< The list of inputs for the function
+		inline bool equals(const PPLSummary &b) const {
+			return true;
+		}
+};
 class PPLDomain {
 
   private:
@@ -116,6 +149,8 @@ class PPLDomain {
 	Vector<bound_t> bounds;
 
 	dfa::State *initState; ///< Process init state
+
+	PPLSummary *_summary; ///< Summarize currently analyzed function
 
 	/* Nested classes */
 
@@ -189,14 +224,15 @@ class PPLDomain {
 		poly = PPL::C_Polyhedron(0, PPL::EMPTY);
 		compare_reg = Ident();
 		compare_op = sem::EQ;
-		initState = NULL;
+		initState = nullptr;
+		_summary = nullptr;
 	}
 
 	/**
 	 * Builds a top state
 	 * @param maxAxis Maximum number of variables this state can hold
 	 */
-	inline explicit PPLDomain(int maxAxis, dfa::State *istate) {
+	inline explicit PPLDomain(int maxAxis, dfa::State *istate, PPLSummary *summary = nullptr) {
 		num_axis = 0;
 		mem_ref = 0;
 		trash = BitVector(maxAxis);
@@ -204,6 +240,7 @@ class PPLDomain {
 		poly = PPL::C_Polyhedron(0, PPL::UNIVERSE);
 		compare_reg = Ident();
 		compare_op = sem::EQ;
+		_summary = summary;
 	}
 
 	inline PPLDomain(const PPLDomain &src) {
@@ -217,11 +254,14 @@ class PPLDomain {
 		trash = src.trash;
 		bounds = src.bounds;
 		initState = src.initState;
+		if (src._summary != nullptr) {
+			_summary = new PPLSummary(*src._summary);
+		} else {
+			_summary = nullptr;
+		}
 	}
 
-	inline ~PPLDomain() {
-		// TODO(clement):
-	}
+	~PPLDomain();
 
 	inline PPLDomain &operator=(const PPLDomain &dom) {
 		poly = dom.poly;
@@ -234,12 +274,30 @@ class PPLDomain {
 		trash = dom.trash;
 		bounds = dom.bounds;
 		initState = dom.initState;
+		if (_summary != nullptr) {
+			if (dom._summary != nullptr) {
+				*_summary = *dom._summary;
+			} else {
+				delete _summary;
+				_summary = nullptr;
+			}
+		} else {
+			if (dom._summary != nullptr)
+				_summary = new PPLSummary(*dom._summary);
+		}
 		return *this;
 	}
 
 	bool equals(const PPLDomain & /*b*/) const;
 
 	/* Operations that reads the state and returns information about it */
+
+	/**
+	 * Gets summary information 
+	 */
+	PPLSummary *getSummary() {
+		return _summary;
+	}
 
 	/**
 	 * Prints this state (constraints, mappings, and local variables)
@@ -452,6 +510,12 @@ class PPLDomain {
 	/* Operations that modify the state in-place */
 
 	/**
+	 * Enable summarization of to-be-analyzed function (must be called before the start of the analysis of this function)
+	 */
+	void enableSummary();
+
+
+	/**
 	 * Map only the polyhedron (without the identifier mappings). This is probably not what you want.
 	 *
 	 * @param pfunc The partial mapping function (see PPL docs)
@@ -500,7 +564,7 @@ class PPLDomain {
 	 * @param allow_replace true if we allow replacing an existing variable that was mapped to id, false otherwise
 	 * @return The new variable.
 	 */
-	Variable varNew(const Ident &id, bool allow_replace = false);
+	Variable varNew(const Ident &id, bool allow_replace = false, bool create_damaged = false);
 
 	/**
 	 * Schedule a variable (associated with an identifier) to be destroyed.
@@ -519,16 +583,16 @@ class PPLDomain {
 	inline void varKill(const Variable &v) { return _doFreeAxis(v.id()); }
 
 	/**
-	 * Gets the variable associated with an identifier (i.e. lookup).
+	 * Gets the variable associated with an identifier, creating a new variable if it doesn't exists (i.e. lookup).
 	 *
 	 * @param id The target identifier
-	 * @param allow_varNew if true, and the identifier is unknown, create a new variable
+	 * @param create_input if true, and the identifier is unknown, and we are summarizing, create an input
 	 * @return The variable.
 	 */
-	Variable getVarOrNew(const Ident &id, bool allow_varNew = true);
+	Variable getVarOrNew(const Ident &id, bool create_input = false);
 
 	/**
-	 * Gets the variable associated with an identifier (i.e. lookup).
+	 * Gets the variable associated with an identifier, aborting if the variables doesn't exists (i.e. lookup).
 	 *
 	 * @param id The target identifier
 	 * @return The variable.
@@ -611,9 +675,10 @@ class PPLDomain {
 	 *
 	 * @param address A variable representing the memory address.
 	 * @param newValue A variable representing the memory value.
+	 * @param dmg If summarizing, mark address as damaged
 	 * @return new address variable
 	 */
-	Variable memCreate(const PPL::Linear_Expression & address , const PPL::Linear_Expression &newValue);
+	Variable memCreate(const PPL::Linear_Expression & address , const PPL::Linear_Expression &newValue, bool dmg = true);
 
 	/**
 	 * Associate a new value to the address variable, merging with existing value.
@@ -687,6 +752,7 @@ class PPLDomain {
 			MyHTable <int,int> &mappingL, MyHTable<int,int> &mappingR) const;
 
 };
+
 inline Output &operator<<(Output &o, const PPLDomain &dom) {
 	dom.print(o);
 	return o;

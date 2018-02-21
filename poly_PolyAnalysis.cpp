@@ -115,7 +115,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 		CFG *subCFG = (*ana)->toSynth()->callee();
 		cout << "Call from " << (*ana)->toSynth()->caller()->name() << " to " << subCFG->name() << endl;
 
-		processCFG(*subCFG, s, false);
+		processCFG(*subCFG, s, false, false);
 
 		cout << "Return from " << subCFG->name() << " to " << (*ana)->toSynth()->caller()->name() << endl;
 		for (ai::CFGGraph::Successor e(graph, *ana); e; e++) {
@@ -339,11 +339,17 @@ void PolyAnalysis::PseudoTopoOrder::_getPseudoTopo(const ai::CFGGraph &graph) {
 	_visited = nullptr;
 }
 
-void PolyAnalysis::processCFG(CFG &cfg, state_t &s, bool isEntryCFG) {
+void PolyAnalysis::processCFG(CFG &cfg, state_t &s, bool isEntryCFG, bool summarize) {
 	PPLManager *man = isEntryCFG ? (new PPLManager(*_props, initState)) : (new PPLManager(s, *_props, initState));
+	if (summarize) {
+		ASSERT(isEntryCFG);
+		man->enableSummary();
+	}
 	MyHTable<int, state_t> headerState;
 	ai::CFGGraph graph(&cfg);
 	ai::EdgeStore<PPLManager, ai::CFGGraph> store(*man, graph);
+
+	cout << "Init state: " << s << endl;
 
 	cout << "Entering CFG: " << cfg.name() << endl;
 	WorkListDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> ana(*man, graph, store, _orders[cfg.index()]);
@@ -387,7 +393,8 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 
 	CFG *entry = coll->get(0);
 	state_t dummy;
-	processCFG(*entry, dummy, true);
+	ASSERT(dummy.getSummary() == nullptr);
+	processCFG(*entry, dummy, true /* is entry */, true /* summarize */);
 
 	cout << "LOOP BOUNDS: " << endl;
 	for (CFGCollection::Iter iter2(coll); iter2; iter2++) {

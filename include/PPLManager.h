@@ -42,6 +42,7 @@ class PPLManager {
 	inline t widening(t &v1, const t &v2) { return v1.onMerge(v2, true); }
 	inline bool equals(const t &v1, const t &v2) { return v1.equals(v2); }
 
+	inline void enableSummary() { _init.enableSummary(); }
   private:
 	t _init;
 	t _bot;
