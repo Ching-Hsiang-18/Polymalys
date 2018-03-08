@@ -123,7 +123,7 @@ class PPLInput {
 class PPLSummary {
 	public:
 		genstruct::Vector<Ident> _damaged; ///< The list of output (or side-effects) variables (registers or pointers)
-		genstruct::Vector<Ident> _inputs; ///< The list of inputs for the function
+//		genstruct::Vector<Ident> _inputs; ///< The list of inputs for the function
 		inline bool equals(const PPLSummary &b) const {
 			return true;
 		}
@@ -165,6 +165,7 @@ class PPLDomain {
 	  public:
 		MapHelper(F &pfunc, int max_in_domain);
 		inline PPL::dimension_type max_in_codomain() const { return _max_in_codomain; }
+		inline PPL::dimension_type max_in_domain() const { return _max_in_domain; }
 		inline bool maps(PPL::dimension_type i, PPL::dimension_type &j) const { return _pfunc.maps(i, j); }
 		inline bool has_empty_codomain() const { return _empty; }
 
@@ -519,8 +520,9 @@ class PPLDomain {
 	 * Map only the polyhedron (without the identifier mappings). This is probably not what you want.
 	 *
 	 * @param pfunc The partial mapping function (see PPL docs)
+	 * @param noproj Prevent PPL from optimizing the projection by classifying it as a permutation
 	 */
-	template <class F> void doMapPoly(F pfunc);
+	template <class F> void doMapPoly(F pfunc, bool noproj = false);
 
 	/**
 	 * Map only the identifiers mappings (without the polyhedron). This is probably not what you want.
@@ -533,8 +535,9 @@ class PPLDomain {
 	 * Map the state according to partial function. This is equivalent to calling doMapPoly + doMapIdents
 	 *
 	 * @param pfunc The partial mapping function (see PPL docs)
+	 * @param noproj Prevent PPL from optimizing the projection by classifying it as a permutation
 	 */
-	template <class F> void doMap(F pfunc);
+	template <class F> void doMap(F pfunc, bool noproj = false);
 
 	/**
 	 * Handle integer wrap-around (currently not implemented)
@@ -750,6 +753,13 @@ class PPLDomain {
 	 */
 	void _doMatchGlobals(PPLDomain &l1, PPLDomain &r1, unsigned int &axis, 
 			MyHTable <int,int> &mappingL, MyHTable<int,int> &mappingR) const;
+	/**
+	 * To be documented
+	 */
+	void _doMatchSummaries(PPLDomain &l1, PPLDomain &r1, unsigned int &axis, 
+			MyHTable <int,int> &mappingL, MyHTable<int,int> &mappingR,
+			MyHTable<PPL::Constraint, int, HashCons>&,
+			MyHTable<PPL::Constraint, int, HashCons>&) const;
 
 };
 
