@@ -244,7 +244,7 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 	int expectedVarCount = 0;
 	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
 		const Pair<Ident, int> &p = *it;
-		if ((p.fst.getType() == Ident::ID_MEM_VAL) || (p.fst.getType() == Ident::ID_MEM_ADDR)) {
+		if ((p.fst.getType() == Ident::ID_MEM_VAL) || (p.fst.getType() == Ident::ID_MEM_ADDR) || (p.fst.getType() == Ident::ID_MEM_VAL_INPUT)) {
 			continue;
 		}
 		expectedVarCount++;
@@ -266,6 +266,7 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 	 */
 	r = b;
 	l = *this;
+	cout << " ================ EQUAL ==============" << endl;
 	_doUnify(l, r);
 
 	if ((l.id2axis.count() != id2axis.count()) || (r.id2axis.count() != b.id2axis.count())) {
@@ -1297,6 +1298,14 @@ void PPLDomain::_doFreeAxis(int axis) {
 	cout << "Variable " << Variable(axis) << ", mapped to identifier " << axis2id[axis]
 	     << ", is scheduled to be destroyed. " << endl;
 #endif
+	if (this->_summary) {
+		if (this->_summary->_damaged.contains(axis2id[axis])) {
+			this->_summary->_damaged.remove(axis2id[axis]);
+#ifdef POLY_DEBUG
+			cout << "Also destroying from damaged set." << endl;
+#endif
+		}
+	}
 	id2axis.remove(axis2id[axis]);
 	axis2id[axis] = Ident();
 	trash.set(axis);
@@ -1464,6 +1473,7 @@ void PPLDomain::_doMatchSummaries(PPLDomain &l1, PPLDomain &r1, unsigned int& ax
 
 					for (PPL::dimension_type i = 0; i < c.space_dimension(); i++) {
 						Variable v(i);
+						Variable vc(0);
 						const PPL::Coefficient &coef = c.coefficient(v);
 						if (coef != 0) {
 #ifdef POLY_DEBUG
@@ -1474,7 +1484,8 @@ void PPLDomain::_doMatchSummaries(PPLDomain &l1, PPLDomain &r1, unsigned int& ax
 							ASSERT(mappingL.hasKey(i));
 							int axis_in_R = -1;
 							if (i < (c.space_dimension() - 1)) {
-								int common_axis = mappingL[i];
+								int common_axis = i; //mappingL[i];
+								vc = Variable(common_axis);
 								for (MyHTable<int, int>::PairIterator itm(mappingR); itm; itm++) {
 									if ((*itm).snd == common_axis) {
 										axis_in_R = (*itm).fst;
@@ -1487,7 +1498,7 @@ void PPLDomain::_doMatchSummaries(PPLDomain &l1, PPLDomain &r1, unsigned int& ax
 							ASSERT(axis_in_R != -1);
 							Variable v2(axis_in_R);
 							le = le + coef * v2;
-							cout << v << "|" << v2 << " + ";
+							cout << v << "|" << v2 << "," << vc << " + ";
 						}
 					}
 					const PPL::Coefficient &cst = c.inhomogeneous_term();
@@ -1512,13 +1523,13 @@ void PPLDomain::_doMatchSummaries(PPLDomain &l1, PPLDomain &r1, unsigned int& ax
 					}
 					r1.doNewConstraint(c2);
 
-
-
-					// translate constraint using coefficient from R-state
 				} else {
 					// register
-					abort();
-					r1.varNew((*it).fst);
+					Variable regVar = r1.varNew((*it).fst);
+					mappingL.put((*it).snd, axis);
+					mappingR.put(regVar.id(), axis);
+					axis++;
+
 				}
 /*
 				mappingL.put((*it).snd, axis);
@@ -1595,7 +1606,6 @@ void PPLDomain::_doMatchGlobals(PPLDomain &l1, PPLDomain &r1, unsigned int& axis
 // TODO faire la projection sur le damaged
 void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 	unsigned int axis = 0;
-	noPtr = false;
 
 #ifdef POLY_DEBUG
 	cout << "Unify phase." << endl;
@@ -1721,7 +1731,6 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 
 	l1.doMap(PPLDomain::MapWithHash(mappingL));
 	r1.doMap(PPLDomain::MapWithHash(mappingR));
-//	l1.poly.add_space_dimensions_and_embed(nkeep); // don't ask why
 	ASSERT(l1.poly.space_dimension() == r1.poly.space_dimension());
 	ASSERT(l1.poly.space_dimension() == axis);
 	l1.num_axis = l1.poly.space_dimension();
