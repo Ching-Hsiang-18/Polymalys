@@ -1595,6 +1595,7 @@ void PPLDomain::_doMatchGlobals(PPLDomain &l1, PPLDomain &r1, unsigned int& axis
 // TODO faire la projection sur le damaged
 void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 	unsigned int axis = 0;
+	noPtr = false;
 
 #ifdef POLY_DEBUG
 	cout << "Unify phase." << endl;
@@ -1706,61 +1707,17 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 			axis++;
 		}
 	}
-
-	cout << "Dans L: " << endl;
-
-	_doMatchSummaries(l1, r1, axis, mappingL, mappingR, indexedPtrsL, indexedPtrsR);
-	cout << "Dans R: " << endl;
-	_doMatchSummaries(r1, l1, axis, mappingR, mappingL, indexedPtrsR, indexedPtrsL);
-
-	/*
-
-	for (MyHTable<Ident, int, HashIdent>::PairIterator it(l1.id2axis); it; it++) {
-		PPL::dimension_type old_axis = (*it).snd;
-		PPL::dimension_type new_axis = (*it).snd;
-
-		if (!PPLDomain::MapWithHash(mappingL).maps(old_axis, new_axis)) {
-			bool keep = false;
-			if (l1._summary->_damaged.contains((*it).fst)) {
-				cout << "On doit garder " << (*it).fst << " car il est dans l'ensemble Damaged" << endl;
-				keep = true;
-			} 
-			if ((*it).fst.getType() == Ident::ID_REG_INPUT || (*it).fst.getType() == Ident::ID_MEM_VAL_INPUT) {
-				cout << "On doit garder " << (*it).fst << " car c'est un Input" << endl;
-				keep = true;
-			} 
-			if (keep) {
-				mappingL.put((*it).snd, axis);
-				axis++;
-			}
-		}
-	}
-	cout << "Dans R: " << endl;
-	int nkeep = 0;
-	
-	for (MyHTable<Ident, int, HashIdent>::PairIterator it(r1.id2axis); it; it++) {
-		PPL::dimension_type old_axis = (*it).snd;
-		PPL::dimension_type new_axis = (*it).snd;
-
-		if (!PPLDomain::MapWithHash(mappingR).maps(old_axis, new_axis)) {
-			bool keep = false;
-			if (r1._summary->_damaged.contains((*it).fst)) {
-				cout << "On doit garder " << (*it).fst << " car il est dans l'ensemble Damaged" << endl;
-				keep = true;
-			} 
-			if ((*it).fst.getType() == Ident::ID_REG_INPUT || (*it).fst.getType() == Ident::ID_MEM_VAL_INPUT) {
-				cout << "On doit garder " << (*it).fst << " car c'est un Input" << endl;
-				keep = true;
-			} 
-			if (keep) {
-				mappingR.put((*it).snd, axis);
-				axis++;
-				nkeep++;
-			} 
-		}
+	if (!noPtr) {
+#ifdef POLY_DEBUG
+		cout << "Dans L: " << endl;
+#endif
+		_doMatchSummaries(l1, r1, axis, mappingL, mappingR, indexedPtrsL, indexedPtrsR);
+#ifdef POLY_DEBUG
+		cout << "Dans R: " << endl;
+#endif
+		_doMatchSummaries(r1, l1, axis, mappingR, mappingL, indexedPtrsR, indexedPtrsL);
 	}
 
-	*/
 
 	l1.doMap(PPLDomain::MapWithHash(mappingL));
 	r1.doMap(PPLDomain::MapWithHash(mappingR));
