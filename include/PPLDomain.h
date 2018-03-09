@@ -214,6 +214,21 @@ class PPLDomain {
 		MyHTable<int, int> &_map;
 	};
 
+	class MapShift {
+	  public:
+		inline explicit MapShift(PPL::dimension_type domsize, PPL::dimension_type shift) : _domsize(domsize), _shift(shift) {}
+		inline bool maps(PPL::dimension_type i, PPL::dimension_type &j) const {
+			if (i < _domsize) {
+				j = i + _shift;
+				return true;
+			} else return false;
+		}
+
+	  private:
+		PPL::dimension_type _domsize;
+		PPL::dimension_type _shift;
+	};
+
   public:
 	/* Basic operations (constructor, destructor, copy, comparison) */
 
@@ -455,6 +470,15 @@ class PPLDomain {
 	}
 
 	/* High-level update operations. They return the modified state. */
+
+	/**
+	 * Compose current state with function summary
+	 *
+	 * @param summary Callee function summary
+	 * 
+	 * @return Composed state
+	 */
+	PPLDomain onCompose(const PPLDomain &summary) const;
 
 	/**
 	 * Process an OTAWA semantic instruction

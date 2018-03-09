@@ -115,9 +115,24 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 		CFG *subCFG = (*ana)->toSynth()->callee();
 		cout << "Call from " << (*ana)->toSynth()->caller()->name() << " to " << subCFG->name() << endl;
 
-		processCFG(*subCFG, s, false, false);
+		state_t sum;
+		processCFG(*subCFG, sum, true, true); //TODO memoize summary
 
 		cout << "Return from " << subCFG->name() << " to " << (*ana)->toSynth()->caller()->name() << endl;
+#ifdef POLY_DEBUG
+		cout << "Composing state with summary. Caller state = " << endl;
+		cout << s << endl;
+		cout << "Summary = " << endl;
+		cout << sum << endl;
+#endif
+		s = s.onCompose(sum);
+
+#ifdef POLY_DEBUG
+		cout << "Composed state = " << endl;
+		cout << s << endl;
+#endif
+		exit(0);
+	
 		for (ai::CFGGraph::Successor e(graph, *ana); e; e++) {
 			ana.check(*e, s);
 		}
@@ -365,12 +380,14 @@ void PolyAnalysis::processCFG(CFG &cfg, state_t &s, bool isEntryCFG, bool summar
 	Block::EdgeIter edge(bb->ins());
 	s = store.get(edge);
 
-	if (isEntryCFG) {
+	if (isEntryCFG && !summarize) {
 		cout << "FINAL STATE: " << endl;
 		cout << s;
 	} else {
 		s.doLeaveFunction();
 		s.doFinalizeUpdate();
+		cout << "SUMMARY STATE: " << endl;
+		cout << s;
 	}
 
 }

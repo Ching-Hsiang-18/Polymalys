@@ -513,7 +513,7 @@ PPLDomain PPLDomain::onLoopIter(int loop) const {
 	Ident id(loop, Ident::ID_LOOP);
 	ASSERT(s_out.hasIdent(id)); /* You are supposed to be already inside the loop when you call onLoopIter() */
 	Variable v_old = s_out.getVar(id);
-	Variable v_new = s_out.varNew(id, true);
+	Variable v_new = s_out.varNew(id, true); //pas de damage car la boucle appartient forcement a la fonction
 	s_out.poly.add_constraint(v_new == v_old + 1);
 
 	return s_out;
@@ -522,7 +522,7 @@ PPLDomain PPLDomain::onLoopIter(int loop) const {
 PPLDomain PPLDomain::onLoopEntry(int loop) const {
 	PPLManager::t s_out = *this;
 	Ident id(loop, Ident::ID_LOOP);
-	Variable v = s_out.varNew(id, true);
+	Variable v = s_out.varNew(id, true); // idem que sur onLoopIter
 	s_out.poly.add_constraint(v == 0);
 	return s_out;
 }
@@ -596,6 +596,112 @@ PPLDomain PPLDomain::onBranch(bool taken) const {
 		return PPLDomain(); // bottom
 	}
 	return res;
+}
+PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
+	PPLDomain out = summary;
+	// decaler
+	out.doMap(MapShift(summary.poly.space_dimension(), poly.space_dimension()));
+	PPL::dimension_type i;
+	for (i = 0; i < poly.space_dimension(); i++)
+		out.poly.unconstrain(Variable(i));
+	cout << "summary decale: " << endl;
+	cout << out;
+	out._sanityChecks();
+	// injecter les contraintes de l'etat appelant
+
+	PPL::C_Polyhedron src(poly);
+	src.add_space_dimensions_and_embed(summary.poly.space_dimension());
+	out.poly.intersection_assign(src);
+
+	cout << "summary inter: " << endl;
+	cout << out;
+	out._sanityChecks();
+
+	// link inputs
+
+	// registers
+	for (MyHTable<Ident, int, HashIdent>::PairIterator it(out.id2axis); it; it++) {
+		if ((*it).fst.getType() == Ident::ID_REG_INPUT) {
+			cout << "s'occupe de l'input register: " << (*it).fst;
+			int nreg = (*it).fst.getId();
+			Ident idRegCaller(nreg, Ident::ID_REG);
+			out.doNewConstraint(out.getVar((*it).fst) == getVar(idRegCaller));
+		}
+	}
+	cout << "w/ linked input registers: " << endl;
+	cout << out;
+	out._sanityChecks();
+
+	// memory 
+	for (MyHTable<Ident, int, HashIdent>::PairIterator it(out.id2axis); it; it++) {
+		if ((*it).fst.getType() == Ident::ID_MEM_VAL_INPUT) {
+			cout << "s'occupe de l'input memory: " << (*it).fst << endl;
+			for (MyHTable<Ident, int, HashIdent>::PairIterator it2(id2axis); it2; it2++) {
+				if ((*it2).fst.getType() == Ident::ID_MEM_ADDR) {
+					Ident idFormalAddr((*it).fst.getId(), Ident::ID_MEM_ADDR);
+					Variable formalAddr = out.getVar(idFormalAddr);
+					Variable effectiveAddr = getVar((*it2).fst);
+					if (out.mustAlias(formalAddr, effectiveAddr)) {
+						Variable formalArg = out.getVar((*it).fst);
+						Variable effectiveArg = getVar(Ident((*it2).fst.getId(), Ident::ID_MEM_VAL));
+						out.doNewConstraint(formalArg == effectiveArg);
+					}
+				}
+			}
+
+		}
+	}
+
+	// TODO: s'occuper du register damage, regler le pb de doublon
+	
+	cout << "w/ linked memory inputs: " << endl;
+	cout << out;
+	out._sanityChecks();
+
+	cout << "Taking care of side-effects..." << endl;
+	
+	// re-inject unchanged caller variables
+	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
+		if ((*it).fst.getType() == Ident::ID_MEM_ADDR) {
+			Variable callerVar = getVar((*it).fst);
+			bool dmg = false;
+			for (elm::genstruct::Vector<Ident>::Iterator it2(out._summary->_damaged); it2; it2++) {
+				if ((*it2).getType() != Ident::ID_MEM_VAL)
+					continue;
+				Variable calleeVar = out.getVar(Ident((*it2).getId(), Ident::ID_MEM_ADDR));
+				if (out.mayAlias(calleeVar, callerVar)) {
+					dmg = true;
+					break;
+				}
+			}
+			if (!dmg) {
+				Variable callerVal = getVar(Ident((*it).fst.getId(), Ident::ID_MEM_VAL));
+				Ident addr, val;
+				out.varCreatePtr(addr, val);
+				cout << "La variable " << (*it).fst << " a survecu" << " (devient: " << addr << ")" << endl;
+				out.id2axis[addr] = callerVar.id();
+				out.axis2id[callerVar.id()] = addr;
+
+				out.id2axis[val] = callerVal.id();
+				out.axis2id[callerVal.id()] = val;
+			} else {
+				cout << "La variable " << (*it).fst << " s'est fait poutrer" << endl;
+			}
+		}
+	}
+			/*
+			 *
+	const PPL::Constraint_System &cons = poly.minimized_constraints();
+
+	for (PPL::Constraint_System::const_iterator it = cons.begin(); it != cons.end(); it++) {
+		const PPL::Constraint &c = *it;
+		for (PPL::dimension_type i = 0; i < cons.space_dimension(); i++) {
+			const PPL::Coefficient &coef = c.coefficient(Variable(i));
+		}
+	}
+	*/
+
+	return out;
 }
 
 PPLDomain PPLDomain::onMerge(const PPLDomain &r, bool widen) const {
@@ -725,7 +831,7 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 		{
 			sem::reg_t dest = si.d();
 			Ident id(dest, Ident::ID_REG);
-			Variable v = s_out.varNew(id, true);
+			Variable v = s_out.varNew(id, true, true); // damage du registre ecrit
 			int32_t cst = si.cst();
 			s_out.poly.add_constraint(v == cst);
 			break;
@@ -742,7 +848,7 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 
 			sem::reg_t dest = si.d();
 			Ident id(dest, Ident::ID_REG);
-			Variable v = s_out.varNew(id, true, true);
+			Variable v = s_out.varNew(id, true, true); // damage du registre ecrit
 
 			s_out.poly.add_constraint(v == vs);
 			break;
@@ -784,7 +890,7 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 
 			Variable vs1 = s_out.getVar(id1);
 			Variable vs2 = s_out.getVar(id2);
-			Variable v = s_out.varNew(id, true);
+			Variable v = s_out.varNew(id, true, true); // damage du registre destination de l'operation binaire
 			s_out._doBinaryOp(si.op, &v, &vs1, &vs2);
 			break;
 		}
@@ -793,11 +899,11 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 
 			sem::reg_t addr = si.a();
 			Ident idStoreAddr(addr, Ident::ID_REG);
-			Variable storeAddr = s_out.getVarOrNew(idStoreAddr, true);
+			Variable storeAddr = s_out.getVarOrNew(idStoreAddr, true); //l'adresse d'ecriture peut etre un input
 
 			sem::reg_t src = si.d();
 			Ident idStoreValue(src, Ident::ID_REG);
-			Variable storeValue = s_out.getVarOrNew(idStoreValue, true);
+			Variable storeValue = s_out.getVarOrNew(idStoreValue, true); //la valeur d'ecriture peut etre un input
 
 /*
 			for (MyHTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++)
@@ -879,7 +985,7 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 			Ident idLoadReg(dst, Ident::ID_REG);
 			Ident idLoadAddr(addr, Ident::ID_REG);
 			Variable loadAddr = s_out.getVar(idLoadAddr);
-			Variable loadReg = s_out.varNew(idLoadReg, true);
+			Variable loadReg = s_out.varNew(idLoadReg, true, true); // damage du registre destination du LOAD
 			bool found = false;
 
 			/*
@@ -917,7 +1023,7 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 					Ident idInputVal = Ident(idInputAddr.getId(), Ident::ID_MEM_VAL_INPUT);
 					Ident idCurrentVal = Ident(idInputAddr.getId(), Ident::ID_MEM_VAL);
 					Variable currentVal = s_out.getVar(idCurrentVal);
-					Variable inputVal = s_out.varNew(idInputVal);
+					Variable inputVal = s_out.varNew(idInputVal); // c'est une variable qu'on lit donc pas de damaged
 #ifdef POLY_DEBUG
 					cout << "Summarizing: creating new input memory: " << " what= " << idInputVal << " where=" << idInputAddr << endl;
 #endif
@@ -972,11 +1078,16 @@ template <class F> void PPLDomain::doMapIdents(F pfunc) {
 		PPL::dimension_type old_axis = n;
 		PPL::dimension_type new_axis = n;
 		if (pfunc.maps(old_axis, new_axis)) {
+			if (new_axis >= (unsigned) num_axis)
+				num_axis = new_axis + 1;
 			if (old_axis != new_axis) {
 #ifdef POLY_DEBUG
 				cout << axis2id[old_axis] << "[" << Variable(old_axis) << "->" << Variable(new_axis) << "] ";
 #endif
 				n = new_axis;
+			}
+			if (new_axis >= (unsigned) newAxis2id.length()) {
+				newAxis2id.setLength(new_axis + 1);
 			}
 			newAxis2id[new_axis] = axis2id[old_axis];
 		} else {
@@ -1105,10 +1216,14 @@ void PPLDomain::doFinalizeUpdate() {
 }
 
 Variable PPLDomain::varNew(const Ident &ident, bool allow_replace, bool create_damaged) {
+	Variable v = Variable(_doAllocAxis(ident, allow_replace));
 	if (_summary != nullptr && create_damaged) {
 		if ((ident.getType() == Ident::ID_REG) && (ident.getId() == 0)) {
 			// TODO tester les registres qu'il faut garder en fonction de la convention d'appel
 			_summary->_damaged.add(ident);
+#ifdef POLY_DEBUG
+			cout << "Add " << ident << " to the damaged set" << endl;
+#endif
 		}
 		if ((ident.getType() == Ident::ID_MEM_VAL)) { 
 			Variable v = getVar(Ident(ident.getId(), Ident::ID_MEM_ADDR));
@@ -1130,7 +1245,7 @@ Variable PPLDomain::varNew(const Ident &ident, bool allow_replace, bool create_d
 			}
 		}
 	}
-	return Variable(_doAllocAxis(ident, allow_replace));
+	return v;
 }
 
 Variable PPLDomain::getVar(const Ident &ident) const { return Variable(id2axis[ident]); }
@@ -1173,7 +1288,7 @@ Variable PPLDomain::memReplace(const Variable &address, const Variable &valueSou
 	const Variable &newAddress = varNew(idNewAddress, false);
 	doNewConstraint(address == newAddress);
 
-	const Variable &newValue = varNew(idNewValue, false, true);
+	const Variable &newValue = varNew(idNewValue, false, true); //memReplace donc on cree un damaged
 	doNewConstraint(newValue == valueSource);
 
 	const Ident &idOldInput = Ident(idOldAddress.getId(), Ident::ID_MEM_VAL_INPUT);
@@ -1203,7 +1318,7 @@ Variable PPLDomain::memCreate(const PPL::Linear_Expression & address , const PPL
 	const Variable &newAddress = varNew(idNewAddress, false);
 	doNewConstraint(newAddress == address);
 
-	const Variable &newValue = varNew(idNewValue, false, damage);
+	const Variable &newValue = varNew(idNewValue, false, damage); //memCreate le damage ca depend
 	doNewConstraint(newValue == valueSource);
 
 	
@@ -1279,6 +1394,10 @@ void PPLDomain::_sanityChecks() {
 
 	for (int i = 0; i < num_axis; i++) {
 		if (trash.bit(i)) {
+			continue;
+		}
+		if (axis2id[i].getType() == Ident::ID_INVALID) {
+			cout << "warning: state has \"hole\" at axis " << i << endl;
 			continue;
 		}
 		Ident &ident = axis2id[i];
