@@ -131,7 +131,6 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 		cout << "Composed state = " << endl;
 		cout << s << endl;
 #endif
-		exit(0);
 	
 		for (ai::CFGGraph::Successor e(graph, *ana); e; e++) {
 			ana.check(*e, s);
@@ -380,9 +379,11 @@ void PolyAnalysis::processCFG(CFG &cfg, state_t &s, bool isEntryCFG, bool summar
 	Block::EdgeIter edge(bb->ins());
 	s = store.get(edge);
 
+	cout << "FINAL STATE: " << endl;
+	cout << s;
+
 	if (isEntryCFG && !summarize) {
-		cout << "FINAL STATE: " << endl;
-		cout << s;
+		// ...
 	} else {
 		s.doLeaveFunction();
 		s.doFinalizeUpdate();

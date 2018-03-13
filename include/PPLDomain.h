@@ -735,9 +735,9 @@ class PPLDomain {
 	int _doAllocAxis(const Ident & /*ident*/, bool allow_replace = false);
 	void _doFreeAxis(int axis);
 #ifdef POLY_DEBUG
-	void _sanityChecks();
+	void _sanityChecks(bool allow_holes = false);
 #else
-	inline void _sanityChecks() {}
+	inline void _sanityChecks(bool allow_holes = false) {}
 #endif
 
 	const PPL::Constraint *_getConstraintFor(int axis) const;
