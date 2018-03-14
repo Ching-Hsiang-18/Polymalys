@@ -728,7 +728,7 @@ class PPLDomain {
 	 * @param value The value at the address (recovered from process initial state)
 	 * @return true if success, false otherwise
 	 */
-	bool memGetInitial(const Ident &id, uint32_t &address, uint32_t &value);
+	bool memGetInitial(const Ident &id, uint32_t &address, uint32_t &value, bool force = false);
 
   private:
 	/* Private helper functions. Subject to changes, and should not be used directly. */

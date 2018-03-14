@@ -116,9 +116,17 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 		cout << "Call from " << (*ana)->toSynth()->caller()->name() << " to " << subCFG->name() << endl;
 
 		state_t sum;
-		processCFG(*subCFG, sum, true, true); //TODO memoize summary
+		if (SUMMARY(subCFG) == nullptr) {
+			cout << "No summary exists for " << (*ana)->toSynth()->callee()->name() << ", creating one..." << endl;
+			processCFG(*subCFG, sum, true, true); 
 
-		cout << "Return from " << subCFG->name() << " to " << (*ana)->toSynth()->caller()->name() << endl;
+			cout << "Finished creating summary of " << subCFG->name() << ", returning to " << (*ana)->toSynth()->caller()->name() << endl;
+			SUMMARY(subCFG) = new PPLDomain(sum);
+		} else {
+			cout << "Reusing existing summary." << endl;
+			PPLDomain *p = SUMMARY(subCFG);
+			sum = *p;
+		}
 #ifdef POLY_DEBUG
 		cout << "Composing state with summary. Caller state = " << endl;
 		cout << s << endl;
@@ -379,16 +387,21 @@ void PolyAnalysis::processCFG(CFG &cfg, state_t &s, bool isEntryCFG, bool summar
 	Block::EdgeIter edge(bb->ins());
 	s = store.get(edge);
 
+#ifdef POLY_DEBUG
 	cout << "FINAL STATE: " << endl;
 	cout << s;
-
+#endif
 	if (isEntryCFG && !summarize) {
 		// ...
+	cout << "FINAL STATE: " << endl;
+	cout << s;
 	} else {
 		s.doLeaveFunction();
 		s.doFinalizeUpdate();
+#ifdef POLY_DEBUG
 		cout << "SUMMARY STATE: " << endl;
 		cout << s;
+#endif
 	}
 
 }
@@ -412,7 +425,7 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	CFG *entry = coll->get(0);
 	state_t dummy;
 	ASSERT(dummy.getSummary() == nullptr);
-	processCFG(*entry, dummy, true /* is entry */, true /* summarize */);
+	processCFG(*entry, dummy, true /* is entry */, false /* summarize */);
 
 	cout << "LOOP BOUNDS: " << endl;
 	for (CFGCollection::Iter iter2(coll); iter2; iter2++) {

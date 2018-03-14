@@ -266,7 +266,6 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 	 */
 	r = b;
 	l = *this;
-	cout << " ================ EQUAL ==============" << endl;
 	_doUnify(l, r);
 
 	if ((l.id2axis.count() != id2axis.count()) || (r.id2axis.count() != b.id2axis.count())) {
@@ -604,8 +603,10 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 	PPL::dimension_type i;
 	for (i = 0; i < poly.space_dimension(); i++)
 		out.poly.unconstrain(Variable(i));
+#ifdef POLY_DEBUG
 	cout << "summary decale: " << endl;
 	cout << out;
+#endif
 	out._sanityChecks(true);
 	// injecter les contraintes de l'etat appelant
 
@@ -613,8 +614,10 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 	src.add_space_dimensions_and_embed(summary.poly.space_dimension());
 	out.poly.intersection_assign(src);
 
+#ifdef POLY_DEBUG
 	cout << "summary inter: " << endl;
 	cout << out;
+#endif
 	out._sanityChecks(true);
 
 	// link inputs
@@ -624,7 +627,9 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 	// registers
 	for (MyHTable<Ident, int, HashIdent>::PairIterator it(out.id2axis); it; it++) {
 		if ((*it).fst.getType() == Ident::ID_REG_INPUT) {
+#ifdef POLY_DEBUG
 			cout << "Link input register: " << (*it).fst << endl;;
+#endif
 			int nreg = (*it).fst.getId();
 			Ident idRegCaller(nreg, Ident::ID_REG);
 			link_reg.add(idRegCaller);
@@ -632,45 +637,112 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 				out.doNewConstraint(out.getVar((*it).fst) == getVar(idRegCaller));
 		}
 	}
+#ifdef POLY_DEBUG
 	cout << "w/ linked input registers: " << endl;
 	cout << out;
+#endif
 	out._sanityChecks(true);
 
 	// memory 
-	for (MyHTable<Ident, int, HashIdent>::PairIterator it(out.id2axis); it; it++) {
-		if ((*it).fst.getType() == Ident::ID_MEM_VAL_INPUT) {
-			cout << "Link input memory variable: " << (*it).fst << endl;
-			for (MyHTable<Ident, int, HashIdent>::PairIterator it2(id2axis); it2; it2++) {
-				if ((*it2).fst.getType() == Ident::ID_MEM_ADDR) {
+	bool changes = true;
+	Vector<Ident> input_done;
+	while (changes) {
+		changes = false;
+		for (MyHTable<Ident, int, HashIdent>::PairIterator it(out.id2axis); it; it++) {
+			if ((*it).fst.getType() == Ident::ID_MEM_VAL_INPUT) {
+				if (input_done.contains((*it).fst))
+					continue;
+#ifdef POLY_DEBUG
+				cout << "Link input memory variable: " << (*it).fst << endl;
+#endif
+				bool found = false;
+				for (MyHTable<Ident, int, HashIdent>::PairIterator it2(id2axis); it2; it2++) {
+					if ((*it2).fst.getType() == Ident::ID_MEM_ADDR) {
+						Ident idFormalAddr((*it).fst.getId(), Ident::ID_MEM_ADDR);
+						Variable formalAddr = out.getVar(idFormalAddr);
+						Variable effectiveAddr = getVar((*it2).fst);
+						if (out.mustAlias(formalAddr, effectiveAddr)) {
+							found = true;
+							link_mem.add(idFormalAddr);
+#ifdef POLY_DEBUG
+							cout << "ajout formalAddr:" << idFormalAddr << endl;
+							cout << "ajout effectiveAddr :" << (*it2).fst << endl;
+#endif
+							Variable formalArg = out.getVar((*it).fst);
+							Variable effectiveArg = getVar(Ident((*it2).fst.getId(), Ident::ID_MEM_VAL));
+							out.doNewConstraint(formalArg == effectiveArg);
+							changes = true;
+							input_done.add((*it).fst);
+						}
+					}
+				}
+				if (!found) {
+#ifdef POLY_DEBUG
+					cout << "Not found... Try initial data." << endl;
+#endif
 					Ident idFormalAddr((*it).fst.getId(), Ident::ID_MEM_ADDR);
-					Variable formalAddr = out.getVar(idFormalAddr);
-					Variable effectiveAddr = getVar((*it2).fst);
-					if (out.mustAlias(formalAddr, effectiveAddr)) {
-						link_mem.add(idFormalAddr);
-						cout << "ajout formalAddr:" << idFormalAddr << endl;
-						Variable formalArg = out.getVar((*it).fst);
-						Variable effectiveArg = getVar(Ident((*it2).fst.getId(), Ident::ID_MEM_VAL));
-						out.doNewConstraint(formalArg == effectiveArg);
+					Variable formalArg = out.getVar((*it).fst);
+					uint32_t address, value;
+					bool ok = out.memGetInitial(idFormalAddr, address, value, true);
+					if (ok) {
+#ifdef POLY_DEBUG
+						cout << "Found initial data. Value= " << hex(value) << endl;
+#endif
+						out.doNewConstraint(formalArg == value);
+						input_done.add((*it).fst);
+						changes = true;
 					}
 				}
 			}
-
 		}
 	}
 
+#ifdef POLY_DEBUG
 	cout << "State w/ linked inputs: " << endl;
 	cout << out;
+#endif
 	out._sanityChecks(true);
 
+#ifdef POLY_DEBUG
 	cout << "Link special inputs " << endl;
+#endif
 	Ident id_ssp(Ident::ID_START_SP, Ident::ID_SPECIAL);
 	Ident id_sfp(Ident::ID_START_FP, Ident::ID_SPECIAL);
 	Ident id_slr(Ident::ID_START_LR, Ident::ID_SPECIAL);
-	out.doNewConstraint(getVar(id_ssp) == out.getVar(id_ssp) + 4);
+	out.doNewConstraint(getVar(id_ssp) == out.getVar(id_ssp));
 	out.doNewConstraint(getVar(id_sfp) == out.getVar(id_sfp));
 	out.doNewConstraint(getVar(id_slr) == out.getVar(id_slr));
 
+#ifdef POLY_DEBUG
+	cout << "Inject loop bounds" << endl;
+#endif
+	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
+		if ((*it).fst.getType() == Ident::ID_LOOP) {
+			Variable v = getVar((*it).fst);
+			ASSERT(!out.isVarMapped(v));
+			out.id2axis[(*it).fst] = v.id();
+			out.axis2id[v.id()] = (*it).fst;
+		}
+	}
+
+#ifdef POLY_DEBUG
+	cout << "Merge inputs" << endl;
+#endif
+	// Virer les inputs de la fonction interne, qui n'en sont plus
+	genstruct::Vector<Ident> bye;
+	for (MyHTable<Ident, int, HashIdent>::PairIterator it(out.id2axis); it; it++) {
+		if (((*it).fst.getType() == Ident::ID_MEM_VAL_INPUT) || ((*it).fst.getType() == Ident::ID_REG_INPUT)){
+			bye.add((*it).fst);
+		} 
+	}
+	for (genstruct::Vector<Ident>::Iterator it(bye); it; it++) {
+		out.varKill(*it);
+	}
+
+#ifdef POLY_DEBUG
 	cout << "Taking care of side-effects..." << endl;
+#endif
+	genstruct::Vector<Ident> injected_inputs;
 	
 	// re-inject unchanged caller variables
 	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
@@ -697,7 +769,9 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 					continue;
 				Variable calleeVar = out.getVar((*it2));
 				if (out.mustAlias(calleeVar, callerVar)) {
+#ifdef POLY_DEBUG
 					cout << "Don't keep " << (*it).fst << " because it matches an input" << endl;
+#endif
 					dmg = true;
 					exact_dmg = true;
 					break;
@@ -708,7 +782,9 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 				Variable callerVal = getVar(idCallerVal);
 				Ident addr, val;
 				out.varCreatePtr(addr, val);
+#ifdef POLY_DEBUG
 				cout << "Memory variable " << (*it).fst << " was not affected by the call" << " (now known as: " << addr << ")" << endl;
+#endif
 				// TODO
 				if (out.hasIdent(addr)) {
 					int oldAxis = out.id2axis[addr];
@@ -725,11 +801,30 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 				out.axis2id[callerVal.id()] = val;
 
 				// verifier si cette variable est damaged dans l'appelant, et si oui le rajouter dans le damage
-				if (_summary->_damaged.contains(idCallerVal)) {
+				if (_summary && _summary->_damaged.contains(idCallerVal)) {
 					out._summary->_damaged.add(val);
 				}
+
+				//matter aussi si elle etait en input
+				Ident idCallerInput((*it).fst.getId(), Ident::ID_MEM_VAL_INPUT);
+				if (hasIdent(idCallerInput)) {
+					Ident idInput(addr.getId(), Ident::ID_MEM_VAL_INPUT);
+					Variable callerInput = getVar(idCallerInput);
+					if (out.hasIdent(idInput)) {
+						int oldAxis = out.id2axis[idInput];
+						out.axis2id[oldAxis] = Ident();
+					}
+					out.id2axis[idInput] = callerInput.id();
+					out.axis2id[callerInput.id()] = idInput;
+#ifdef POLY_DEBUG
+					cout << "injecting input: " << idInput << endl;
+#endif
+					injected_inputs.add(idInput);
+				}
 			} else {
+#ifdef POLY_DEBUG
 				cout << "Memory variable " << (*it).fst << " was overwritten" << endl;
+#endif
 				// la variable de l'appelant ne sera pas recuperee, mais si elle est dans le dmg alors il 
 				// faut la recuperer quand meme sans sa valeur. Sauf si c'est un exact-dmg auquel cas
 				// il faut simplement recuperer l'identifier du out.damage
@@ -737,10 +832,14 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 				Ident idCallerVal((*it).fst.getId(), Ident::ID_MEM_VAL);
 				Ident addr, val;
 				if (exact_dmg) {
+#ifdef POLY_DEBUG
 					cout << "exact_dmg, do not keep variable" << endl;
+#endif
 				}
-				if (_summary->_damaged.contains(idCallerVal) && !exact_dmg) {
+				if (_summary && _summary->_damaged.contains(idCallerVal) && !exact_dmg) {
+#ifdef POLY_DEBUG
 					cout << "represents damage: keep without its value" << endl;
+#endif
 					out.varCreatePtr(addr, val);
 					//TODO
 					if (out.hasIdent(addr)) {
@@ -766,7 +865,9 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 				}
 			}
 			if (!dmg) {
+#ifdef POLY_DEBUG
 				cout << "Register variable " << (*it).fst << " was not affected by the call" << endl;
+#endif
 				Ident idCallerVal = (*it).fst;
 				Variable callerVal = getVar(idCallerVal);
 				if (out.hasIdent((*it).fst)) {
@@ -774,31 +875,22 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 					out.axis2id[oldAxis] = Ident();
 				}
 				out.id2axis[(*it).fst] = callerVal.id();
-				if (_summary->_damaged.contains(idCallerVal)) {
+				if (_summary && _summary->_damaged.contains(idCallerVal)) {
 					out._summary->_damaged.add(idCallerVal);
 				}
 				out.axis2id[callerVal.id()] = (*it).fst;
 			} else {
+#ifdef POLY_DEBUG
 				cout << "Register variable " << (*it).fst << " was overwritten" << endl;
+#endif
 			}
 
 		}
 
 	}
-	cout << "Merge inputs" << endl;
-
-	// Virer les inputs de la fonction interne, qui n'en sont plus
-	genstruct::Vector<Ident> bye;
-	for (MyHTable<Ident, int, HashIdent>::PairIterator it(out.id2axis); it; it++) {
-		if (((*it).fst.getType() == Ident::ID_MEM_VAL_INPUT) || ((*it).fst.getType() == Ident::ID_REG_INPUT)){
-			bye.add((*it).fst);
-		} 
-	}
-	for (genstruct::Vector<Ident>::Iterator it(bye); it; it++) {
-		out.varKill(*it);
-	}
 
 	// Recuperer les inputs de la fonction appelante
+	/*
 	genstruct::Vector<Ident> hello;
 	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
 		if (((*it).fst.getType() == Ident::ID_MEM_VAL_INPUT) || ((*it).fst.getType() == Ident::ID_REG_INPUT)){
@@ -815,16 +907,22 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 		out.id2axis[*it] = v.id();
 		out.axis2id[v.id()] = *it;
 	}
+	*/
 
+#ifdef POLY_DEBUG
 	cout << "after input merge" << endl;
-
+#endif
 	// menache
+#ifdef POLY_DEBUG
 	cout << "Post-composition cleanup: " << endl;
+#endif
 	PPL::dimension_type max_axis = 0;
 	for (PPL::dimension_type i = 0; i < out.poly.space_dimension(); i++) {
 		if (out.axis2id[i].getType() == Ident::ID_INVALID) {
 			Variable v(i);
+#ifdef POLY_DEBUG
 			cout << "Killing variable: " << v << endl;
+#endif
 			out.trash.set(i);
 		}
 		if (max_axis < i)
@@ -833,7 +931,11 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 	out.num_axis = max_axis + 1;
 	out.doFinalizeUpdate();
 	
-		
+	
+	if (!_summary && out._summary) {
+		delete out._summary;
+		out._summary = nullptr;
+	}	
 
 	return out;
 }
@@ -1477,7 +1579,7 @@ Variable PPLDomain::memMerge(const Variable &address, const Variable &newValue) 
 	return newAddr1;
 }
 
-bool PPLDomain::memGetInitial(const Ident &id, uint32_t &address, uint32_t &value) {
+bool PPLDomain::memGetInitial(const Ident &id, uint32_t &address, uint32_t &value, bool force) {
 	PPL::Coefficient num, den;
 	/* TODO(clement) : use correct size  */
 	if (getConstant(id, num, den)) {
@@ -1488,6 +1590,10 @@ bool PPLDomain::memGetInitial(const Ident &id, uint32_t &address, uint32_t &valu
 			<< "), attempting to read value from initial state" << endl;
 #endif
 
+		if (_summary && !force && !iswriteable) {
+			//TODO
+			return false;
+		}
 		try {
 			initState->get(address, value);
 #ifdef POLY_DEBUG
@@ -1973,7 +2079,8 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 			axis++;
 		}
 	}
-	if (!noPtr) {
+	ASSERT((l1._summary == nullptr) == (r1._summary == nullptr));
+	if (!noPtr && l1._summary) {
 #ifdef POLY_DEBUG
 		cout << "Dans L: " << endl;
 #endif
@@ -2084,6 +2191,7 @@ p::feature POLY_ANALYSIS_FEATURE("otawa::poly::POLY_ANALYSIS_FEATURE", new Maker
 Identifier<int> LOC_VAR_SIZE("otawa::poly::LOC_VAR_SIZE", 4);
 Identifier<int> NUM_LOC_VARS("otawa::poly::NUM_LOC_VARS", 8);
 Identifier<int> MAX_AXIS("otawa::poly::MAX_AXIS", 512);
+Identifier<PPLDomain*> SUMMARY("otawa::poly::SUMMARY", nullptr);
 
 } // namespace poly
 } // namespace otawa
