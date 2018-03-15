@@ -148,7 +148,7 @@ class PPLDomain {
 	
 	Vector<bound_t> bounds;
 
-	dfa::State *initState; ///< Process init state
+	WorkSpace *_ws;
 
 	PPLSummary *_summary; ///< Summarize currently analyzed function
 
@@ -240,7 +240,7 @@ class PPLDomain {
 		poly = PPL::C_Polyhedron(0, PPL::EMPTY);
 		compare_reg = Ident();
 		compare_op = sem::EQ;
-		initState = nullptr;
+		_ws = nullptr;
 		_summary = nullptr;
 	}
 
@@ -248,11 +248,11 @@ class PPLDomain {
 	 * Builds a top state
 	 * @param maxAxis Maximum number of variables this state can hold
 	 */
-	inline explicit PPLDomain(int maxAxis, dfa::State *istate, PPLSummary *summary = nullptr) {
+	inline explicit PPLDomain(int maxAxis, WorkSpace *ws, PPLSummary *summary = nullptr) {
 		num_axis = 0;
 		mem_ref = 0;
 		trash = BitVector(maxAxis);
-		initState = istate;
+		_ws = ws;
 		poly = PPL::C_Polyhedron(0, PPL::UNIVERSE);
 		compare_reg = Ident();
 		compare_op = sem::EQ;
@@ -269,7 +269,7 @@ class PPLDomain {
 		compare_op = src.compare_op;
 		trash = src.trash;
 		bounds = src.bounds;
-		initState = src.initState;
+		_ws = src._ws;
 		if (src._summary != nullptr) {
 			_summary = new PPLSummary(*src._summary);
 		} else {
@@ -289,7 +289,7 @@ class PPLDomain {
 		mem_ref = dom.mem_ref;
 		trash = dom.trash;
 		bounds = dom.bounds;
-		initState = dom.initState;
+		_ws = dom._ws;
 		if (_summary != nullptr) {
 			if (dom._summary != nullptr) {
 				*_summary = *dom._summary;

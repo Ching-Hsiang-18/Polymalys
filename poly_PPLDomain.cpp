@@ -199,7 +199,7 @@ void PPLDomain::print(io::Output &out) const {
 }
 
 bool PPLDomain::equals(const PPLDomain &b) const {
-	ASSERT((initState == nullptr) || (b.initState == nullptr) || (initState == b.initState));
+	ASSERT((_ws == nullptr) || (b._ws == nullptr) || (_ws == b._ws));
 	ASSERT(trash.countOnes() == 0);
 
 	if (isBottom() != b.isBottom())
@@ -1590,12 +1590,15 @@ bool PPLDomain::memGetInitial(const Ident &id, uint32_t &address, uint32_t &valu
 			<< "), attempting to read value from initial state" << endl;
 #endif
 
-		if (_summary && !force && !iswriteable) {
+		bool iswriteable = _ws->process()->program()->findSegmentAt(address)->isWritable();
+		cout << "Is writable?" << iswriteable << endl;
+		if (_summary && !force && iswriteable) {
 			//TODO
+			cout << "Writeable address, and we are summarizing... mark as input" << endl;
 			return false;
 		}
 		try {
-			initState->get(address, value);
+			dfa::INITIAL_STATE(_ws)->get(address, value);
 #ifdef POLY_DEBUG
 			cout << "Initial state contains a value for this address: " << value << endl;
 #endif

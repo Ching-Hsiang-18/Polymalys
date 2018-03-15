@@ -23,8 +23,8 @@ using namespace util;
 /**
  * Create PPLManager using a fresh init state.
  */
-PPLManager::PPLManager(const PropList &props, dfa::State *iState) 
-	: _init(MAX_AXIS(props), iState), _bot(), _top(MAX_AXIS(props), iState) {
+PPLManager::PPLManager(const PropList &props, WorkSpace *ws)
+	: _init(MAX_AXIS(props), ws), _bot(), _top(MAX_AXIS(props), ws) {
 	PPL::Constraint_System initcons;
 
 	Variable var_sp = _init.varNew(Ident(13, Ident::ID_REG));

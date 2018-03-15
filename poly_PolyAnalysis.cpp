@@ -362,7 +362,7 @@ void PolyAnalysis::PseudoTopoOrder::_getPseudoTopo(const ai::CFGGraph &graph) {
 }
 
 void PolyAnalysis::processCFG(CFG &cfg, state_t &s, bool isEntryCFG, bool summarize) {
-	PPLManager *man = isEntryCFG ? (new PPLManager(*_props, initState)) : (new PPLManager(s, *_props, initState));
+	PPLManager *man = isEntryCFG ? (new PPLManager(*_props, workspace())) : (new PPLManager(s, *_props, workspace()));
 	if (summarize) {
 		ASSERT(isEntryCFG);
 		man->enableSummary();
@@ -409,9 +409,6 @@ void PolyAnalysis::processCFG(CFG &cfg, state_t &s, bool isEntryCFG, bool summar
 void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	const CFGCollection *coll = INVOLVED_CFGS(ws);
 	ASSERT(coll);
-
-	initState = dfa::INITIAL_STATE(ws);
-	ASSERT(initState != nullptr);
 
 	_orders.setLength(coll->count());
 	for (CFGCollection::Iter iter2(coll); iter2; iter2++) {
