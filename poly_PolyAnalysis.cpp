@@ -115,30 +115,35 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 		CFG *subCFG = (*ana)->toSynth()->callee();
 		cout << "Call from " << (*ana)->toSynth()->caller()->name() << " to " << subCFG->name() << endl;
 
-		state_t sum;
-		if (SUMMARY(subCFG) == nullptr) {
-			cout << "No summary exists for " << (*ana)->toSynth()->callee()->name() << ", creating one..." << endl;
-			processCFG(*subCFG, sum, true, true); 
+		if (SUMMARIZE(workspace())) {
+			state_t sum;
+			if (SUMMARY(subCFG) == nullptr) {
+				cout << "No summary exists for " << (*ana)->toSynth()->callee()->name() << ", creating one..." << endl;
+				processCFG(*subCFG, sum, true, true); 
 
-			cout << "Finished creating summary of " << subCFG->name() << ", returning to " << (*ana)->toSynth()->caller()->name() << endl;
-			SUMMARY(subCFG) = new PPLDomain(sum);
-		} else {
-			cout << "Reusing existing summary." << endl;
-			PPLDomain *p = SUMMARY(subCFG);
-			sum = *p;
+				cout << "Finished creating summary of " << subCFG->name() << ", returning to " << (*ana)->toSynth()->caller()->name() << endl;
+				SUMMARY(subCFG) = new PPLDomain(sum);
+			} else {
+				cout << "Reusing existing summary." << endl;
+				PPLDomain *p = SUMMARY(subCFG);
+				sum = *p;
+			}
+#ifdef POLY_DEBUG
+			cout << "Composing state with summary. Caller state = " << endl;
+			cout << s << endl;
+			cout << "Summary = " << endl;
+			cout << sum << endl;
+#endif
+			s = s.onCompose(sum);
+
+#ifdef POLY_DEBUG
+			cout << "Composed state = " << endl;
+			cout << s << endl;
+#endif
+		} else { // no summarizing
+			processCFG(*subCFG, s, false, false);
+			cout << "Return from " << subCFG->name() << " to " << (*ana)->toSynth()->caller()->name() << endl;
 		}
-#ifdef POLY_DEBUG
-		cout << "Composing state with summary. Caller state = " << endl;
-		cout << s << endl;
-		cout << "Summary = " << endl;
-		cout << sum << endl;
-#endif
-		s = s.onCompose(sum);
-
-#ifdef POLY_DEBUG
-		cout << "Composed state = " << endl;
-		cout << s << endl;
-#endif
 	
 		for (ai::CFGGraph::Successor e(graph, *ana); e; e++) {
 			ana.check(*e, s);
@@ -371,8 +376,9 @@ void PolyAnalysis::processCFG(CFG &cfg, state_t &s, bool isEntryCFG, bool summar
 	ai::CFGGraph graph(&cfg);
 	ai::EdgeStore<PPLManager, ai::CFGGraph> store(*man, graph);
 
+#ifdef POLY_DEBUG
 	cout << "Init state: " << s << endl;
-
+#endif
 	cout << "Entering CFG: " << cfg.name() << endl;
 	WorkListDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> ana(*man, graph, store, _orders[cfg.index()]);
 
@@ -422,6 +428,7 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	CFG *entry = coll->get(0);
 	state_t dummy;
 	ASSERT(dummy.getSummary() == nullptr);
+	SUMMARIZE(ws) = false;
 	processCFG(*entry, dummy, true /* is entry */, false /* summarize */);
 
 	cout << "LOOP BOUNDS: " << endl;

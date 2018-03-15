@@ -22,6 +22,7 @@ class PPLDomain;
 extern Identifier<int> NUM_LOC_VARS;
 extern Identifier<int> LOC_VAR_SIZE;
 extern Identifier<int> MAX_AXIS;
+extern Identifier<bool> SUMMARIZE;
 extern Identifier<PPLDomain*> SUMMARY;
 extern p::feature POLY_ANALYSIS_FEATURE;
 } // namespace poly

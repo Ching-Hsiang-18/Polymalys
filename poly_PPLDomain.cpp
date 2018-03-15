@@ -1591,10 +1591,12 @@ bool PPLDomain::memGetInitial(const Ident &id, uint32_t &address, uint32_t &valu
 #endif
 
 		bool iswriteable = _ws->process()->program()->findSegmentAt(address)->isWritable();
-		cout << "Is writable?" << iswriteable << endl;
+//		cout << "Is writable?" << iswriteable << endl;
 		if (_summary && !force && iswriteable) {
 			//TODO
+#ifdef POLY_DEBUG
 			cout << "Writeable address, and we are summarizing... mark as input" << endl;
+#endif
 			return false;
 		}
 		try {
@@ -2195,6 +2197,7 @@ Identifier<int> LOC_VAR_SIZE("otawa::poly::LOC_VAR_SIZE", 4);
 Identifier<int> NUM_LOC_VARS("otawa::poly::NUM_LOC_VARS", 8);
 Identifier<int> MAX_AXIS("otawa::poly::MAX_AXIS", 512);
 Identifier<PPLDomain*> SUMMARY("otawa::poly::SUMMARY", nullptr);
+Identifier<bool> SUMMARIZE("otawa::poly::SUMMARIZE", false);
 
 } // namespace poly
 } // namespace otawa
