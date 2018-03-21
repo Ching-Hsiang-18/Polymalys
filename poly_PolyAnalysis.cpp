@@ -141,8 +141,20 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 			cout << s << endl;
 #endif
 		} else { // no summarizing
-			processCFG(*subCFG, s, false, false);
-			cout << "Return from " << subCFG->name() << " to " << (*ana)->toSynth()->caller()->name() << endl;
+			if ((*ana)->toSynth()->callee()->name() == "gsignal" ||
+			    (*ana)->toSynth()->callee()->name() == "__divsi3" ||  
+			    (*ana)->toSynth()->callee()->name() == "__aeabi_i2d" ||  
+			    (*ana)->toSynth()->callee()->name() == "__muldf3" ||  
+			    (*ana)->toSynth()->callee()->name() == "__divdf3" ||  
+			    (*ana)->toSynth()->callee()->name() == "__adddf3" ||  
+			    (*ana)->toSynth()->callee()->name() == "__fixdfsi" ||  
+			    (*ana)->toSynth()->callee()->name() == "__aeabi_dsub" || 
+			    (*ana)->toSynth()->callee()->name() == "gsignal") {
+				cout << "[FIXME] Ignoring call to function: " << (*ana)->toSynth()->callee()->name() << endl;
+			} else {
+				processCFG(*subCFG, s, false, false);
+				cout << "Return from " << subCFG->name() << " to " << (*ana)->toSynth()->caller()->name() << endl;
+			}
 		}
 	
 		for (ai::CFGGraph::Successor e(graph, *ana); e; e++) {

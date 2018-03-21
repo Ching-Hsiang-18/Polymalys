@@ -1006,7 +1006,9 @@ PPLDomain PPLDomain::onMerge(const PPLDomain &r, bool widen) const {
 		for (elm::genstruct::Vector<Ident>::Iterator it(r1._summary->_damaged); it; it++) {
 			bool found = false;
 			for (elm::genstruct::Vector<Ident>::Iterator it2(l1._summary->_damaged); it2; it2++) {
+#ifdef POLY_DEBUG
 				cout << "compare " << (*it2) << " avec: " << (*it) << endl;
+#endif
 				if (l1.getVar(*it2).id() == r1.getVar(*it).id()) {
 					found = true;
 					break;
