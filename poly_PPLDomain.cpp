@@ -683,7 +683,7 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 					Ident idFormalAddr((*it).fst.getId(), Ident::ID_MEM_ADDR);
 					Variable formalArg = out.getVar((*it).fst);
 					uint32_t address, value;
-					bool ok = out.memGetInitial(idFormalAddr, address, value, true);
+					bool ok = out.memGetInitial(idFormalAddr, address, value, true); //TODO force?
 					if (ok) {
 #ifdef POLY_DEBUG
 						cout << "Found initial data. Value= " << hex(value) << endl;
@@ -1247,27 +1247,41 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 			}
 
 			if (!found) {
-#ifdef POLY_DEBUG
-				cout << "LOAD: Not found, creating new ptr..." << endl;
-#endif
-				const Variable &v = s_out.memCreate(loadAddr, loadReg, false);
 
 				uint32_t concreteAddress, initialValue;
-				if (s_out.memGetInitial(idLoadAddr, concreteAddress, initialValue) && initialValue /* TODO test */) {
-					s_out.doNewConstraint(loadReg == initialValue);
-				} else if (s_out._summary != nullptr) {
-					// Unknown LOAD value. If we are summarizing, create an input.
-					Ident idInputAddr = s_out.getIdent(v);
-					Ident idInputVal = Ident(idInputAddr.getId(), Ident::ID_MEM_VAL_INPUT);
-					Ident idCurrentVal = Ident(idInputAddr.getId(), Ident::ID_MEM_VAL);
-					Variable currentVal = s_out.getVar(idCurrentVal);
-					Variable inputVal = s_out.varNew(idInputVal); // c'est une variable qu'on lit donc pas de damaged
+				if (s_out.memGetInitial(idLoadAddr, concreteAddress, initialValue)) {
+					if ( _ws->process()->program()->findSegmentAt(concreteAddress)->isWritable()) {
+						s_out.memCreate(loadAddr, loadReg, false);
 #ifdef POLY_DEBUG
-					cout << "Summarizing: creating new input memory: " << " what= " << idInputVal << " where=" << idInputAddr << endl;
+						cout << "LOAD: Writable initial value exists, creating new ptr..." << endl;
 #endif
-//					s_out._summary->_inputs.add(idInputVal);
-					s_out.doNewConstraint(currentVal == inputVal);
+					}
+#ifdef POLY_DEBUG
+					else {
+						cout << "LOAD: Initial value is constant, do not create ptr..." << endl;
+					}
+#endif
+					s_out.doNewConstraint(loadReg == initialValue);
+				} else {
+					const Variable &v = s_out.memCreate(loadAddr, loadReg, false);
+#ifdef POLY_DEBUG
+					cout << "LOAD: Not found, creating new ptr..." << endl;
+#endif
+					if (s_out._summary != nullptr) {
+						// Unknown LOAD value. If we are summarizing, create an input.
+						Ident idInputAddr = s_out.getIdent(v);
+						Ident idInputVal = Ident(idInputAddr.getId(), Ident::ID_MEM_VAL_INPUT);
+						Ident idCurrentVal = Ident(idInputAddr.getId(), Ident::ID_MEM_VAL);
+						Variable currentVal = s_out.getVar(idCurrentVal);
+						Variable inputVal = s_out.varNew(idInputVal); // c'est une variable qu'on lit donc pas de damaged
+#ifdef POLY_DEBUG
+						cout << "Summarizing: creating new input memory: " << " what= " << idInputVal << " where=" << idInputAddr << endl;
+#endif
+	//					s_out._summary->_inputs.add(idInputVal);
+						s_out.doNewConstraint(currentVal == inputVal);
+					}
 				}
+
 			}
 			break;
 		} 
@@ -1837,7 +1851,16 @@ void PPLDomain::_doMatchSummaries(PPLDomain &l1, PPLDomain &r1, unsigned int& ax
 							break;
 						}
 					}
-					ASSERT(found);
+					if (!found) {
+						cout << "STATE: " << endl;
+						cout << "left=" << endl;
+						cout << l1;
+						cout << "right=" << endl;
+						cout << r1;
+
+						cout << "For the identifier " << idAddrL << " we didn't find any mapped variable " <<endl;
+						ASSERT(false);
+					}
 					char buf[128];
 
 					for (PPL::dimension_type i = 0; i < c.space_dimension(); i++) {
