@@ -441,6 +441,9 @@ class PPLDomain {
 	 */
 	bool getConstant(const Variable &var, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d) const;
 
+	/* TODO documenter */
+	PPLDomain getLinearExpr(const Ident &id);
+
 	/**
 	 * Attempts to get the current loop bound estimation, in the current state.
 	 *

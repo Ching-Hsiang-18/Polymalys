@@ -199,6 +199,7 @@ void PPLDomain::print(io::Output &out) const {
 }
 
 bool PPLDomain::equals(const PPLDomain &b) const {
+
 	ASSERT((_ws == nullptr) || (b._ws == nullptr) || (_ws == b._ws));
 	ASSERT(trash.countOnes() == 0);
 
@@ -210,30 +211,37 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 	 */
 	ASSERT((_summary == nullptr) == (b._summary == nullptr));
 	if (_summary != nullptr) {
-		if (!_summary->equals(*b._summary))
+		if (!_summary->equals(*b._summary)) {
 			return false;
+		}
 	}
 
 	/*
 	 * First, attempt to show that the states are different using quick checks.
 	 */
-	if (poly.space_dimension() != b.poly.space_dimension())
+	if (poly.space_dimension() != b.poly.space_dimension()) {
 		return false;
+	}
 
-	if (compare_reg != b.compare_reg)
+	if (compare_reg != b.compare_reg) {
 		return false;
+	}
 
-	if (compare_op != b.compare_op)
+	if (compare_op != b.compare_op) {
 		return false;
+	}
 
-	if (id2axis.count() != b.id2axis.count())
+	if (id2axis.count() != b.id2axis.count()) {
 		return false;
+	}
 
-	if (trash != b.trash)
+	if (trash != b.trash) {
 		return false;
+	}
 
-	if (bounds != b.bounds)
+	if (bounds != b.bounds) {
 		return false;
+	}
 
 	/*
 	 * Try to show that the states are equals when ignoring memory locations (faster)
@@ -258,8 +266,9 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 	}
 
 
-	if (l.poly != r.poly)
+	if (l.poly != r.poly) {
 		return false;
+	}
 	
 	/*
 	 * At this point we are almost sure that the states are equal. We do a full unification (costly) to detect if the states are equal.
@@ -273,8 +282,9 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 		return false;
 	}
 
-	if (l.poly != r.poly)
+	if (l.poly != r.poly) {
 		return false;
+	}
 
 	return true;
 }
@@ -474,6 +484,22 @@ void PPLDomain::displayIdentMap(io::Output &out) const {
 		out << ident << ":" << Variable((*it).snd) << ", ";
 	}
 	out << endl;
+}
+
+PPLDomain PPLDomain::getLinearExpr(const Ident &id) {
+	MyHTable<int, int> inputs;
+	int axis = 1;
+	PPLDomain dom(*this); /* make a working copy to do the projections */
+	inputs[getVar(id).id()] = 0;
+	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
+		if (((*it).fst.getType() == Ident::ID_REG_INPUT) ||
+			((*it).fst.getType() == Ident::ID_MEM_VAL_INPUT)) {
+			inputs[(*it).snd] = axis;
+			axis++;
+		}
+	}
+	dom.doMapPoly(MapWithHash(inputs));
+	return dom;
 }
 
 bound_t PPLDomain::getLoopBound(int loopId) const {
