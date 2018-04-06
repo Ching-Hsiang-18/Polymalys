@@ -37,7 +37,8 @@ void PolyAnalysis::configure(const PropList &props) {
 	_props = &props;
 }
 
-PolyAnalysis::state_t PolyAnalysis::processHeader(ai::CFGGraph &graph, BasicBlock *header, PPLManager& man, ai::EdgeStore<PPLManager, ai::CFGGraph>& store, MyHTable<int, state_t> &headerState) { 
+PolyAnalysis::state_t PolyAnalysis::processHeader(ai::CFGGraph &graph, MyHTable<int,PPLDomain> &lb,
+		BasicBlock *header, PPLManager& man, ai::EdgeStore<PPLManager, ai::CFGGraph>& store, MyHTable<int, state_t> &headerState) { 
 	state_t entryState = man.bot();
 	state_t backState = man.bot();
 
@@ -67,13 +68,28 @@ PolyAnalysis::state_t PolyAnalysis::processHeader(ai::CFGGraph &graph, BasicBloc
 	bound_t bound = backState.getLoopBound(header->id());
 	backState.setBound(header->id(), bound);
 
+	PPLDomain linearBound = backState.getLinearExpr(Ident(header->id(), Ident::ID_LOOP));
+//	cout << "setBound: " << int(bound) << endl;
+	cout << "has state: " << backState << endl;
+	cout << "got linear bound: " << linearBound << endl;
+	backState.setLinBound(header->id(), linearBound);
+
 #ifdef POLY_DEBUG
 			cout << "ITERATION: " << int(bound) << endl;
 #endif
+			/*
 	if ((MAX_ITERATION(header) != bound_t::UNBOUNDED) &&
 		((MAX_ITERATION(header) < bound) || (bound == bound_t::UNBOUNDED)))
 		MAX_ITERATION(header) = bound;
+		*/
 
+
+	if (!lb.hasKey(header->id()))
+		lb[header->id()] = PPLDomain();
+
+	const PPLDomain &oldBound = lb[header->id()];
+
+	lb[header->id()] = oldBound.onMerge(linearBound, false);
 	headerState[header->id()] = man.widening(backState, headerState[header->id()]);
 
 #ifdef POLY_DEBUG
@@ -96,7 +112,7 @@ PolyAnalysis::state_t PolyAnalysis::processHeader(ai::CFGGraph &graph, BasicBloc
 	return headerState[header->id()];
 }
 
-void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
+void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,PPLDomain> &lb,
                              WorkListDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> &ana,
 							 ai::EdgeStore<PPLManager, ai::CFGGraph>& store,
                              MyHTable<int, state_t> &headerState) {
@@ -119,10 +135,19 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 			state_t sum;
 			if (SUMMARY(subCFG) == nullptr) {
 				cout << "No summary exists for " << (*ana)->toSynth()->callee()->name() << ", creating one..." << endl;
-				processCFG(*subCFG, sum, true, true); 
+				MyHTable<int, PPLDomain> *sublb = new MyHTable<int, PPLDomain>();
+				processCFG(*subCFG, sum, *sublb, true, true); 
 
 				cout << "Finished creating summary of " << subCFG->name() << ", returning to " << (*ana)->toSynth()->caller()->name() << endl;
 				SUMMARY(subCFG) = new PPLDomain(sum);
+				MAX_LINEAR(subCFG) = sublb;
+				cout << "summary = " << endl;
+				cout << sum << endl;
+				cout << "parametric bounds = " << endl;
+				for (MyHTable<int, PPLDomain>::PairIterator it(*sublb); it; it++) {
+					cout << (*it).fst << " --> " << (*it).snd << endl;
+				}
+				cout << endl;
 			} else {
 				cout << "Reusing existing summary." << endl;
 				PPLDomain *p = SUMMARY(subCFG);
@@ -135,6 +160,19 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 			cout << sum << endl;
 #endif
 			s = s.onCompose(sum);
+			// TODO: compose lb with summary
+			MyHTable<int, PPLDomain> *sublb = MAX_LINEAR(subCFG);
+			for (MyHTable<int, PPLDomain>::PairIterator it(*sublb); it; it++) {
+					cout << "Compose loop bound: " << (*it).fst << " --> " << (*it).snd << endl;
+					PPLDomain composed((*it).snd);
+					composed = s.onCompose(composed);
+					composed = composed.getLinearExpr(Ident((*it).fst, Ident::ID_LOOP));
+					cout << "Compose loop bound: " << (*it).fst << " --> " << composed << endl;
+					if (!lb.hasKey((*it).fst))
+						lb[(*it).fst] = PPLDomain();
+					lb[(*it).fst] = lb.get((*it).fst).value().onMerge(composed, false);
+
+			}
 
 #ifdef POLY_DEBUG
 			cout << "Composed state = " << endl;
@@ -152,7 +190,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 			    (*ana)->toSynth()->callee()->name() == "gsignal") {
 				cout << "[FIXME] Ignoring call to function: " << (*ana)->toSynth()->callee()->name() << endl;
 			} else {
-				processCFG(*subCFG, s, false, false);
+				processCFG(*subCFG, s, lb, false, false);
 				cout << "Return from " << subCFG->name() << " to " << (*ana)->toSynth()->caller()->name() << endl;
 			}
 		}
@@ -172,7 +210,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 #ifdef POLY_DEBUG
 			cout << "Basic block is loop header: " << bl->id() << endl;
 #endif
-			s = processHeader(graph, bl, *man, store, headerState);
+			s = processHeader(graph, lb, bl, *man, store, headerState);
 		} else {
 			s = ana.input();
 		}
@@ -266,8 +304,10 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 						if (Dominance::dominates(e->sink(), e->source())) {
 							/* Back-Edge: increment virtual loop counter */
 							edgeState = edgeState.onLoopIter(e->sink()->id());
+							cout << "loop iter! " << endl;
 						} else {
 							/* Entry-Edge: initialize virtal loop counter */
+							cout << "loop entry! " << endl;
 							edgeState = edgeState.onLoopEntry(e->sink()->id());
 
 							/* Avoid unnecessary widening before first loop iteration of inner loops */
@@ -283,15 +323,24 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph,
 						 * FIXME: should be bound = s.getLoopBound(bb->id()) but we need to fix the widening to make it work
 						 */
 						int bound = edgeState.getBound(bb->id());
+						PPLDomain linBound = edgeState.getLinBound(bb->id());
 #ifdef POLY_DEBUG
 						cout << "Bound on loop exit: " << bound << endl;
 #endif
+						cout << "LinBound on loop exit: " << linBound << endl;
+						if (!linBound.isBottom()) {
+							edgeState = edgeState.onLoopExitLinear(bb->id(), linBound);
+							if (edgeState.isBottom())
+								continue;
+						}
+						/*
 						if (bound >= 0) {
 							edgeState = edgeState.onLoopExit(bb->id(), bound);
 							if (edgeState.isBottom()) {
 								continue;
 							}
 						}
+						*/
 					}
 					edgeState.doFinalizeUpdate();
 					ana.check(*e, edgeState);
@@ -378,7 +427,7 @@ void PolyAnalysis::PseudoTopoOrder::_getPseudoTopo(const ai::CFGGraph &graph) {
 	_visited = nullptr;
 }
 
-void PolyAnalysis::processCFG(CFG &cfg, state_t &s, bool isEntryCFG, bool summarize) {
+void PolyAnalysis::processCFG(CFG &cfg, state_t &s, MyHTable<int, PPLDomain> &lb, bool isEntryCFG, bool summarize){
 	PPLManager *man = isEntryCFG ? (new PPLManager(*_props, workspace())) : (new PPLManager(s, *_props, workspace()));
 	if (summarize) {
 		ASSERT(isEntryCFG);
@@ -395,7 +444,7 @@ void PolyAnalysis::processCFG(CFG &cfg, state_t &s, bool isEntryCFG, bool summar
 	WorkListDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> ana(*man, graph, store, _orders[cfg.index()]);
 
 	while (ana) {
-		processBB(man, graph, ana, store, headerState);
+		processBB(man, graph, lb, ana, store, headerState);
 		ana++;
 	}
 
@@ -440,14 +489,31 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	CFG *entry = coll->get(0);
 	state_t dummy;
 	ASSERT(dummy.getSummary() == nullptr);
-	SUMMARIZE(ws) = false;
-	processCFG(*entry, dummy, true /* is entry */, false /* summarize */);
+	SUMMARIZE(ws) = true;
+	MyHTable<int, PPLDomain> bounds;
+	MyHTable<int, int> static_bounds;
+	processCFG(*entry, dummy, bounds, true /* is entry */, false /* summarize */);
+	for (MyHTable<int, PPLDomain>::PairIterator it(bounds); it; it++) {
+		cout << "Parametric loop bound: " << (*it).fst << " --> " << (*it).snd << endl;
+		PPL::Coefficient binf_n, binf_d, bsup_n, bsup_d;
+		Ident id((*it).fst, Ident::ID_LOOP);
+		if (!(*it).snd.hasIdent(id)) {
+			static_bounds[(*it).fst] = bound_t::UNREACHABLE;
+			continue;
+		}
+	    (*it).snd.getRange(id, binf_n, binf_d, bsup_n, bsup_d);
+		if (PPL::raw_value(bsup_d).get_ui() != 0) {
+			static_bounds[(*it).fst] = 
+				static_cast<bound_t>(PPL::raw_value(bsup_n).get_ui() / PPL::raw_value(bsup_d).get_ui());
+		} else static_bounds[(*it).fst] = bound_t::UNBOUNDED;
+	}
 
 	cout << "LOOP BOUNDS: " << endl;
 	for (CFGCollection::Iter iter2(coll); iter2; iter2++) {
 		for (CFG::BlockIter iter((*iter2)->blocks()); iter; iter++) {
 			Block *bb = (*iter);
 			if (LOOP_HEADER(bb)) {
+				MAX_ITERATION(bb) = static_bounds[bb->id()];
 				cout << "[" << (*iter2)->name() << "]"
 				     << "MAX_ITERATION(" << bb->id() << ") = " << MAX_ITERATION(bb) << endl;
 				cout << "[" << (*iter2)->name() << "]"

@@ -72,13 +72,13 @@ class PolyAnalysis : public Processor {
 
   private:
 	using state_t = PPLManager::t;
-	void processCFG(CFG & /* cfg */, state_t & /* s */, bool /* isEntryCFG */, bool /* summarize */);
-	void processBB(PPLManager *man, ai::CFGGraph &graph,
+	void processCFG(CFG & /* cfg */, state_t & /* s */, MyHTable<int,PPLDomain> &, bool /* isEntryCFG */, bool /* summarize */);
+	void processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,PPLDomain> &,
 	               WorkListDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> &ana,
 				   ai::EdgeStore<PPLManager, ai::CFGGraph> &store,
 	               MyHTable<int, state_t> &headerState);
 	const PropList *_props{};
-	state_t processHeader(ai::CFGGraph &graph, BasicBlock *header, PPLManager& man, ai::EdgeStore<PPLManager, ai::CFGGraph>& store, MyHTable<int, state_t> &headerState);
+	state_t processHeader(ai::CFGGraph &graph, MyHTable<int,PPLDomain> &, BasicBlock *header, PPLManager& man, ai::EdgeStore<PPLManager, ai::CFGGraph>& store, MyHTable<int, state_t> &headerState);
 
 
 

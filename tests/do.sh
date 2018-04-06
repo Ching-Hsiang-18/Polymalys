@@ -3,7 +3,7 @@ if [ "$1" = "" ]; then
   echo "Usage: ./do.sh <C program without extension>" 
 fi
 
-arm-unknown-linux-gnueabi-gcc -o "${1}" "${1}.c" -static -g
+arm-unknown-linux-gnueabi-gcc -o "${1}" "${1}.c" -static -g -O0
 if [ "$?" != "0" ]; then
   echo "Compilation error"
   exit 1

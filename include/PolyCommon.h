@@ -24,6 +24,7 @@ extern Identifier<int> LOC_VAR_SIZE;
 extern Identifier<int> MAX_AXIS;
 extern Identifier<bool> SUMMARIZE;
 extern Identifier<PPLDomain*> SUMMARY;
+extern Identifier<MyHTable<int, PPLDomain>* > MAX_LINEAR;
 extern p::feature POLY_ANALYSIS_FEATURE;
 } // namespace poly
 } // namespace otawa

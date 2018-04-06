@@ -103,6 +103,7 @@ Output &operator<<(Output &o, const Variable pv) {
 
 PPLDomain::~PPLDomain() {
 	delete _summary;
+	delete linbounds;
 }
 
 void PPLDomain::print(io::Output &out) const {
@@ -324,6 +325,10 @@ void PPLDomain::displayLocVars(io::Output &out) const {
 		return;
 	}
 	Ident id_ssp(Ident::ID_START_SP, Ident::ID_SPECIAL);
+	if (!hasIdent(id_ssp)) {
+		cout << "Local variables: NOT APPLICABLE" << endl;
+		return;
+	}
 	Variable ssp = getVar(id_ssp);
 	out << "Local variables: " << endl;
 	for (int i = 0; i < NUM_LOC_VARS(_props) * LOC_VAR_SIZE(_props); i += LOC_VAR_SIZE(_props)) {
@@ -486,7 +491,11 @@ void PPLDomain::displayIdentMap(io::Output &out) const {
 	out << endl;
 }
 
+//comme getLoopBound() mais renvoie une surapproximation de l'expression lineaire de la variable d'induction
 PPLDomain PPLDomain::getLinearExpr(const Ident &id) {
+	if (isBottom()) {
+		return *this;
+	}
 	MyHTable<int, int> inputs;
 	int axis = 1;
 	PPLDomain dom(*this); /* make a working copy to do the projections */
@@ -498,10 +507,11 @@ PPLDomain PPLDomain::getLinearExpr(const Ident &id) {
 			axis++;
 		}
 	}
-	dom.doMapPoly(MapWithHash(inputs));
+	dom.doMap(MapWithHash(inputs));
 	return dom;
 }
 
+// getLoopBound: a appeler a l'INTERIEUR de la boucle pour avoir une maximisation de la variable d'induction
 bound_t PPLDomain::getLoopBound(int loopId) const {
 	if (isBottom()) {
 		return bound_t::UNREACHABLE;
@@ -513,6 +523,57 @@ bound_t PPLDomain::getLoopBound(int loopId) const {
 		return static_cast<bound_t>(PPL::raw_value(bsup_n).get_ui() / PPL::raw_value(bsup_d).get_ui());
 	}
 	return bound_t::UNBOUNDED;
+}
+
+PPLDomain PPLDomain::onLoopExitLinear(int loop, const PPLDomain &bound) const {
+	PPLManager::t s_out = *this;
+	Ident id(loop, Ident::ID_LOOP);
+	ASSERT(s_out.hasIdent(id)); /* You are supposed to be already inside the loop when you call onLoopExit() */
+	Variable v = s_out.getVar(id);
+	MyHTable<int,int> map;
+	Vector<int> mapped;
+	for (MyHTable<Ident, int, HashIdent>::PairIterator it(bound.id2axis); it; it++) {
+		if (((*it).fst.getType() == Ident::ID_REG_INPUT) || ((*it).fst.getType() == Ident::ID_MEM_VAL_INPUT) || ((*it).fst == id)) {
+			if (hasIdent((*it).fst)) {
+				const Variable &v2 = getVar((*it).fst);
+				map[(*it).snd] = v2.id();
+				cout << (*it).snd << " to " << v2.id() << endl;
+				mapped.add(v2.id());
+			}
+		}
+	}
+	PPLDomain copy(bound);
+	cout << "avant remap: "; fflush(stdout);
+	copy.poly.minimized_constraints().print(); fflush(stdout); cout << endl;
+
+	copy.doMapPoly(MapWithHash(map));
+	for (PPL::dimension_type i = 0; i < copy.poly.space_dimension(); i++) {
+		if (!mapped.contains(i)) {
+			copy.poly.unconstrain(Variable(i));
+		}
+	}
+
+	cout << "apres remap: "; fflush(stdout);
+	copy.poly.minimized_constraints().print(); fflush(stdout); cout << endl;
+
+	if (copy.poly.space_dimension() < s_out.poly.space_dimension()) {
+		copy.poly.add_space_dimensions_and_embed(s_out.poly.space_dimension() - copy.poly.space_dimension());
+	}
+	s_out.poly.intersection_assign(copy.poly);
+	cout << "==" << endl;
+	fflush(stdout);
+	poly.minimized_constraints().print();
+	fflush(stdout);
+	cout <<  endl;
+	fflush(stdout);
+	copy.poly.minimized_constraints().print();
+	fflush(stdout);
+	cout << "==" << endl;
+	cout << "before onLoopExitLinear: " << *this << endl;
+	cout << " after onLoopExitLinear: " << s_out << endl;
+
+	s_out.varKill(v);
+	return s_out;
 }
 
 PPLDomain PPLDomain::onLoopExit(int loop, int bound) const {
@@ -622,6 +683,47 @@ PPLDomain PPLDomain::onBranch(bool taken) const {
 	}
 	return res;
 }
+PPLDomain PPLDomain::onComposeBounds(const PPLDomain &bound) const {
+	PPLDomain out = bound;
+	// decaler
+	out.doMap(MapShift(bound.poly.space_dimension(), poly.space_dimension()));
+	PPL::dimension_type i;
+	for (i = 0; i < poly.space_dimension(); i++)
+		out.poly.unconstrain(Variable(i));
+
+	PPL::C_Polyhedron src(poly);
+	src.add_space_dimensions_and_embed(bound.poly.space_dimension());
+	out.poly.intersection_assign(src);
+
+	// registers
+	for (MyHTable<Ident, int, HashIdent>::PairIterator it(out.id2axis); it; it++) {
+		if ((*it).fst.getType() == Ident::ID_REG_INPUT) {
+#ifdef POLY_DEBUG
+			cout << "Link input register: " << (*it).fst << endl;;
+#endif
+			int nreg = (*it).fst.getId();
+			Ident idRegCaller(nreg, Ident::ID_REG);
+			if (hasIdent(idRegCaller))
+				out.doNewConstraint(out.getVar((*it).fst) == getVar(idRegCaller));
+		}
+	}
+	PPL::dimension_type max_axis = 0;
+	for (PPL::dimension_type i = 0; i < out.poly.space_dimension(); i++) {
+		if (out.axis2id[i].getType() == Ident::ID_INVALID) {
+			Variable v(i);
+#ifdef POLY_DEBUG
+			cout << "Killing variable: " << v << endl;
+#endif
+			out.trash.set(i);
+		}
+		if (max_axis < i)
+			max_axis = i;
+	}
+	out.num_axis = max_axis + 1;
+	out.doFinalizeUpdate();
+	return out;
+}
+
 PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 	PPLDomain out = summary;
 	// decaler
@@ -735,9 +837,11 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 	Ident id_ssp(Ident::ID_START_SP, Ident::ID_SPECIAL);
 	Ident id_sfp(Ident::ID_START_FP, Ident::ID_SPECIAL);
 	Ident id_slr(Ident::ID_START_LR, Ident::ID_SPECIAL);
-	out.doNewConstraint(getVar(id_ssp) == out.getVar(id_ssp));
-	out.doNewConstraint(getVar(id_sfp) == out.getVar(id_sfp));
-	out.doNewConstraint(getVar(id_slr) == out.getVar(id_slr));
+	if (hasIdent(id_ssp) && out.hasIdent(id_ssp)) {
+		out.doNewConstraint(getVar(id_ssp) == out.getVar(id_ssp));
+		out.doNewConstraint(getVar(id_sfp) == out.getVar(id_sfp));
+		out.doNewConstraint(getVar(id_slr) == out.getVar(id_slr));
+	}
 
 #ifdef POLY_DEBUG
 	cout << "Inject loop bounds" << endl;
@@ -2248,6 +2352,7 @@ Identifier<int> LOC_VAR_SIZE("otawa::poly::LOC_VAR_SIZE", 4);
 Identifier<int> NUM_LOC_VARS("otawa::poly::NUM_LOC_VARS", 8);
 Identifier<int> MAX_AXIS("otawa::poly::MAX_AXIS", 512);
 Identifier<PPLDomain*> SUMMARY("otawa::poly::SUMMARY", nullptr);
+Identifier<MyHTable<int, PPLDomain> * > MAX_LINEAR("otawa::poly::MAX_LINEAR", nullptr);
 Identifier<bool> SUMMARIZE("otawa::poly::SUMMARIZE", false);
 
 } // namespace poly

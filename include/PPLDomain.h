@@ -147,6 +147,7 @@ class PPLDomain {
 	BitVector trash; ///< Bitvector representing the set of variables scheduled to be destroyed
 	
 	Vector<bound_t> bounds;
+	Vector<PPLDomain> *linbounds = NULL;
 
 	WorkSpace *_ws;
 
@@ -269,6 +270,9 @@ class PPLDomain {
 		compare_op = src.compare_op;
 		trash = src.trash;
 		bounds = src.bounds;
+		if (src.linbounds != nullptr) {
+			linbounds = new Vector<PPLDomain>(*src.linbounds);
+		}
 		_ws = src._ws;
 		if (src._summary != nullptr) {
 			_summary = new PPLSummary(*src._summary);
@@ -290,6 +294,17 @@ class PPLDomain {
 		trash = dom.trash;
 		bounds = dom.bounds;
 		_ws = dom._ws;
+		if (linbounds != nullptr) {
+			if (dom.linbounds != nullptr) {
+				*linbounds = *dom.linbounds;
+			} else {
+				delete linbounds;
+				linbounds = nullptr;
+			}
+		} else {
+			if (dom.linbounds != nullptr)
+				linbounds = new Vector<PPLDomain>(*dom.linbounds);
+		}
 		if (_summary != nullptr) {
 			if (dom._summary != nullptr) {
 				*_summary = *dom._summary;
@@ -458,6 +473,25 @@ class PPLDomain {
 			return bound_t(0);
 		return bounds[loopId]; 
 	}
+	inline PPLDomain getLinBound(int loopId) const { 
+		if ((linbounds == nullptr) || (linbounds->length() <= loopId))
+			return PPLDomain();
+		return (*linbounds)[loopId];
+	}
+
+	inline void setLinBound(int loopId, PPLDomain bound) {
+		if (bound.isBottom()) 
+			return;
+		if (linbounds == nullptr)
+			linbounds = new Vector<PPLDomain>();
+		if (linbounds->length() <= loopId) {
+			linbounds->setLength(loopId + 1);
+		}
+		delete bound.linbounds;
+		bound.linbounds = nullptr;
+		(*linbounds)[loopId] = (*linbounds)[loopId].onMerge(bound, false);
+	}
+
 	inline void setBound(int loopId, bound_t b) { 
 		if (b == bound_t(0))
 			return;
@@ -482,6 +516,7 @@ class PPLDomain {
 	 * @return Composed state
 	 */
 	PPLDomain onCompose(const PPLDomain &summary) const;
+	PPLDomain onComposeBounds(const PPLDomain &summary) const;
 
 	/**
 	 * Process an OTAWA semantic instruction
@@ -534,6 +569,7 @@ class PPLDomain {
 	 * @return The updated state.
 	 */
 	PPLDomain onLoopExit(int loop, int bound) const;
+	PPLDomain onLoopExitLinear(int loop, const PPLDomain &bound) const;
 
 	/* Operations that modify the state in-place */
 
