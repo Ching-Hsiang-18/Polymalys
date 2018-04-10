@@ -774,6 +774,7 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 	// memory 
 	bool changes = true;
 	Vector<Ident> input_done;
+	Vector<Ident> input_preserve;
 	while (changes) {
 		changes = false;
 		for (MyHTable<Ident, int, HashIdent>::PairIterator it(out.id2axis); it; it++) {
@@ -811,7 +812,10 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 					Ident idFormalAddr((*it).fst.getId(), Ident::ID_MEM_ADDR);
 					Variable formalArg = out.getVar((*it).fst);
 					uint32_t address, value;
-					bool ok = out.memGetInitial(idFormalAddr, address, value, true); //TODO force?
+					bool ok = out.memGetInitial(idFormalAddr, address, value, false); //TODO force?
+					/*
+					 * Don't force. Maybe we are summarizing caller function too.
+					 */
 					if (ok) {
 #ifdef POLY_DEBUG
 						cout << "Found initial data. Value= " << hex(value) << endl;
@@ -819,7 +823,14 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 						out.doNewConstraint(formalArg == value);
 						input_done.add((*it).fst);
 						changes = true;
+						found = true;
 					}
+				}
+				if (!found) {
+					/* Failed to associate a value to the input. In that case, if we are summarizing caller
+					 * function, then the input is propagated to caller function. */
+					input_preserve.add((*it).fst);
+
 				}
 			}
 		}
@@ -862,7 +873,8 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 	genstruct::Vector<Ident> bye;
 	for (MyHTable<Ident, int, HashIdent>::PairIterator it(out.id2axis); it; it++) {
 		if (((*it).fst.getType() == Ident::ID_MEM_VAL_INPUT) || ((*it).fst.getType() == Ident::ID_REG_INPUT)){
-			bye.add((*it).fst);
+			if (!input_preserve.contains((*it).fst))
+				bye.add((*it).fst);
 		} 
 	}
 	for (genstruct::Vector<Ident>::Iterator it(bye); it; it++) {
