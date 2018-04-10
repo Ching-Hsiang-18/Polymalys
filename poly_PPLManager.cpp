@@ -41,6 +41,8 @@ PPLManager::PPLManager(const PropList &props, WorkSpace *ws)
 	/* TODO(clement): get real stack base address */
 	_init.doNewConstraint(var_ssp >= int(stackconf_t::STACK_TOP));
 	_init.doNewConstraint(var_sfp >= int(stackconf_t::STACK_TOP));
+	_init.doNewConstraint(var_ssp <= int(stackconf_t::STACK_TOP + 0x1000000));
+	_init.doNewConstraint(var_sfp <= int(stackconf_t::STACK_TOP + 0x1000000));
 }
 
 } // namespace poly

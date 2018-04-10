@@ -29,8 +29,8 @@ enum bound_t : signed long {
 };
 
 /* TODO(clement): detect stack conf. from OTAWA */ 
-enum stackconf_t : uint32_t {
-	STACK_TOP = 0x70000000,
+enum stackconf_t : int32_t {
+	STACK_TOP = -0x60000000,
 	STACK_SIZE = 0x10000000,
 };
 
