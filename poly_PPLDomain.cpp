@@ -1279,11 +1279,17 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 
 			sem::reg_t addr = si.a();
 			Ident idStoreAddr(addr, Ident::ID_REG);
+
+			//TODO move this shit in some handleInput() method, and call it on other register ops, too 
 			Variable storeAddr = s_out.getVarOrNew(idStoreAddr, true); //l'adresse d'ecriture peut etre un input
 
 			sem::reg_t src = si.d();
 			Ident idStoreValue(src, Ident::ID_REG);
+			bool isInput = !s_out.hasIdent(idStoreValue);
 			Variable storeValue = s_out.getVarOrNew(idStoreValue, true); //la valeur d'ecriture peut etre un input
+			if (isInput) {
+//				s_out.doNewConstraint(storeValue + 1 <= int(stackconf_t::STACK_TOP) - int(stackconf_t::STACK_SIZE));
+			}
 
 /*
 			for (MyHTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++)
@@ -1421,6 +1427,8 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 #endif
 	//					s_out._summary->_inputs.add(idInputVal);
 						s_out.doNewConstraint(currentVal == inputVal);
+
+						
 					}
 				}
 
