@@ -70,8 +70,6 @@ PolyAnalysis::state_t PolyAnalysis::processHeader(ai::CFGGraph &graph, MyHTable<
 
 	PPLDomain linearBound = backState.getLinearExpr(Ident(header->id(), Ident::ID_LOOP));
 //	cout << "setBound: " << int(bound) << endl;
-	cout << "has state: " << backState << endl;
-	cout << "got linear bound: " << linearBound << endl;
 	backState.setLinBound(header->id(), linearBound);
 
 #ifdef POLY_DEBUG
@@ -131,6 +129,8 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 		CFG *subCFG = (*ana)->toSynth()->callee();
 		cout << "Call from " << (*ana)->toSynth()->caller()->name() << " to " << subCFG->name() << endl;
 
+		bool compose_ok = false;
+
 		if (SUMMARIZE(workspace())) {
 			state_t sum;
 			if (SUMMARY(subCFG) == nullptr) {
@@ -141,6 +141,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 				cout << "Finished creating summary of " << subCFG->name() << ", returning to " << (*ana)->toSynth()->caller()->name() << endl;
 				SUMMARY(subCFG) = new PPLDomain(sum);
 				MAX_LINEAR(subCFG) = sublb;
+#ifdef POLY_DEBUG				
 				cout << "summary = " << endl;
 				cout << sum << endl;
 				cout << "parametric bounds = " << endl;
@@ -148,8 +149,9 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 					cout << (*it).fst << " --> " << (*it).snd << endl;
 				}
 				cout << endl;
+#endif				
 			} else {
-				cout << "Reusing existing summary." << endl;
+				cout << "Reusing to reusing existing summary." << endl;
 				PPLDomain *p = SUMMARY(subCFG);
 				sum = *p;
 			}
@@ -159,26 +161,30 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 			cout << "Summary = " << endl;
 			cout << sum << endl;
 #endif
-			s = s.onCompose(sum);
-			// TODO: compose lb with summary
-			MyHTable<int, PPLDomain> *sublb = MAX_LINEAR(subCFG);
-			for (MyHTable<int, PPLDomain>::PairIterator it(*sublb); it; it++) {
-					cout << "Compose loop bound: " << (*it).fst << " --> " << (*it).snd << endl;
-					PPLDomain composed((*it).snd);
-					composed = s.onCompose(composed);
-					composed = composed.getLinearExpr(Ident((*it).fst, Ident::ID_LOOP));
-					cout << "Compose loop bound: " << (*it).fst << " --> " << composed << endl;
-					if (!lb.hasKey((*it).fst))
-						lb[(*it).fst] = PPLDomain();
-					lb[(*it).fst] = lb.get((*it).fst).value().onMerge(composed, false);
+			state_t tmp = s.onCompose(sum);
+			if (tmp.isBottom()) {
+				cout << "Failed to use summary due to constraint violation" << endl;
+			} else {
+				s = tmp;
+				compose_ok = true;
+				MyHTable<int, PPLDomain> *sublb = MAX_LINEAR(subCFG);
+				for (MyHTable<int, PPLDomain>::PairIterator it(*sublb); it; it++) {
+						PPLDomain composed((*it).snd);
+						composed = s.onCompose(composed);
+						composed = composed.getLinearExpr(Ident((*it).fst, Ident::ID_LOOP));
+						if (!lb.hasKey((*it).fst))
+							lb[(*it).fst] = PPLDomain();
+						lb[(*it).fst] = lb.get((*it).fst).value().onMerge(composed, false);
 
-			}
+				}
 
 #ifdef POLY_DEBUG
-			cout << "Composed state = " << endl;
-			cout << s << endl;
+				cout << "Composed state = " << endl;
+				cout << s << endl;
 #endif
-		} else { // no summarizing
+			}
+		} 
+		if (!compose_ok) { // no summarizing
 			if ((*ana)->toSynth()->callee()->name() == "gsignal" ||
 			    (*ana)->toSynth()->callee()->name() == "__divsi3" ||  
 			    (*ana)->toSynth()->callee()->name() == "__aeabi_i2d" ||  
@@ -304,10 +310,8 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 						if (Dominance::dominates(e->sink(), e->source())) {
 							/* Back-Edge: increment virtual loop counter */
 							edgeState = edgeState.onLoopIter(e->sink()->id());
-							cout << "loop iter! " << endl;
 						} else {
 							/* Entry-Edge: initialize virtal loop counter */
-							cout << "loop entry! " << endl;
 							edgeState = edgeState.onLoopEntry(e->sink()->id());
 
 							/* Avoid unnecessary widening before first loop iteration of inner loops */
@@ -327,7 +331,6 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 #ifdef POLY_DEBUG
 						cout << "Bound on loop exit: " << bound << endl;
 #endif
-						cout << "LinBound on loop exit: " << linBound << endl;
 						if (!linBound.isBottom()) {
 							edgeState = edgeState.onLoopExitLinear(bb->id(), linBound);
 							if (edgeState.isBottom())
@@ -460,6 +463,7 @@ void PolyAnalysis::processCFG(CFG &cfg, state_t &s, MyHTable<int, PPLDomain> &lb
 #endif
 	if (isEntryCFG && !summarize) {
 		// ...
+    cout << endl << "---- ANALYSIS ENDS ----" << endl << endl;
 	cout << "FINAL STATE: " << endl;
 	cout << s;
 	} else {
@@ -493,8 +497,9 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	MyHTable<int, PPLDomain> bounds;
 	MyHTable<int, int> static_bounds;
 	processCFG(*entry, dummy, bounds, true /* is entry */, false /* summarize */);
+	cout << "PARAMETRIC LOOP BOUNDS: " << endl;
 	for (MyHTable<int, PPLDomain>::PairIterator it(bounds); it; it++) {
-		cout << "Parametric loop bound: " << (*it).fst << " --> " << (*it).snd << endl;
+		cout << "MAX_ITERATION(" << (*it).fst << "): " << (*it).snd << endl;
 		PPL::Coefficient binf_n, binf_d, bsup_n, bsup_d;
 		Ident id((*it).fst, Ident::ID_LOOP);
 		if (!(*it).snd.hasIdent(id)) {
@@ -508,6 +513,7 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 		} else static_bounds[(*it).fst] = bound_t::UNBOUNDED;
 	}
 
+	cout << endl;
 	cout << "LOOP BOUNDS: " << endl;
 	for (CFGCollection::Iter iter2(coll); iter2; iter2++) {
 		for (CFG::BlockIter iter((*iter2)->blocks()); iter; iter++) {
@@ -515,9 +521,11 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 			if (LOOP_HEADER(bb)) {
 				MAX_ITERATION(bb) = static_bounds[bb->id()];
 				cout << "[" << (*iter2)->name() << "]"
-				     << "MAX_ITERATION(" << bb->id() << ") = " << MAX_ITERATION(bb) << endl;
+				     << "MAX_ITERATION(" << bb->id() << "): " << MAX_ITERATION(bb) << endl;
+				/*
 				cout << "[" << (*iter2)->name() << "]"
 				     << "TOTAL_ITERATION(" << bb->id() << ") = " << TOTAL_ITERATION(bb) << endl;
+					 */
 			}
 		}
 		delete _orders[(*iter2)->index()];

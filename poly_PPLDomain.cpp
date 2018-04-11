@@ -113,11 +113,14 @@ void PPLDomain::print(io::Output &out) const {
 		out << "BOTTOM";
 		return;
 	}
+	Ident id_ssp(Ident::ID_START_SP, Ident::ID_SPECIAL);
+	bool is_loop_bound = !hasIdent(id_ssp);
 
 	PPL::Constraint_System cons = poly.minimized_constraints();
 	int ncons = 0;
 
-	out << "Constraints: ";
+	if (!is_loop_bound)
+		out << "Constraints: ";
 
 	for (PPL::Constraint_System::const_iterator it = cons.begin(); it != cons.end(); it++, ncons++) {
 		const PPL::Constraint &c = *it;
@@ -166,6 +169,8 @@ void PPLDomain::print(io::Output &out) const {
 		out << "; ";
 		;
 	}
+	if (is_loop_bound)
+		return;
 	out << endl;
 
 	out << "Space dimension: " << poly.space_dimension() << ", Constraints count: " << ncons << endl;
@@ -537,14 +542,11 @@ PPLDomain PPLDomain::onLoopExitLinear(int loop, const PPLDomain &bound) const {
 			if (hasIdent((*it).fst)) {
 				const Variable &v2 = getVar((*it).fst);
 				map[(*it).snd] = v2.id();
-				cout << (*it).snd << " to " << v2.id() << endl;
 				mapped.add(v2.id());
 			}
 		}
 	}
 	PPLDomain copy(bound);
-	cout << "avant remap: "; fflush(stdout);
-	copy.poly.minimized_constraints().print(); fflush(stdout); cout << endl;
 
 	copy.doMapPoly(MapWithHash(map));
 	for (PPL::dimension_type i = 0; i < copy.poly.space_dimension(); i++) {
@@ -553,25 +555,11 @@ PPLDomain PPLDomain::onLoopExitLinear(int loop, const PPLDomain &bound) const {
 		}
 	}
 
-	cout << "apres remap: "; fflush(stdout);
-	copy.poly.minimized_constraints().print(); fflush(stdout); cout << endl;
 
 	if (copy.poly.space_dimension() < s_out.poly.space_dimension()) {
 		copy.poly.add_space_dimensions_and_embed(s_out.poly.space_dimension() - copy.poly.space_dimension());
 	}
 	s_out.poly.intersection_assign(copy.poly);
-	cout << "==" << endl;
-	fflush(stdout);
-	poly.minimized_constraints().print();
-	fflush(stdout);
-	cout <<  endl;
-	fflush(stdout);
-	copy.poly.minimized_constraints().print();
-	fflush(stdout);
-	cout << "==" << endl;
-	cout << "before onLoopExitLinear: " << *this << endl;
-	cout << " after onLoopExitLinear: " << s_out << endl;
-
 	s_out.varKill(v);
 	return s_out;
 }
@@ -845,12 +833,14 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 #ifdef POLY_DEBUG
 	cout << "Link special inputs " << endl;
 #endif
+	Ident id_sp(13, Ident::ID_REG);
+	Ident id_fp(11, Ident::ID_REG);
 	Ident id_ssp(Ident::ID_START_SP, Ident::ID_SPECIAL);
 	Ident id_sfp(Ident::ID_START_FP, Ident::ID_SPECIAL);
 	Ident id_slr(Ident::ID_START_LR, Ident::ID_SPECIAL);
 	if (hasIdent(id_ssp) && out.hasIdent(id_ssp)) {
-		out.doNewConstraint(getVar(id_ssp) == out.getVar(id_ssp));
-		out.doNewConstraint(getVar(id_sfp) == out.getVar(id_sfp));
+		out.doNewConstraint(getVar(id_sp) - 4 == out.getVar(id_ssp));
+		out.doNewConstraint(getVar(id_fp) == out.getVar(id_sfp));
 		out.doNewConstraint(getVar(id_slr) == out.getVar(id_slr));
 	}
 
@@ -1058,6 +1048,11 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 #ifdef POLY_DEBUG
 	cout << "Post-composition cleanup: " << endl;
 #endif
+
+	if (out.isBottom()) {
+		/* Composition resulted in bottom state for some reason. Will re-analyse function */
+		return PPLDomain();
+	}
 	PPL::dimension_type max_axis = 0;
 	for (PPL::dimension_type i = 0; i < out.poly.space_dimension(); i++) {
 		if (out.axis2id[i].getType() == Ident::ID_INVALID) {
@@ -1288,7 +1283,11 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 			bool isInput = !s_out.hasIdent(idStoreValue);
 			Variable storeValue = s_out.getVarOrNew(idStoreValue, true); //la valeur d'ecriture peut etre un input
 			if (isInput) {
-//				s_out.doNewConstraint(storeValue + 1 <= int(stackconf_t::STACK_TOP) - int(stackconf_t::STACK_SIZE));
+				// we are summarizing
+				Ident idSSP(Ident::ID_START_SP, Ident::ID_SPECIAL);
+				const Variable &vSSP = s_out.getVar(idSSP);
+				// s_out.doNewConstraint(storeValue >= int(stackconf_t::STACK_TOP) + int(stackconf_t::STACK_SIZE));
+				s_out.doNewConstraint(storeValue >= vSSP + 4);
 			}
 
 /*
