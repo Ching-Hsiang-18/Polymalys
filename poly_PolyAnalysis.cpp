@@ -162,6 +162,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 				cout << "Finished creating summary of " << subCFG->name() << ", returning to " << (*ana)->toSynth()->caller()->name() << endl;
 				SUMMARY(subCFG) = new PPLDomain(sum);
 				MAX_LINEAR(subCFG) = sublb;
+#ifdef POLY_DEBUG				
 				cout << "summary = " << endl;
 				cout << sum << endl;
 				cout << "parametric bounds = " << endl;
@@ -169,7 +170,6 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 					cout << (*it).fst << " --> " << (*it).snd << endl;
 				}
 				cout << endl;
-#ifdef POLY_DEBUG				
 #endif				
 			} else {
 				cout << "Reusing to reusing existing summary." << endl;
@@ -202,9 +202,9 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 				}
 				s = tmp;
 
+#ifdef POLY_DEBUG
 				cout << "Composed state = " << endl;
 				cout << s << endl;
-#ifdef POLY_DEBUG
 #endif
 			}
 		} 

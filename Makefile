@@ -2,7 +2,7 @@ CXXFLAGS=`otawa-config otawa/oslice --cflags`
 LIBS=`otawa-config otawa/oslice --libs`
 LIBS+=-lppl
 
-CXXFLAGS+=-fPIC -Wall -DUSE_CLANG_COMPLETER -std=c++11 -march=native -O0 -g
+CXXFLAGS+=-fPIC -Wall -DUSE_CLANG_COMPLETER -std=c++11 -march=native -O3
 
 all: poly.so
 
