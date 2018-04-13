@@ -1087,10 +1087,6 @@ PPLDomain PPLDomain::onMerge(const PPLDomain &r, bool widen) const {
 	 * 2. Merge phase: this is the actual convex hull or widening, performed on the unified states.
 	 */
 
-	ASSERT(!trash.countOnes());
-	ASSERT(!r.trash.countOnes());
-	ASSERT(compare_reg.getType() == Ident::ID_INVALID);
-	ASSERT(r.compare_reg.getType() == Ident::ID_INVALID);
 
 	if (r.isBottom()) {
 #ifdef POLY_DEBUG
@@ -1104,6 +1100,10 @@ PPLDomain PPLDomain::onMerge(const PPLDomain &r, bool widen) const {
 #endif
 		return r;
 	}
+	ASSERT(!trash.countOnes());
+	ASSERT(!r.trash.countOnes());
+	ASSERT(compare_reg.getType() == Ident::ID_INVALID);
+	ASSERT(r.compare_reg.getType() == Ident::ID_INVALID);
 
 #ifdef POLY_DEBUG
 	cout << "Non-trivial merge, type=" << (widen ? "widening" : "convex-hull") << endl;

@@ -499,7 +499,7 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	processCFG(*entry, dummy, bounds, true /* is entry */, false /* summarize */);
 	cout << "PARAMETRIC LOOP BOUNDS: " << endl;
 	for (MyHTable<int, PPLDomain>::PairIterator it(bounds); it; it++) {
-		cout << "MAX_ITERATION(" << (*it).fst << "): " << (*it).snd << endl;
+		cout << "linear bound expr for (" << (*it).fst << "): " << (*it).snd << endl;
 		PPL::Coefficient binf_n, binf_d, bsup_n, bsup_d;
 		Ident id((*it).fst, Ident::ID_LOOP);
 		if (!(*it).snd.hasIdent(id)) {
@@ -521,7 +521,7 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 			if (LOOP_HEADER(bb)) {
 				MAX_ITERATION(bb) = static_bounds[bb->id()];
 				cout << "[" << (*iter2)->name() << "]"
-				     << "MAX_ITERATION(" << bb->id() << "): " << MAX_ITERATION(bb) << endl;
+				     << "MAX_ITERATION(" << bb->id() << ") = " << MAX_ITERATION(bb) << endl;
 				/*
 				cout << "[" << (*iter2)->name() << "]"
 				     << "TOTAL_ITERATION(" << bb->id() << ") = " << TOTAL_ITERATION(bb) << endl;
