@@ -433,7 +433,7 @@ class PPLDomain {
 	 * @param v2 Second variable
 	 * @return true if must be equal, false otherwise
 	 */
-	bool mustAlias(const Variable &v1, const Variable &v2) const;
+	bool mustAlias(const Variable &v1, const Variable &v2, int offset = 0) const;
 
 	/**
 	 * Attempts to get the value of a a variable mapped to an identifier, if this value can be statically determined,

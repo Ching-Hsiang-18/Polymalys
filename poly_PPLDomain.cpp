@@ -483,8 +483,8 @@ bool PPLDomain::mayAlias(const Variable &v1, const Variable &v2) const {
 	return !poly.relation_with(v1 == v2).implies(PPL::Poly_Con_Relation::is_disjoint());
 }
 
-bool PPLDomain::mustAlias(const Variable &v1, const Variable &v2) const {
-	return poly.relation_with(v1 == v2).implies(PPL::Poly_Con_Relation::is_included());
+bool PPLDomain::mustAlias(const Variable &v1, const Variable &v2, int offset) const {
+	return poly.relation_with(v1 == v2 + offset).implies(PPL::Poly_Con_Relation::is_included());
 }
 
 void PPLDomain::displayIdentMap(io::Output &out) const {
@@ -743,6 +743,10 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 	// registers
 	for (MyHTable<Ident, int, HashIdent>::PairIterator it(out.id2axis); it; it++) {
 		if ((*it).fst.getType() == Ident::ID_REG_INPUT) {
+			/*
+			if ((*it).fst.getId() == 13)
+				break; // FIXME
+				*/
 #ifdef POLY_DEBUG
 			cout << "Link input register: " << (*it).fst << endl;;
 #endif
@@ -763,6 +767,7 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 	bool changes = true;
 	Vector<Ident> input_done;
 	Vector<Ident> input_preserve;
+	cout << "out before link:" << out << endl;
 	while (changes) {
 		changes = false;
 		for (MyHTable<Ident, int, HashIdent>::PairIterator it(out.id2axis); it; it++) {
@@ -778,6 +783,7 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 						Ident idFormalAddr((*it).fst.getId(), Ident::ID_MEM_ADDR);
 						Variable formalAddr = out.getVar(idFormalAddr);
 						Variable effectiveAddr = getVar((*it2).fst);
+						cout << "test " << formalAddr << " avec " << effectiveAddr << endl;
 						if (out.mustAlias(formalAddr, effectiveAddr)) {
 							found = true;
 							link_mem.add(idFormalAddr);
@@ -839,7 +845,7 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 	Ident id_sfp(Ident::ID_START_FP, Ident::ID_SPECIAL);
 	Ident id_slr(Ident::ID_START_LR, Ident::ID_SPECIAL);
 	if (hasIdent(id_ssp) && out.hasIdent(id_ssp)) {
-		out.doNewConstraint(getVar(id_sp) - 4 == out.getVar(id_ssp));
+		out.doNewConstraint(getVar(id_sp) == out.getVar(id_ssp));
 		out.doNewConstraint(getVar(id_fp) == out.getVar(id_sfp));
 		out.doNewConstraint(getVar(id_slr) == out.getVar(id_slr));
 	}
@@ -869,6 +875,22 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 	}
 	for (genstruct::Vector<Ident>::Iterator it(bye); it; it++) {
 		out.varKill(*it);
+	}
+
+	if (out.hasIdent(Ident(Ident::ID_START_SP, Ident::ID_SPECIAL))) {
+		out.varKill(Ident(Ident::ID_START_SP, Ident::ID_SPECIAL));
+		out.varKill(Ident(Ident::ID_START_FP, Ident::ID_SPECIAL));
+		out.varKill(Ident(Ident::ID_START_LR, Ident::ID_SPECIAL));
+
+		out.id2axis[Ident(Ident::ID_START_SP, Ident::ID_SPECIAL)] 
+			= getVar(Ident(Ident::ID_START_SP, Ident::ID_SPECIAL)).id();
+		out.axis2id[getVar(Ident(Ident::ID_START_SP, Ident::ID_SPECIAL)).id()] = Ident(Ident::ID_START_SP, Ident::ID_SPECIAL);
+		out.id2axis[Ident(Ident::ID_START_FP, Ident::ID_SPECIAL)] 
+			= getVar(Ident(Ident::ID_START_FP, Ident::ID_SPECIAL)).id();
+		out.axis2id[getVar(Ident(Ident::ID_START_FP, Ident::ID_SPECIAL)).id()] = Ident(Ident::ID_START_FP, Ident::ID_SPECIAL);
+		out.id2axis[Ident(Ident::ID_START_LR, Ident::ID_SPECIAL)] 
+			= getVar(Ident(Ident::ID_START_LR, Ident::ID_SPECIAL)).id();
+		out.axis2id[getVar(Ident(Ident::ID_START_LR, Ident::ID_SPECIAL)).id()] = Ident(Ident::ID_START_LR, Ident::ID_SPECIAL);
 	}
 
 #ifdef POLY_DEBUG
@@ -1286,8 +1308,7 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 				// we are summarizing
 				Ident idSSP(Ident::ID_START_SP, Ident::ID_SPECIAL);
 				const Variable &vSSP = s_out.getVar(idSSP);
-				// s_out.doNewConstraint(storeValue >= int(stackconf_t::STACK_TOP) + int(stackconf_t::STACK_SIZE));
-				s_out.doNewConstraint(storeValue >= vSSP + 4);
+				s_out.doNewConstraint(storeValue >= vSSP);
 			}
 
 /*
@@ -2364,6 +2385,10 @@ void PPLDomain::_doBinaryOp(int op, Variable *v, Variable *vs1, Variable *vs2) {
 
 void PPLDomain::enableSummary() {
 	_summary = new PPLSummary();
+	/*
+	const Variable &spInput = varNew(Ident(13, Ident::ID_REG_INPUT));
+	 doNewConstraint(spInput == getVar(Ident(13, Ident::ID_REG)));
+	 */
 }
 p::feature POLY_ANALYSIS_FEATURE("otawa::poly::POLY_ANALYSIS_FEATURE", new Maker<PolyAnalysis>());
 

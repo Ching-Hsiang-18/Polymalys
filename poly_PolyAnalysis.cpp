@@ -69,7 +69,7 @@ PolyAnalysis::state_t PolyAnalysis::processHeader(ai::CFGGraph &graph, MyHTable<
 	backState.setBound(header->id(), bound);
 
 	PPLDomain linearBound = backState.getLinearExpr(Ident(header->id(), Ident::ID_LOOP));
-//	cout << "setBound: " << int(bound) << endl;
+	cout << "setLinBound: " << linearBound << endl;
 	backState.setLinBound(header->id(), linearBound);
 
 #ifdef POLY_DEBUG
@@ -141,7 +141,6 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 				cout << "Finished creating summary of " << subCFG->name() << ", returning to " << (*ana)->toSynth()->caller()->name() << endl;
 				SUMMARY(subCFG) = new PPLDomain(sum);
 				MAX_LINEAR(subCFG) = sublb;
-#ifdef POLY_DEBUG				
 				cout << "summary = " << endl;
 				cout << sum << endl;
 				cout << "parametric bounds = " << endl;
@@ -149,6 +148,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 					cout << (*it).fst << " --> " << (*it).snd << endl;
 				}
 				cout << endl;
+#ifdef POLY_DEBUG				
 #endif				
 			} else {
 				cout << "Reusing to reusing existing summary." << endl;
@@ -165,22 +165,25 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 			if (tmp.isBottom()) {
 				cout << "Failed to use summary due to constraint violation" << endl;
 			} else {
-				s = tmp;
 				compose_ok = true;
 				MyHTable<int, PPLDomain> *sublb = MAX_LINEAR(subCFG);
 				for (MyHTable<int, PPLDomain>::PairIterator it(*sublb); it; it++) {
 						PPLDomain composed((*it).snd);
+						cout << "linear bounds: " << composed << endl;
+						cout << "caller state: " << s << endl;
 						composed = s.onCompose(composed);
+						cout << "composed bounds: " << composed << endl;
 						composed = composed.getLinearExpr(Ident((*it).fst, Ident::ID_LOOP));
 						if (!lb.hasKey((*it).fst))
 							lb[(*it).fst] = PPLDomain();
 						lb[(*it).fst] = lb.get((*it).fst).value().onMerge(composed, false);
 
 				}
+				s = tmp;
 
-#ifdef POLY_DEBUG
 				cout << "Composed state = " << endl;
 				cout << s << endl;
+#ifdef POLY_DEBUG
 #endif
 			}
 		} 
@@ -310,6 +313,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 						if (Dominance::dominates(e->sink(), e->source())) {
 							/* Back-Edge: increment virtual loop counter */
 							edgeState = edgeState.onLoopIter(e->sink()->id());
+							cout << "LOOPITER" << endl;
 						} else {
 							/* Entry-Edge: initialize virtal loop counter */
 							edgeState = edgeState.onLoopEntry(e->sink()->id());
@@ -336,6 +340,9 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 							if (edgeState.isBottom())
 								continue;
 						}
+#ifdef POLY_DEBUG
+						cout << "linbound for " << bb->id() << " is " << linBound << endl;
+#endif
 						/*
 						if (bound >= 0) {
 							edgeState = edgeState.onLoopExit(bb->id(), bound);
