@@ -122,9 +122,30 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 	 */
 	state_t s = man->bot();
 
+	/* Special processing for loop headers, to handle loop bounds and widening */
+	if (LOOP_HEADER(*ana)) {
+#ifdef POLY_DEBUG
+		cout << "Basic block is loop header: " << (*ana)->toBasic()->id() << endl;
+#endif
+		s = processHeader(graph, lb, (*ana)->toBasic(), *man, store, headerState);
+	} else {
+		s = ana.input();
+	}
+
+	if (s.isBottom()) {
+#ifdef POLY_DEBUG
+		cout << "! Skip block because input state is Bottom" << endl;
+#endif
+		return;
+	}
+
+#ifdef POLY_DEBUG
+	cout << "State at basic block start: " << endl << s << endl;
+	cout << "isSynth: " << (*ana)->isSynth() << endl;
+#endif
+
 	if ((*ana)->isSynth()) {
 		/* Handle call to another function */
-		s = ana.input();
 
 		CFG *subCFG = (*ana)->toSynth()->callee();
 		cout << "Call from " << (*ana)->toSynth()->caller()->name() << " to " << subCFG->name() << endl;
@@ -214,27 +235,6 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 		cout << "Processing basic block: " << bl << " spaceDimension=" << s.getVarIDCount() << ", numCons=" << s.getConsCount() << "\n";
 #endif
 
-		/* Special processing for loop headers, to handle loop bounds and widening */
-		if (LOOP_HEADER(bl)) {
-#ifdef POLY_DEBUG
-			cout << "Basic block is loop header: " << bl->id() << endl;
-#endif
-			s = processHeader(graph, lb, bl, *man, store, headerState);
-		} else {
-			s = ana.input();
-		}
-
-		if (s.isBottom()) {
-#ifdef POLY_DEBUG
-			cout << "! Skip block because input state is Bottom" << endl;
-#endif
-			return;
-		}
-
-#ifdef POLY_DEBUG
-		cout << "State at basic block start: " << endl << s << endl;
-#endif
-
 		/* Basic block processing */
 		for (BasicBlock::InstIter inst(bl); inst; inst++) {
 #ifdef POLY_DEBUG
@@ -265,96 +265,97 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 
 		s.doKillRegisters(oslice::REG_BB_END_IN(bl));
 		s.doFinalizeUpdate();
+	}
 
-		/* Edge Processing, propagate updated state to successors */
-		for (int doExit = 0; doExit < 2; doExit++) {
 
-			/* Do loop exit edges last (improves performance) */
-			for (ai::CFGGraph::Successor e(graph, *ana); e; e++) {
-				if ((LOOP_EXIT_EDGE(e) == nullptr) && !doExit)
-					continue;
-				if ((LOOP_EXIT_EDGE(e) != nullptr) && doExit)
-					continue;
+	/* Edge Processing, propagate updated state to successors */
+	for (int doExit = 0; doExit < 2; doExit++) {
+
+		/* Do loop exit edges last (improves performance) */
+		for (ai::CFGGraph::Successor e(graph, *ana); e; e++) {
+			if ((LOOP_EXIT_EDGE(e) == nullptr) && !doExit)
+				continue;
+			if ((LOOP_EXIT_EDGE(e) != nullptr) && doExit)
+				continue;
 #ifdef POLY_DEBUG
-				cout << "OutEdge: " << *e << ", taken= " << (e->isTaken()) << endl;
+			cout << "OutEdge: " << *e << ", taken= " << (e->isTaken()) << endl;
 #endif
-				/*
-				 * In most cases, the state is not updated (i.e. modified) by edge processing.
-				 * We need update on edge if any of these (non-mutually-exclusive) following conditions are true:
-				 *
-				 * 1. The current successor of current block is a loop header (need to do onLoopEntry or onLoopIter)
-				 * 2. The current output edge of current block is an exit-edge (need to do onLoopExit)
-				 * 3. The current block has a conditional branch (need to do onBranch, for filtering)
-				 */
-				if (!LOOP_HEADER(e->sink()) && (LOOP_EXIT_EDGE(e) == nullptr) && !s.hasFilter()) {
-					/* no edge update: simply copy output state to successor input state */
-					ana.check(*e, s);
-				} else {
-					/* process edge update */
-					state_t edgeState = s;
+			/*
+			 * In most cases, the state is not updated (i.e. modified) by edge processing.
+			 * We need update on edge if any of these (non-mutually-exclusive) following conditions are true:
+			 *
+			 * 1. The current successor of current block is a loop header (need to do onLoopEntry or onLoopIter)
+			 * 2. The current output edge of current block is an exit-edge (need to do onLoopExit)
+			 * 3. The current block has a conditional branch (need to do onBranch, for filtering)
+			 */
+			if (!LOOP_HEADER(e->sink()) && (LOOP_EXIT_EDGE(e) == nullptr) && !s.hasFilter()) {
+				/* no edge update: simply copy output state to successor input state */
+				ana.check(*e, s);
+			} else {
+				/* process edge update */
+				state_t edgeState = s;
 
-					if (edgeState.hasFilter()) {
-						/* Filtering: apply branch condition on edge state */
+				if (edgeState.hasFilter()) {
+					/* Filtering: apply branch condition on edge state */
 #ifdef POLY_DEBUG
-						cout << "BEFORE FILTERING: " << endl;
-						cout << edgeState;
+					cout << "BEFORE FILTERING: " << endl;
+					cout << edgeState;
 #endif
-						edgeState = edgeState.onBranch(e->isTaken());
+					edgeState = edgeState.onBranch(e->isTaken());
+					if (edgeState.isBottom()) {
+						continue;
+					}
+#ifdef POLY_DEBUG
+					cout << "FILTERED STATE: " << endl;
+					cout << edgeState;
+#endif
+				}
+
+				if (LOOP_HEADER(e->sink())) {
+					if (Dominance::dominates(e->sink(), e->source())) {
+						/* Back-Edge: increment virtual loop counter */
+						edgeState = edgeState.onLoopIter(e->sink()->id());
+						cout << "LOOPITER" << endl;
+					} else {
+						/* Entry-Edge: initialize virtal loop counter */
+						edgeState = edgeState.onLoopEntry(e->sink()->id());
+
+						/* Avoid unnecessary widening before first loop iteration of inner loops */
+						// headerState.remove(e->sink()->id()); 
+					}
+				}
+
+				if (LOOP_EXIT_EDGE(e) != nullptr) {
+					/* Exit edge: remove virtual loop counter, and apply loop bound constraint on state */
+					Block *bb = LOOP_EXIT_EDGE(e);
+
+					/* 
+					 * FIXME: should be bound = s.getLoopBound(bb->id()) but we need to fix the widening to make it work
+					 */
+					int bound = edgeState.getBound(bb->id());
+					PPLDomain linBound = edgeState.getLinBound(bb->id());
+#ifdef POLY_DEBUG
+					cout << "Bound on loop exit: " << bound << endl;
+#endif
+					if (!linBound.isBottom()) {
+						edgeState = edgeState.onLoopExitLinear(bb->id(), linBound);
+						if (edgeState.isBottom())
+							continue;
+					}
+#ifdef POLY_DEBUG
+					cout << "linbound for " << bb->id() << " is " << linBound << endl;
+#endif
+					/*
+					if (bound >= 0) {
+						edgeState = edgeState.onLoopExit(bb->id(), bound);
 						if (edgeState.isBottom()) {
 							continue;
 						}
-#ifdef POLY_DEBUG
-						cout << "FILTERED STATE: " << endl;
-						cout << edgeState;
-#endif
 					}
-
-					if (LOOP_HEADER(e->sink())) {
-						if (Dominance::dominates(e->sink(), e->source())) {
-							/* Back-Edge: increment virtual loop counter */
-							edgeState = edgeState.onLoopIter(e->sink()->id());
-							cout << "LOOPITER" << endl;
-						} else {
-							/* Entry-Edge: initialize virtal loop counter */
-							edgeState = edgeState.onLoopEntry(e->sink()->id());
-
-							/* Avoid unnecessary widening before first loop iteration of inner loops */
-							// headerState.remove(e->sink()->id()); 
-						}
-					}
-
-					if (LOOP_EXIT_EDGE(e) != nullptr) {
-						/* Exit edge: remove virtual loop counter, and apply loop bound constraint on state */
-						Block *bb = LOOP_EXIT_EDGE(e);
-
-						/* 
-						 * FIXME: should be bound = s.getLoopBound(bb->id()) but we need to fix the widening to make it work
-						 */
-						int bound = edgeState.getBound(bb->id());
-						PPLDomain linBound = edgeState.getLinBound(bb->id());
-#ifdef POLY_DEBUG
-						cout << "Bound on loop exit: " << bound << endl;
-#endif
-						if (!linBound.isBottom()) {
-							edgeState = edgeState.onLoopExitLinear(bb->id(), linBound);
-							if (edgeState.isBottom())
-								continue;
-						}
-#ifdef POLY_DEBUG
-						cout << "linbound for " << bb->id() << " is " << linBound << endl;
-#endif
-						/*
-						if (bound >= 0) {
-							edgeState = edgeState.onLoopExit(bb->id(), bound);
-							if (edgeState.isBottom()) {
-								continue;
-							}
-						}
-						*/
-					}
-					edgeState.doFinalizeUpdate();
-					ana.check(*e, edgeState);
+					*/
 				}
+				edgeState.doFinalizeUpdate();
+				ana.check(*e, edgeState);
 			}
 		}
 	}
