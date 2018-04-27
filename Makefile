@@ -6,8 +6,8 @@ CXXFLAGS+=-fPIC -Wall -DUSE_CLANG_COMPLETER -std=c++11 -march=native -O3
 
 all: poly.so
 
-poly.so: poly_PolyAnalysis.o poly_PlugHook.o poly_PPLDomain.o poly_PPLManager.o
-	$(CC) -shared -o poly.so poly_PolyAnalysis.o poly_PlugHook.o poly_PPLDomain.o poly_PPLManager.o $(LIBS)
+poly.so: poly_PolyAnalysis.o poly_PlugHook.o poly_PPLDomain.o poly_PPLManager.o poly_PolyWrap.o
+	$(CC) -shared -o poly.so poly_PolyAnalysis.o poly_PlugHook.o poly_PPLDomain.o poly_PPLManager.o poly_PolyWrap.o $(LIBS)
 	
 
 poly_PolyAnalysis.o: poly_PolyAnalysis.cpp include/PolyAnalysis.h include/PPLDomain.h include/PPLManager.h include/PolyCommon.h include/MyHTable.h include/OrderedDriver.h
@@ -21,6 +21,10 @@ poly_PPLDomain.o: poly_PPLDomain.cpp include/PolyAnalysis.h include/PPLDomain.h 
 
 poly_PlugHook.o: poly_PlugHook.cpp
 	$(CXX) $(CXXFLAGS) -c poly_PlugHook.cpp -o poly_PlugHook.o
+
+poly_PolyWrap.o: poly_PolyWrap.cpp include/PolyWrap.h
+	$(CXX) $(CXXFLAGS) -c poly_PolyWrap.cpp -o poly_PolyWrap.o
+	
 
 clean:
 	rm -f *~ core* poly.so *.o

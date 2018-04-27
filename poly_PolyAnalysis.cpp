@@ -69,7 +69,6 @@ PolyAnalysis::state_t PolyAnalysis::processHeader(ai::CFGGraph &graph, MyHTable<
 	backState.setBound(header->id(), bound);
 
 	PPLDomain linearBound = backState.getLinearExpr(Ident(header->id(), Ident::ID_LOOP));
-	cout << "setLinBound: " << linearBound << endl;
 	backState.setLinBound(header->id(), linearBound);
 
 #ifdef POLY_DEBUG
@@ -315,7 +314,6 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 					if (Dominance::dominates(e->sink(), e->source())) {
 						/* Back-Edge: increment virtual loop counter */
 						edgeState = edgeState.onLoopIter(e->sink()->id());
-						cout << "LOOPITER" << endl;
 					} else {
 						/* Entry-Edge: initialize virtal loop counter */
 						edgeState = edgeState.onLoopEntry(e->sink()->id());
@@ -501,7 +499,7 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	CFG *entry = coll->get(0);
 	state_t dummy;
 	ASSERT(dummy.getSummary() == nullptr);
-	SUMMARIZE(ws) = true;
+	SUMMARIZE(ws) = false;
 	MyHTable<int, PPLDomain> bounds;
 	MyHTable<int, int> static_bounds;
 	processCFG(*entry, dummy, bounds, true /* is entry */, false /* summarize */);
@@ -527,7 +525,9 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 		for (CFG::BlockIter iter((*iter2)->blocks()); iter; iter++) {
 			Block *bb = (*iter);
 			if (LOOP_HEADER(bb)) {
-				MAX_ITERATION(bb) = static_bounds[bb->id()];
+				if (static_bounds.hasKey(bb->id())) {
+					MAX_ITERATION(bb) = static_bounds[bb->id()];
+				} else MAX_ITERATION(bb) = bound_t::UNREACHABLE;
 				cout << "[" << (*iter2)->name() << "]"
 				     << "MAX_ITERATION(" << bb->id() << ") = " << MAX_ITERATION(bb) << endl;
 				/*

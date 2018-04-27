@@ -767,7 +767,6 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 	bool changes = true;
 	Vector<Ident> input_done;
 	Vector<Ident> input_preserve;
-	cout << "out before link:" << out << endl;
 	while (changes) {
 		changes = false;
 		for (MyHTable<Ident, int, HashIdent>::PairIterator it(out.id2axis); it; it++) {
