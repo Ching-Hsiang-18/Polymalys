@@ -1,11 +1,15 @@
 #include "include/PolyWrap.h"
 
-namespace polywrap {
+namespace otawa {
+namespace poly {
 /* Display operators */
+
+using namespace elm::io;
+using namespace PPL;
 
 output_t& operator<< (output_t& stream, const coef_t& coef) {
 	char buf[128];
-	gmp_snprintf(buf, sizeof(buf), "%Zd", &PPL::raw_value(coef));
+	gmp_snprintf(buf, sizeof(buf), "%Zd", &raw_value(coef));
 	buf[sizeof(buf) - 1] = 0;
 	stream << buf;
 	return stream;
@@ -23,6 +27,12 @@ output_t& operator<< (output_t& stream, const WPoly& p) {
 	p.print(stream);
 	return stream;
 }
+/*
+output_t& operator<< (output_t& stream, const WVar& p) {
+	stream << "v" << p.guid();
+	return stream;
+}
+*/
 
 void WLinExpr::print(output_t &out) const {
 	bool first = true;
@@ -48,7 +58,7 @@ void WPoly::print(output_t &out) const {
 	  }
 	  out << "]" << endl;
 	  poly.print();
-	  cout << endl;
+	  out << endl;
 }
 
 /* Constraint & Linear combination building operators */
@@ -67,6 +77,12 @@ WCons operator>=(const WLinExpr &a, const WLinExpr &b) {
 
 WCons operator<=(const WLinExpr &a, const WLinExpr &b) {
 	return (b >= a);
+}
+WCons operator<(const WLinExpr &a, const WLinExpr &b) {
+	return (a + 1 <= b);
+}
+WCons operator>(const WLinExpr &a, const WLinExpr &b) {
+	return (a >= b + 1);
 }
 WLinExpr operator+(const WLinExpr &a, const WLinExpr &b) {
 	WLinExpr res;
@@ -121,8 +137,8 @@ WLinExpr operator-=(WLinExpr &a, const WLinExpr &b) {
 }
 
 /* Conversion methods */
-const PPL::Linear_Expression WLinExpr::toPPL(WPoly &poly) const {
-	PPL::Linear_Expression expr;
+const Linear_Expression WLinExpr::toPPL(WPoly &poly) const {
+	Linear_Expression expr;
 	for (std::map<guid_t,coef_t>::const_iterator it=coefs.begin(); it!=coefs.end(); ++it) {
 		expr = expr + it->second * poly.translate(it->first);
 	}
@@ -130,8 +146,8 @@ const PPL::Linear_Expression WLinExpr::toPPL(WPoly &poly) const {
 	return expr;
 }
 
-const PPL::Linear_Expression WLinExpr::toPPL(const WPoly &poly) const {
-	PPL::Linear_Expression expr;
+const Linear_Expression WLinExpr::toPPL(const WPoly &poly) const {
+	Linear_Expression expr;
 	for (std::map<guid_t,coef_t>::const_iterator it=coefs.begin(); it!=coefs.end(); ++it) {
 		expr = expr + it->second * poly.translate(it->first);
 	}
@@ -142,19 +158,25 @@ const PPL::Linear_Expression WLinExpr::toPPL(const WPoly &poly) const {
 /* Constraint methods */
 
 /* Poly methods */
+bool operator==(const WPoly &a, const WPoly &b) {
+	return a.equals(b);
+}
+bool operator!=(const WPoly &a, const WPoly &b) {
+	return !a.equals(b);
+}
 
-map<dim_t,guid_t> WPoly::invMap() const {
-	map<dim_t,guid_t> res;
+std::map<dim_t,guid_t> WPoly::invMap() const {
+	std::map<dim_t,guid_t> res;
 	for (std::map<guid_t,dim_t>::const_iterator it=adapter.begin(); it!=adapter.end(); ++it) {
 		res[it->second] = it->first;
 	}
 	return res;
 }
-WCons WPoly::back_translate(const PPL::Constraint &c) const {
+WCons WPoly::back_translate(const Constraint &c) const {
 	WLinExpr le;
-	map<dim_t,guid_t> inv = invMap();
-	for (PPL::dimension_type i = 0; i < poly.space_dimension(); i++) {
-		const PPL::Coefficient &coef = c.coefficient(Variable(i));
+	std::map<dim_t,guid_t> inv = invMap();
+	for (dimension_type i = 0; i < poly.space_dimension(); i++) {
+		const Coefficient &coef = c.coefficient(Variable(i));
 		if (coef != 0) {
 			le = le + coef*WVar(inv[i]);
 		}
@@ -171,8 +193,8 @@ WCons WPoly::back_translate(const PPL::Constraint &c) const {
 void WPoly::combine(WPoly &src, bool keep) {
 	int add = 0; 
 	int src_add = 0;
-	vector<dim_t> victim1;
-	vector<dim_t> victim2;
+	std::vector<dim_t> victim1;
+	std::vector<dim_t> victim2;
 
 	for (std::map<guid_t,dim_t>::const_iterator it=adapter.begin(); it!=adapter.end(); ++it) {
 		if (src.adapter.find(it->first) == src.adapter.end()) {
@@ -209,6 +231,10 @@ void WPoly::combine(WPoly &src, bool keep) {
 
 	src.map_with_dim(MapHash(srcmap));
 }
+guid_t WVar::_guid_generator = 0;
 
 }
+
+}
+
 

@@ -12,6 +12,7 @@
 #include <ppl.hh>
 
 #include "PolyCommon.h"
+#include "PolyWrap.h"
 
 namespace otawa {
 namespace poly {
@@ -21,7 +22,6 @@ using namespace otawa::util;
 
 namespace PPL = Parma_Polyhedra_Library;
 using Variable = PPL::Variable;
-Output &operator<<(Output &o, Variable pv);
 
 enum bound_t : signed long {
 	UNREACHABLE = -1,
@@ -132,7 +132,7 @@ class PPLDomain {
 
   private:
 	/* Abstract state */
-	PPL::C_Polyhedron poly;
+	WPoly poly;
 
 	MyHTable<Ident, int, HashIdent>
 	    id2axis;                      ///< Mapping from identifier (register/pointers) to polyhedron variable
@@ -165,16 +165,10 @@ class PPLDomain {
 	template <class F> class MapHelper {
 	  public:
 		MapHelper(F &pfunc, int max_in_domain);
-		inline PPL::dimension_type max_in_codomain() const { return _max_in_codomain; }
-		inline PPL::dimension_type max_in_domain() const { return _max_in_domain; }
-		inline bool maps(PPL::dimension_type i, PPL::dimension_type &j) const { return _pfunc.maps(i, j); }
-		inline bool has_empty_codomain() const { return _empty; }
+		inline bool maps(guid_t i, guid_t &j) const { return _pfunc.maps(i, j); }
 
 	  private:
 		F &_pfunc;
-		PPL::dimension_type _max_in_domain;
-		PPL::dimension_type _max_in_codomain;
-		bool _empty;
 	};
 
 	/**
@@ -187,7 +181,7 @@ class PPLDomain {
 	  public:
 		inline ~RemoveMarked() = default;
 		inline RemoveMarked(BitVector &bv, int size) : _bv(bv), _size(size) {}
-		bool maps(PPL::dimension_type i, PPL::dimension_type &j) const;
+		bool maps(guid_t i, guid_t &j) const;
 
 	  private:
 		BitVector &_bv;
@@ -203,7 +197,7 @@ class PPLDomain {
 	class MapWithHash {
 	  public:
 		inline explicit MapWithHash(MyHTable<int, int> &map) : _map(map) {}
-		inline bool maps(PPL::dimension_type i, PPL::dimension_type &j) const {
+		inline bool maps(guid_t i, guid_t &j) const {
 			if (_map.hasKey(i)) {
 				j = _map[i];
 				return true;
@@ -217,8 +211,8 @@ class PPLDomain {
 
 	class MapShift {
 	  public:
-		inline explicit MapShift(PPL::dimension_type domsize, PPL::dimension_type shift) : _domsize(domsize), _shift(shift) {}
-		inline bool maps(PPL::dimension_type i, PPL::dimension_type &j) const {
+		inline explicit MapShift(guid_t domsize, guid_t shift) : _domsize(domsize), _shift(shift) {}
+		inline bool maps(guid_t i, guid_t &j) const {
 			if (i < _domsize) {
 				j = i + _shift;
 				return true;
@@ -226,8 +220,8 @@ class PPLDomain {
 		}
 
 	  private:
-		PPL::dimension_type _domsize;
-		PPL::dimension_type _shift;
+		guid_t _domsize;
+		guid_t _shift;
 	};
 
   public:
@@ -238,7 +232,7 @@ class PPLDomain {
 	 */
 	inline PPLDomain() {
 		num_axis = -1;
-		poly = PPL::C_Polyhedron(0, PPL::EMPTY);
+		poly = WPoly(true);
 		compare_reg = Ident();
 		compare_op = sem::EQ;
 		_ws = nullptr;
@@ -254,7 +248,7 @@ class PPLDomain {
 		mem_ref = 0;
 		trash = BitVector(maxAxis);
 		_ws = ws;
-		poly = PPL::C_Polyhedron(0, PPL::UNIVERSE);
+		poly = WPoly(true);
 		compare_reg = Ident();
 		compare_op = sem::EQ;
 		_summary = summary;
@@ -370,7 +364,7 @@ class PPLDomain {
 	 * @param bsup_n Reference for storing the numerator for the upper bound
 	 * @param bsup_d eference for storing the denominator for the upper bound
 	 */
-	void getRange(const Variable &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n,
+	void getRange(const WVar &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d, PPL::Coefficient &bsup_n,
 	              PPL::Coefficient &bsup_d) const;
 
 	/**
@@ -424,7 +418,7 @@ class PPLDomain {
 	 * @param v2 Second variable
 	 * @return true if may be equal, false otherwise
 	 */
-	bool mayAlias(const Variable &v1, const Variable &v2) const;
+	bool mayAlias(const WVar &v1, const WVar &v2) const;
 
 	/**
 	 * Tests if two variables must be equal (i.e. they are equal for all concrete states in this abstract state)
@@ -433,7 +427,7 @@ class PPLDomain {
 	 * @param v2 Second variable
 	 * @return true if must be equal, false otherwise
 	 */
-	bool mustAlias(const Variable &v1, const Variable &v2, int offset = 0) const;
+	bool mustAlias(const WVar &v1, const WVar &v2, int offset = 0) const;
 
 	/**
 	 * Attempts to get the value of a a variable mapped to an identifier, if this value can be statically determined,
@@ -454,7 +448,7 @@ class PPLDomain {
 	 * @param cst_d Reference for storing the denominator
 	 * @return true if successful, false if the value cannot be determined.
 	 */
-	bool getConstant(const Variable &var, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d) const;
+	bool getConstant(const WVar &var, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d) const;
 
 	/* TODO documenter */
 	PPLDomain getLinearExpr(const Ident &id);
@@ -619,7 +613,7 @@ class PPLDomain {
 	 *
 	 * @param c The new constraint to add.
 	 */
-	void doNewConstraint(const PPL::Constraint &c) { poly.add_constraint(c); }
+	void doNewConstraint(const WCons &c) { poly.add_constraint(c); }
 
 	/* Variable/Idents handling operations */
 
@@ -630,7 +624,7 @@ class PPLDomain {
 	 * @param allow_replace true if we allow replacing an existing variable that was mapped to id, false otherwise
 	 * @return The new variable.
 	 */
-	Variable varNew(const Ident &id, bool allow_replace = false, bool create_damaged = false);
+	WVar varNew(const Ident &id, bool allow_replace = false, bool create_damaged = false);
 
 	/**
 	 * Schedule a variable (associated with an identifier) to be destroyed.
@@ -646,7 +640,7 @@ class PPLDomain {
 	 *
 	 * @param v Target variable
 	 */
-	inline void varKill(const Variable &v) { return _doFreeAxis(v.id()); }
+	inline void varKill(const WVar &v) { return _doFreeAxis(v.guid()); }
 
 	/**
 	 * Gets the variable associated with an identifier, creating a new variable if it doesn't exists (i.e. lookup).
@@ -655,7 +649,7 @@ class PPLDomain {
 	 * @param create_input if true, and the identifier is unknown, and we are summarizing, create an input
 	 * @return The variable.
 	 */
-	Variable getVarOrNew(const Ident &id, bool create_input = false);
+	WVar getVarOrNew(const Ident &id, bool create_input = false);
 
 	/**
 	 * Gets the variable associated with an identifier, aborting if the variables doesn't exists (i.e. lookup).
@@ -663,7 +657,7 @@ class PPLDomain {
 	 * @param id The target identifier
 	 * @return The variable.
 	 */
-	Variable getVar(const Ident &id) const;
+	WVar getVar(const Ident &id) const;
 
 	/**
 	 * Tests if a variable is associated with an identifier.
@@ -671,9 +665,9 @@ class PPLDomain {
 	 * @param v Variable to test
 	 * @return true if the variable is mapped to an identifier, false otherwise
 	 */
-	inline bool isVarMapped(const Variable &v) const {
-		return ((unsigned)axis2id.length() > v.id()) && (axis2id[v.id()].getType() != Ident::ID_INVALID) &&
-		       id2axis.hasKey(axis2id[v.id()]);
+	inline bool isVarMapped(const WVar &v) const {
+		return ((unsigned)axis2id.length() > v.guid()) && (axis2id[v.guid()].getType() != Ident::ID_INVALID) &&
+		       id2axis.hasKey(axis2id[v.guid()]);
 	}
 
 	/**
@@ -682,7 +676,7 @@ class PPLDomain {
 	 * @param v The variable
 	 * @return The identifier
 	 */
-	inline const Ident &getIdent(const Variable &v) const { return axis2id[v.id()]; }
+	inline const Ident &getIdent(const WVar &v) const { return axis2id[v.guid()]; }
 
 	/**
 	 * Tests if an identifier exists
@@ -734,7 +728,7 @@ class PPLDomain {
 	 * @param newValue A variable representing the new memory value.
 	 * @return new address variable
 	 */
-	Variable memReplace(const Variable & address, const Variable & newValue);
+	WVar memReplace(const WVar & address, const WVar & newValue);
 
 	/**
 	 * Create a new abstract memory location at specified address, with the specified value.
@@ -744,7 +738,7 @@ class PPLDomain {
 	 * @param dmg If summarizing, mark address as damaged
 	 * @return new address variable
 	 */
-	Variable memCreate(const PPL::Linear_Expression & address , const PPL::Linear_Expression &newValue, bool dmg = true);
+	WVar memCreate(const WLinExpr & address , const WLinExpr &newValue, bool dmg = true);
 
 	/**
 	 * Associate a new value to the address variable, merging with existing value.
@@ -757,7 +751,7 @@ class PPLDomain {
 	 * @param newValue A variable representing the new memory value.
 	 * @return new address variable
 	 */
-	Variable memMerge(const Variable &address, const Variable &newValue);
+	WVar memMerge(const WVar &address, const WVar &newValue);
 
 	/**
 	 * Attempts to use process initial state to discover value associated with a constant address-variable
@@ -779,28 +773,24 @@ class PPLDomain {
 	inline void _sanityChecks(bool allow_holes = false) {}
 #endif
 
-	const PPL::Constraint *_getConstraintFor(int axis) const;
+	const WCons *_getConstraintFor(int axis) const;
 	/**
 	 * Indexes the pointer in dom, by their expression in terms of registers referenced in map_regs.
 	 * Stores the result in map_ptr.
 	 */
-	void _indexPointersByExpr(MyHTable<PPL::Constraint, int, HashCons> &map_ptr,
+	void _indexPointersByExpr(MyHTable<WCons, int, HashCons> &map_ptr,
 	                          MyHTable<int, int> &commonRegs) const;
 
 	void _identifyAncestorVars(PPLDomain &l, MyHTable<int, int> &commonVarsL, PPLDomain &r,
 	                           MyHTable<int, int> &commonVarsR) const;
 
 	/**
-	 * Computes the convex hull of two polyhedron of different space dimension, extending the smaller if needed.
-	 */
-	void _extendAndHull(PPL::C_Polyhedron &poly1, PPL::C_Polyhedron &poly2) const;
-	/**
 	 * Computes the join or widening of two abstract states
 	 * @param this The first abstract state (will not be modified)
 	 * @param r The second abstract state (will not be modified)
 	 * @return Join or widening result
 	 */
-	void _doBinaryOp(int op, Variable *v, Variable *vs1, Variable *vs2);
+	void _doBinaryOp(int op, WVar *v, WVar *vs1, WVar *vs2);
 
 	/**
 	 * Unify the two states so that variables refering to the same object (register, memory location, ...) have the same
@@ -821,8 +811,8 @@ class PPLDomain {
 	 */
 	void _doMatchSummaries(PPLDomain &l1, PPLDomain &r1, unsigned int &axis, 
 			MyHTable <int,int> &mappingL, MyHTable<int,int> &mappingR,
-			MyHTable<PPL::Constraint, int, HashCons>&,
-			MyHTable<PPL::Constraint, int, HashCons>&) const;
+			MyHTable<WCons, int, HashCons>&,
+			MyHTable<WCons, int, HashCons>&) const;
 
 };
 

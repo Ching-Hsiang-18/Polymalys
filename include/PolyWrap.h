@@ -2,15 +2,17 @@
 #define POLYWRAP_H 1
 
 #include <ppl.hh>
-namespace polywrap {
+#include <elm/io/Output.h>
 
-using namespace std;
+namespace otawa { 
+namespace poly {
+
 namespace PPL = Parma_Polyhedra_Library;
 
 typedef unsigned long long guid_t;
-typedef GMP_Integer coef_t;
+typedef std::GMP_Integer coef_t;
 typedef PPL::dimension_type dim_t;
-typedef std::ostream output_t;
+typedef elm::io::Output output_t;
 
 class WVar;
 class WCons;
@@ -21,13 +23,13 @@ output_t& operator<< (output_t& stream, const coef_t&);
 output_t& operator<< (output_t& stream, const WLinExpr&);
 output_t& operator<< (output_t& stream, const WCons&);
 output_t& operator<< (output_t& stream, const WPoly&);
-output_t& operator<< (output_t& stream, const coef_t& coef);
-output_t& operator<< (output_t& stream, const WLinExpr& le);
-output_t& operator<< (output_t& stream, const WCons& c);
-output_t& operator<< (output_t& stream, const WPoly& p);
 WCons operator==(const WLinExpr &a, const WLinExpr &b);
+bool operator==(const WPoly &a, const WPoly &b);
+bool operator!=(const WPoly &a, const WPoly &b);
 WCons operator>=(const WLinExpr &a, const WLinExpr &b);
 WCons operator<=(const WLinExpr &a, const WLinExpr &b);
+WCons operator>(const WLinExpr &a, const WLinExpr &b);
+WCons operator<(const WLinExpr &a, const WLinExpr &b);
 WLinExpr operator+(const WLinExpr &a, const WLinExpr &b);
 WLinExpr operator*(const WLinExpr &a, const coef_t b);
 WLinExpr operator*(const coef_t b, const WLinExpr &a);
@@ -43,6 +45,7 @@ class WVar {
 		}
 		inline WVar(guid_t guid) { _guid = guid; }
 		inline guid_t guid() const { return _guid; }
+		inline guid_t id() const { return _guid; }
 
 	private:
 		static guid_t _guid_generator;
@@ -51,8 +54,6 @@ class WVar {
 
 // WVar
 //
-guid_t WVar::_guid_generator = 0;
-
 class WLinExpr {
 	public:
 		friend WLinExpr operator+(const WLinExpr &a, const WLinExpr &b);
@@ -67,11 +68,23 @@ class WLinExpr {
 
 		const PPL::Linear_Expression toPPL(WPoly &poly) const;
 		const PPL::Linear_Expression toPPL(const WPoly &poly) const;
+		
+		inline coef_t inhomogeneous_term() { return cst; }
+		inline coef_t coefficient(const WVar &v) { return coefs[v.guid()]; }
+		inline guid_t space_dimension() {
+			std::cout << "warning: WLinExpr::space_dimension() is deprecated" << std::endl;
+			guid_t res = 0;
+			for (std::map<guid_t,coef_t>::const_iterator it=coefs.begin(); it!=coefs.end(); ++it) {
+				if (res < it->first)
+					res = it->first;
+			}
+			return res + 1;
+		}
 
 		void print(output_t &out) const;
 
 	private:
-		map<guid_t,coef_t> coefs;
+		std::map<guid_t,coef_t> coefs;
 		coef_t cst;
 };
 
@@ -83,6 +96,9 @@ enum ctype_t {CONS_EQ, CONS_GE};
 class WCons {
 	public:
 		inline WCons(const WLinExpr &l, ctype_t t) { expr = l; ctype = t; }
+		inline WCons() {
+			ctype = CONS_EQ;
+		}
 		inline void print(output_t &out) const {
 			if (ctype == CONS_EQ) {
 				out << "0 == ";
@@ -91,8 +107,12 @@ class WCons {
 			} else abort();
 			expr.print(out);
 		}
+		inline coef_t inhomogeneous_term() { return expr.inhomogeneous_term(); }
+		inline coef_t coefficient(const WVar &v) { return expr.coefficient(v); }
+		inline guid_t space_dimension() { return expr.space_dimension(); }
 		inline const WLinExpr& getLE() const { return expr; }
 		inline ctype_t getType() const { return ctype; }
+		inline bool is_equality() const { return ctype == CONS_EQ; }
 	private:
 		ctype_t ctype;
 		WLinExpr expr;
@@ -103,7 +123,7 @@ class WPoly {
 	private:
 		class Eliminator {
 			public:
-				inline Eliminator(const vector<PPL::dimension_type> &victims, 
+				inline Eliminator(const std::vector<PPL::dimension_type> &victims, 
 						PPL::C_Polyhedron &p) : _victims(victims), _p(p) { 
 				}
 
@@ -111,7 +131,7 @@ class WPoly {
 				inline PPL::dimension_type max_in_domain() const { return _p.space_dimension() - 1; }
 				inline bool maps(PPL::dimension_type i, PPL::dimension_type &j) const { 
 					PPL::dimension_type k = 0;
-					for (vector<PPL::dimension_type>::const_iterator it = _victims.begin(); it != _victims.end(); it++) {
+					for (std::vector<PPL::dimension_type>::const_iterator it = _victims.begin(); it != _victims.end(); it++) {
 						if ((*it) == i)
 							return false;
 						if ((*it) < i)
@@ -122,12 +142,12 @@ class WPoly {
 				}
 				inline bool has_empty_codomain() const { return _p.space_dimension() == _victims.size(); }
 			private:
-				const vector<PPL::dimension_type> &_victims;
+				const std::vector<PPL::dimension_type> &_victims;
 				const PPL::C_Polyhedron & _p;
 		};
 		class MapHash {
 			public:
-				inline MapHash(const map<dim_t,dim_t> remap) : _remap(remap) {
+				inline MapHash(const std::map<dim_t,dim_t> remap) : _remap(remap) {
 					_max_co = 0;
 					_max_dom = 0;
 
@@ -150,7 +170,7 @@ class WPoly {
 				inline bool has_empty_codomain() const { return false; }
 
 			private:
-				map<dim_t,dim_t> _remap;
+				std::map<dim_t,dim_t> _remap;
 				dim_t _max_co, _max_dom;
 		};
 		void combine(WPoly &src, bool keep);
@@ -180,31 +200,8 @@ class WPoly {
 				PPL::Constraint_System::const_iterator real_it;
 		};
 
-		inline WPoly() {
-			poly = PPL::C_Polyhedron(0, PPL::UNIVERSE);
-		}
-
-
-		// intersection 
-		inline void intersection_assign(const WPoly &src) {
-			WPoly copie = src;
-			combine(copie, true);
-			poly.intersection_assign(copie.poly);
-		}
-
-		// join
-		inline void poly_hull_assign(const WPoly &src) {
-			WPoly copie = src;
-			combine(copie, false);
-			poly.poly_hull_assign(copie.poly);
-		}
-
-		// widening	
-		inline void bounded_H79_extrapolation_assign(WPoly &src) {
-			WPoly copie = src;
-			combine(copie, false);
-			PPL::Constraint_System dummy;
-			poly.bounded_H79_extrapolation_assign(copie.poly, dummy);
+		inline WPoly(bool empty = false) {
+			poly = PPL::C_Polyhedron(0, empty ? PPL::EMPTY : PPL::UNIVERSE);
 		}
 
 
@@ -247,7 +244,7 @@ class WPoly {
 			return ppl_c;
 		}
 
-		map<dim_t,guid_t> invMap() const;
+		std::map<dim_t,guid_t> invMap() const;
 
 		void add_constraint(const WCons &c)  { 
 			poly.add_constraint(translate(c));
@@ -262,11 +259,65 @@ class WPoly {
 			return poly.maximize(translate(expr), sup_n, sup_d, maximum);
 		}
 
+		inline bool minimize(const WLinExpr&expr, coef_t &sup_n, coef_t &sup_d, bool &maximum) const {
+			return poly.minimize(translate(expr), sup_n, sup_d, maximum);
+		}
+
 		inline void unconstrain(const WVar &var) {
 			eliminate(translate(var).id());
 		}
 
+
+		/* Wrapper around PPL methods */
+		PPL::Poly_Con_Relation relation_with(const WCons &c) const {
+			return poly.relation_with(translate(c));
+		}
+
+		inline bool is_empty() const {
+			return poly.is_empty();
+		}
+
+		inline bool is_universe() const {
+			return poly.is_universe();
+		}
+
+		inline dim_t space_dimension() const {
+			return poly.space_dimension();
+		}
+
+		// Mapping (projection)
 		template <class F> void map_vars(F pfunc);
+
+		// equality
+		inline bool equals(const WPoly &src) const {
+			WPoly copie1 = src;
+			WPoly copie2 = *this;
+			copie1.combine(copie2, true);
+			return copie1.poly == copie2.poly;
+		}
+
+		// intersection 
+		inline void intersection_assign(const WPoly &src) {
+			WPoly copie = src;
+			combine(copie, true);
+			poly.intersection_assign(copie.poly);
+		}
+
+		// join
+		inline void poly_hull_assign(const WPoly &src) {
+			WPoly copie = src;
+			combine(copie, false);
+			poly.poly_hull_assign(copie.poly);
+		}
+
+		// widening	
+		inline void bounded_H79_extrapolation_assign(WPoly &src) {
+			WPoly copie = src;
+			combine(copie, false);
+			PPL::Constraint_System dummy;
+			poly.bounded_H79_extrapolation_assign(copie.poly, dummy);
+		}
+
 
 	private:
 		template <class F> void map_adapter_dim(F pfunc);
@@ -277,13 +328,13 @@ class WPoly {
 		}
 
 		inline void eliminate(PPL::dimension_type id) {
-			vector<PPL::dimension_type> victims;
+			std::vector<PPL::dimension_type> victims;
 			victims.push_back(id);
 			Eliminator el(victims, poly);
 			map_with_dim(el);
 		}
 
-		map<guid_t,dim_t> adapter;
+		std::map<guid_t,dim_t> adapter;
 		dim_t next = 0;
 		PPL::C_Polyhedron poly;
 };
@@ -306,8 +357,8 @@ template <class F> void WPoly::map_adapter_dim(F pfunc) {
 }
 
 template <class F> void WPoly::map_vars(F pfunc) {
-	map<guid_t,dim_t> new_adapter;
-	vector<dim_t> victims;
+	std::map<guid_t,dim_t> new_adapter;
+	std::vector<dim_t> victims;
 	for (std::map<guid_t,dim_t>::iterator it=adapter.begin(); it!=adapter.end(); ++it) {
 		guid_t i = it->first;
 		guid_t j = i;
@@ -323,5 +374,6 @@ template <class F> void WPoly::map_vars(F pfunc) {
 	map_with_dim(el);
 }
 
-} // namespace polywrap 
+} // end namespace poly 
+} // end namespace otawa
 #endif
