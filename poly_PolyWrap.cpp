@@ -18,6 +18,7 @@ output_t& operator<< (output_t& stream, const WLinExpr& le) {
 	le.print(stream);
 	return stream; 
 }
+
 output_t& operator<< (output_t& stream, const WCons& c) {
 	c.print(stream);
 	return stream;
@@ -27,13 +28,12 @@ output_t& operator<< (output_t& stream, const WPoly& p) {
 	p.print(stream);
 	return stream;
 }
-/*
 output_t& operator<< (output_t& stream, const WVar& p) {
 	stream << "v" << p.guid();
 	return stream;
 }
-*/
 
+WLinExpr::TermIterator::TermIterator(const WCons &c): _le(c.getLE()), real_it(_le.coefs.begin()) { }
 void WLinExpr::print(output_t &out) const {
 	bool first = true;
 	for (std::map<guid_t,coef_t>::const_iterator it=coefs.begin(); it!=coefs.end(); ++it) {
@@ -52,12 +52,16 @@ void WLinExpr::print(output_t &out) const {
 }
 
 void WPoly::print(output_t &out) const {
+	  poly.print();
+	  out << endl;
+	  for (std::map<guid_t,dim_t>::const_iterator it=adapter.begin(); it != adapter.end(); it++) {
+		  out <<  it->first << " -> " << it->second << endl;
+	  }
 	  out << "[";
-	  for (WPoly::const_iterator it(*this); it; it++) {
+	  for (WPoly::ConsIterator it(*this); it; it++) {
 		  out << (*it) << "; ";
 	  }
 	  out << "]" << endl;
-	  poly.print();
 	  out << endl;
 }
 
@@ -178,7 +182,7 @@ WCons WPoly::back_translate(const Constraint &c) const {
 	for (dimension_type i = 0; i < poly.space_dimension(); i++) {
 		const Coefficient &coef = c.coefficient(Variable(i));
 		if (coef != 0) {
-			le = le + coef*WVar(inv[i]);
+			le = le + coef*WVar(inv.at(i));
 		}
 	}
 	le = le + c.inhomogeneous_term();

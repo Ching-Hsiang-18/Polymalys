@@ -128,15 +128,98 @@ class PPLSummary {
 			return true;
 		}
 };
+
+// TODO make this a template and put in elm/whatever
+class Mapping {
+	public:
+		bool includes(const Mapping &src) const {
+			for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it(id2guid); it; it++) {
+				if (!src.id2guid.hasKey((*it).fst))
+				   return false;	
+				if (src.id2guid[(*it).fst] != (*it).snd)
+					return false;
+			}
+			for (MyHTable<guid_t, Ident>::PairIterator it(guid2id); it; it++) {
+				if (!src.guid2id.hasKey((*it).fst))
+				   return false;	
+
+				const Ident &id1 = (*it).snd;
+				const Ident &id2 = src.guid2id[(*it).fst];
+				if (id1 != id2) 
+					return false;
+			}
+			return true;
+		}
+
+		bool operator==(const Mapping &src) const {
+			return this->includes(src) && src.includes(*this);
+		}
+
+		inline void add(const Ident &id, guid_t guid) {
+			if (id2guid.hasKey(id))
+				guid2id.remove(id2guid[id]);
+
+			if (guid2id.hasKey(guid))
+				id2guid.remove(guid2id[guid]);
+
+			id2guid[id] = guid;
+			guid2id[guid] = id;
+		}
+
+		inline guid_t find1(const Ident &id) const {
+			return id2guid[id];
+		}
+
+		inline const Ident& find2(guid_t guid) const {
+			return guid2id[guid];
+		}
+
+		inline void del1(const Ident &id) {
+			guid2id.remove(id2guid[id]);
+			id2guid.remove(id);
+
+		}
+
+		inline void del2(guid_t guid) {
+			id2guid.remove(guid2id[guid]);
+			guid2id.remove(guid);
+		}
+
+		inline bool has1(const Ident &id) const {
+			return id2guid.hasKey(id);
+		}
+
+		inline bool has2(guid_t guid) const {
+			return guid2id.hasKey(guid);
+		}
+
+		inline MyHTable<Ident, guid_t, HashIdent>::PairIterator getPairIter() const {
+			return MyHTable<Ident, guid_t, HashIdent>::PairIterator(id2guid);
+		}
+
+		inline MyHTable<Ident, guid_t, HashIdent>::MutableIter getMutableIter() {
+			return MyHTable<Ident, guid_t, HashIdent>::MutableIter(id2guid);
+		}
+		
+		inline int count() const {
+			ASSERT(id2guid.count() == guid2id.count());
+			return id2guid.count();
+		}
+
+	private:
+		MyHTable<Ident, guid_t, HashIdent> id2guid;
+		MyHTable<guid_t, Ident> guid2id;
+
+};
+
 class PPLDomain {
 
-  private:
+private:
 	/* Abstract state */
 	WPoly poly;
 
-	MyHTable<Ident, int, HashIdent>
-	    id2axis;                      ///< Mapping from identifier (register/pointers) to polyhedron variable
-	genstruct::Vector<Ident> axis2id; ///< Reverse identifier mapping
+	Mapping idmap; ///< Mapping from identifiers (registers/pointers) to polyhedron variables
+	Vector<guid_t> victims; ///< Set of variables scheduled to be destroyed
 
 	Ident compare_reg;      ///< Register holding the last comparison result
 	sem::cond_t compare_op; ///< Last comparison semantics
@@ -144,8 +227,6 @@ class PPLDomain {
 	int mem_ref{}; ///< Highest pointer ID + 1
 	int num_axis;  ///<Highest poly variable ID + 1
 
-	BitVector trash; ///< Bitvector representing the set of variables scheduled to be destroyed
-	
 	Vector<bound_t> bounds;
 	Vector<PPLDomain> *linbounds = NULL;
 
@@ -230,9 +311,8 @@ class PPLDomain {
 	/**
 	 * Builds a bottom state
 	 */
-	inline PPLDomain() {
+	inline PPLDomain() : poly(true) {
 		num_axis = -1;
-		poly = WPoly(true);
 		compare_reg = Ident();
 		compare_op = sem::EQ;
 		_ws = nullptr;
@@ -243,26 +323,23 @@ class PPLDomain {
 	 * Builds a top state
 	 * @param maxAxis Maximum number of variables this state can hold
 	 */
-	inline explicit PPLDomain(int maxAxis, WorkSpace *ws, PPLSummary *summary = nullptr) {
+	inline explicit PPLDomain(int maxAxis, WorkSpace *ws, PPLSummary *summary = nullptr) : poly(false) {
 		num_axis = 0;
 		mem_ref = 0;
-		trash = BitVector(maxAxis);
 		_ws = ws;
-		poly = WPoly(true);
 		compare_reg = Ident();
 		compare_op = sem::EQ;
 		_summary = summary;
 	}
 
-	inline PPLDomain(const PPLDomain &src) {
-		poly = src.poly;
+	inline PPLDomain(const PPLDomain &src) : poly(src.poly){
 		num_axis = src.num_axis;
-		id2axis = src.id2axis;
-		axis2id = src.axis2id;
+		idmap = src.idmap;
+		ASSERT(idmap == src.idmap);
 		mem_ref = src.mem_ref;
 		compare_reg = src.compare_reg;
 		compare_op = src.compare_op;
-		trash = src.trash;
+		victims = src.victims;
 		bounds = src.bounds;
 		if (src.linbounds != nullptr) {
 			linbounds = new Vector<PPLDomain>(*src.linbounds);
@@ -280,12 +357,12 @@ class PPLDomain {
 	inline PPLDomain &operator=(const PPLDomain &dom) {
 		poly = dom.poly;
 		num_axis = dom.num_axis;
-		id2axis = dom.id2axis;
-		axis2id = dom.axis2id;
+		idmap = dom.idmap;
+		ASSERT(idmap == dom.idmap);
 		compare_reg = dom.compare_reg;
 		compare_op = dom.compare_op;
 		mem_ref = dom.mem_ref;
-		trash = dom.trash;
+		victims = dom.victims;
 		bounds = dom.bounds;
 		_ws = dom._ws;
 		if (linbounds != nullptr) {
@@ -382,7 +459,7 @@ class PPLDomain {
 	 *
 	 * @return The space dimension count.
 	 */
-	inline int getVarIDCount() const { return poly.space_dimension(); }
+	inline int getVarIDCount() const { return poly.variable_count(); }
 
 	/**
 	 * Gets the number of constraints in the current state
@@ -632,7 +709,9 @@ class PPLDomain {
 	 *
 	 * @param id Target identifier
 	 */
-	inline void varKill(const Ident &id) { return _doFreeAxis(id2axis[id]); }
+	inline void varKill(const Ident &id) { 
+		varKill(WVar(idmap.find1(id)));
+	}
 
 	/**
 	 * Schedule a variable to be destroyed.
@@ -640,7 +719,10 @@ class PPLDomain {
 	 *
 	 * @param v Target variable
 	 */
-	inline void varKill(const WVar &v) { return _doFreeAxis(v.guid()); }
+	inline void varKill(const WVar &v) { 
+		idmap.del2(v.guid());
+		victims.add(v.guid()); 
+	}
 
 	/**
 	 * Gets the variable associated with an identifier, creating a new variable if it doesn't exists (i.e. lookup).
@@ -666,8 +748,7 @@ class PPLDomain {
 	 * @return true if the variable is mapped to an identifier, false otherwise
 	 */
 	inline bool isVarMapped(const WVar &v) const {
-		return ((unsigned)axis2id.length() > v.guid()) && (axis2id[v.guid()].getType() != Ident::ID_INVALID) &&
-		       id2axis.hasKey(axis2id[v.guid()]);
+		return idmap.has2(v.guid());
 	}
 
 	/**
@@ -676,7 +757,7 @@ class PPLDomain {
 	 * @param v The variable
 	 * @return The identifier
 	 */
-	inline const Ident &getIdent(const WVar &v) const { return axis2id[v.guid()]; }
+	inline const Ident &getIdent(const WVar &v) const { return idmap.find2(v.guid()); }
 
 	/**
 	 * Tests if an identifier exists
@@ -765,8 +846,8 @@ class PPLDomain {
 
   private:
 	/* Private helper functions. Subject to changes, and should not be used directly. */
-	int _doAllocAxis(const Ident & /*ident*/, bool allow_replace = false);
-	void _doFreeAxis(int axis);
+//	int _doAllocAxis(const Ident & /*ident*/, bool allow_replace = false);
+//	void _doFreeAxis(int axis);
 #ifdef POLY_DEBUG
 	void _sanityChecks(bool allow_holes = false);
 #else

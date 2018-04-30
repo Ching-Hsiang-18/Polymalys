@@ -107,7 +107,6 @@ PPLDomain::~PPLDomain() {
 }
 
 void PPLDomain::print(io::Output &out) const {
-#ifdef TODO
 	static char buf[64];
 
 	if (isBottom()) {
@@ -117,43 +116,41 @@ void PPLDomain::print(io::Output &out) const {
 	Ident id_ssp(Ident::ID_START_SP, Ident::ID_SPECIAL);
 	bool is_loop_bound = !hasIdent(id_ssp);
 
-	WCons_System cons = poly.minimized_constraints();
 	int ncons = 0;
 
 	if (!is_loop_bound)
 		out << "Constraints: ";
 
-	for (WCons_System::const_iterator it = cons.begin(); it != cons.end(); it++, ncons++) {
+	out << poly << endl;
+
+	for (WPoly::ConsIterator it(poly); it; it++) {
 		const WCons &c = *it;
 
 		bool firstTerm = true;
-		for (PPL::dimension_type i = 0; i < cons.space_dimension(); i++) {
-			const PPL::Coefficient &coef = c.coefficient(Variable(i));
+		for (WCons::TermIterator it2(*it); it2; it2++) {
+			WVar v = *it2;
+			const PPL::Coefficient &coef = c.coefficient(v);
 
-			if (coef != 0) {
-				Variable v(i);
-
-				if (coef == -1) {
-					out << "- ";
-				} else {
-					if (!firstTerm)
-						out << "+ ";
-					if (coef != 1) {
-						gmp_snprintf(buf, sizeof(buf), "%Zd", &PPL::raw_value(coef));
-						buf[sizeof(buf) - 1] = 0;
-						out << buf << ".";
-					}
+			if (coef == -1) {
+				out << "- ";
+			} else {
+				if (!firstTerm)
+					out << "+ ";
+				if (coef != 1) {
+					gmp_snprintf(buf, sizeof(buf), "%Zd", &PPL::raw_value(coef));
+					buf[sizeof(buf) - 1] = 0;
+					out << buf << ".";
 				}
-
-				if (isVarMapped(v)) {
-					out << getIdent(v);
-				} else {
-					out << v;
-				}
-
-				out << " ";
-				firstTerm = false;
 			}
+
+			if (isVarMapped(v)) {
+				out << getIdent(v);
+			} else {
+				out << v;
+			}
+
+			out << " ";
+			firstTerm = false;
 		}
 
 		if (c.is_equality()) {
@@ -174,7 +171,7 @@ void PPLDomain::print(io::Output &out) const {
 		return;
 	out << endl;
 
-	out << "Space dimension: " << poly.space_dimension() << ", Constraints count: " << ncons << endl;
+	out << "Variable count: " << poly.variable_count() << ", Constraints count: " << ncons << endl;
 	displayIdentMap(out);
 	displayLocVars(out);
 	displayGlobVars(out);
@@ -183,8 +180,8 @@ void PPLDomain::print(io::Output &out) const {
 	if (_summary != nullptr) {
 		cout << "Summary info: " << endl;
 		cout << "- Inputs: ";
-		for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
-			const Pair<Ident, int> &p = *it;
+		for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+			const Pair<Ident, guid_t> &p = *it;
 			if ((p.fst.getType() == Ident::ID_MEM_VAL_INPUT) || (p.fst.getType() == Ident::ID_REG_INPUT)) 
 				cout << p.fst << ", ";
 		}
@@ -203,13 +200,12 @@ void PPLDomain::print(io::Output &out) const {
 
 		
 	}
-#endif
 }
 
 bool PPLDomain::equals(const PPLDomain &b) const {
 
 	ASSERT((_ws == nullptr) || (b._ws == nullptr) || (_ws == b._ws));
-	ASSERT(trash.countOnes() == 0);
+	ASSERT(victims.count() == 0);
 
 	if (isBottom() != b.isBottom())
 		return false;
@@ -227,7 +223,7 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 	/*
 	 * First, attempt to show that the states are different using quick checks.
 	 */
-	if (poly.space_dimension() != b.poly.space_dimension()) {
+	if (poly.variable_count() != b.poly.variable_count()) {
 		return false;
 	}
 
@@ -239,11 +235,11 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 		return false;
 	}
 
-	if (id2axis.count() != b.id2axis.count()) {
+	if (idmap.count() != b.idmap.count()) {
 		return false;
 	}
 
-	if (trash != b.trash) {
+	if (victims != b.victims) {
 		return false;
 	}
 
@@ -258,8 +254,8 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 	PPLDomain l = *this;
 
 	int expectedVarCount = 0;
-	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
-		const Pair<Ident, int> &p = *it;
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+		const Pair<Ident, guid_t> &p = *it;
 		if ((p.fst.getType() == Ident::ID_MEM_VAL) || (p.fst.getType() == Ident::ID_MEM_ADDR) || (p.fst.getType() == Ident::ID_MEM_VAL_INPUT)) {
 			continue;
 		}
@@ -268,7 +264,7 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 
 	_doUnify(l, r, true);
 
-	if ((l.id2axis.count() != expectedVarCount) || (r.id2axis.count() != expectedVarCount)) {
+	if ((l.idmap.count() != expectedVarCount) || (r.idmap.count() != expectedVarCount)) {
 		/* There was some unmatched registers */ 
 		return false;
 	}
@@ -285,7 +281,7 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 	l = *this;
 	_doUnify(l, r);
 
-	if ((l.id2axis.count() != id2axis.count()) || (r.id2axis.count() != b.id2axis.count())) {
+	if ((l.idmap.count() != idmap.count()) || (r.idmap.count() != b.idmap.count())) {
 		/* There was some unmatched memory locations */
 		return false;
 	}
@@ -318,9 +314,7 @@ bool PPLDomain::RemoveMarked::maps(guid_t i, guid_t &j) const {
 }
 
 void PPLDomain::displayLocVars(io::Output &out) const {
-#ifdef TODO
 	const PropList _props;
-	WCons_System mcons = poly.minimized_constraints();
 	if (isBottom()) {
 		out << "diplayGlobVars: Nothing to display (state is BOTTOM)" << endl;
 		return;
@@ -330,23 +324,22 @@ void PPLDomain::displayLocVars(io::Output &out) const {
 		cout << "Local variables: NOT APPLICABLE" << endl;
 		return;
 	}
-	Variable ssp = getVar(id_ssp);
+	WVar ssp = getVar(id_ssp);
 	out << "Local variables: " << endl;
 	for (int i = 0; i < NUM_LOC_VARS(_props) * LOC_VAR_SIZE(_props); i += LOC_VAR_SIZE(_props)) {
-		WCons_System cons = mcons;
-		Variable v(num_axis);
-		cons.insert(v == ssp - i - LOC_VAR_SIZE(_props));
+		WPoly poly_copy = poly;
+		WVar v(num_axis);
+		poly_copy.add_constraint(v == ssp - i - LOC_VAR_SIZE(_props));
 		out << " [SP - " << hex(i) << "] == ";
 		bool found = false;
-		for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
-			elm::Pair<Ident, int> p = *it;
-			Variable vsnd = Variable(p.snd);
+		for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+			elm::Pair<Ident, guid_t> p = *it;
+			WVar vsnd = WVar(p.snd);
 			if (p.fst.getType() == Ident::ID_MEM_ADDR) {
-				WPoly poly(cons);
 				PPL::Coefficient infNumAddr, infDenAddr, supNumAddr, supDenAddr;
 				bool maximum, minimum;
-				poly.maximize(v - vsnd, supNumAddr, supDenAddr, maximum);
-				poly.minimize(v - vsnd, infNumAddr, infDenAddr, minimum);
+				poly_copy.maximize(v - vsnd, supNumAddr, supDenAddr, maximum);
+				poly_copy.minimize(v - vsnd, infNumAddr, infDenAddr, minimum);
 				if ((supNumAddr == 0) && (infNumAddr == 0) && (supDenAddr != 0) && (infDenAddr != 0)) {
 					found = true;
 					Ident idval(p.fst.getId(), Ident::ID_MEM_VAL);
@@ -377,21 +370,18 @@ void PPLDomain::displayLocVars(io::Output &out) const {
 		}
 		out << endl;
 	}
-#endif
 }
 
 void PPLDomain::displayGlobVars(io::Output &out) const {
-#ifdef TODO
 	const PropList _props;
-	WCons_System mcons = poly.minimized_constraints();
 	if (isBottom()) {
 		out << "diplayGlobVars: Nothing to display (state is BOTTOM)" << endl;
 		return;
 	}
 	Ident id_ssp(Ident::ID_START_SP, Ident::ID_SPECIAL);
 	out << "Global variables: " << endl;
-	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
-		elm::Pair<Ident, int> p = *it;
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+		elm::Pair<Ident, guid_t> p = *it;
 		if (p.fst.getType() == Ident::ID_MEM_ADDR) {
 			PPL::Coefficient num, den;
 			if (getConstant(p.fst, num, den)) {
@@ -421,16 +411,12 @@ void PPLDomain::displayGlobVars(io::Output &out) const {
 			}
 		}
 	}
-#endif
 }
 
 int PPLDomain::getConsCount() const {
-#ifdef TODO
-	const WCons_System &cons = poly.minimized_constraints();
 	int ncons = 0;
-	for (WCons_System::const_iterator it = cons.begin(); it != cons.end(); it++, ncons++);
+	for (WPoly::ConsIterator it(poly); it; it++, ncons++);
 	return ncons;
-#endif
 }
 
 bool PPLDomain::getConstant(const WVar &var, PPL::Coefficient &cst_n, PPL::Coefficient &cst_d) const {
@@ -469,13 +455,6 @@ void PPLDomain::displayFrac(io::Output &out, const PPL::Coefficient &num, const 
 void PPLDomain::getRange(const WVar &var, PPL::Coefficient &binf_n, PPL::Coefficient &binf_d,
                          PPL::Coefficient &bsup_n, PPL::Coefficient &bsup_d) const {
 	bool maximum, minimum;
-	if (var.id() >= poly.space_dimension()) {
-		bsup_n = 0;
-		binf_n = 0;
-		bsup_d = 0;
-		binf_d = 0;
-		return;
-	}
 	poly.maximize(var, bsup_n, bsup_d, maximum);
 	poly.minimize(var, binf_n, binf_d, minimum);
 }
@@ -490,9 +469,10 @@ bool PPLDomain::mustAlias(const WVar &v1, const WVar &v2, int offset) const {
 
 void PPLDomain::displayIdentMap(io::Output &out) const {
 	out << "Mapping: ";
-	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
 		const Ident &ident = (*it).fst;
-		out << ident << ":" << WVar((*it).snd) << ", ";
+		WVar v = WVar((*it).snd);
+		out << ident << ":" << v << ", ";
 	}
 	out << endl;
 }
@@ -506,7 +486,7 @@ PPLDomain PPLDomain::getLinearExpr(const Ident &id) {
 	int axis = 1;
 	PPLDomain dom(*this); /* make a working copy to do the projections */
 	inputs[getVar(id).id()] = 0;
-	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
 		if (((*it).fst.getType() == Ident::ID_REG_INPUT) ||
 			((*it).fst.getType() == Ident::ID_MEM_VAL_INPUT)) {
 			inputs[(*it).snd] = axis;
@@ -538,7 +518,7 @@ PPLDomain PPLDomain::onLoopExitLinear(int loop, const PPLDomain &bound) const {
 	WVar v = s_out.getVar(id);
 	MyHTable<int,int> map;
 	Vector<int> mapped;
-	for (MyHTable<Ident, int, HashIdent>::PairIterator it(bound.id2axis); it; it++) {
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
 		if (((*it).fst.getType() == Ident::ID_REG_INPUT) || ((*it).fst.getType() == Ident::ID_MEM_VAL_INPUT) || ((*it).fst == id)) {
 			if (hasIdent((*it).fst)) {
 				const WVar &v2 = getVar((*it).fst);
@@ -550,9 +530,9 @@ PPLDomain PPLDomain::onLoopExitLinear(int loop, const PPLDomain &bound) const {
 	PPLDomain copy(bound);
 
 	copy.doMapPoly(MapWithHash(map));
-	for (guid_t i = 0; i < copy.poly.space_dimension(); i++) {
-		if (!mapped.contains(i)) {
-			copy.poly.unconstrain(WVar(i));
+	for (WPoly::VarIterator it(copy.poly); it; it++) {
+		if (!mapped.contains((*it).guid())) {
+			copy.poly.unconstrain(*it);
 		}
 	}
 
@@ -659,7 +639,7 @@ PPLDomain PPLDomain::onBranch(bool taken) const {
 		default:
 			break;
 	};
-	trash.set(res.getVar(res.compare_reg).id());
+	res.victims.add(res.getVar(res.compare_reg).guid());
 	res.compare_reg = Ident();
 	if (res.isBottom()) {
 #ifdef POLY_DEBUG
@@ -670,6 +650,7 @@ PPLDomain PPLDomain::onBranch(bool taken) const {
 	return res;
 }
 PPLDomain PPLDomain::onComposeBounds(const PPLDomain &bound) const {
+	cout << "not implemented" << endl; abort();
 #ifdef TODO
 	PPLDomain out = bound;
 	// decaler
@@ -713,6 +694,7 @@ PPLDomain PPLDomain::onComposeBounds(const PPLDomain &bound) const {
 }
 
 PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
+	cout << "not implemented" << endl; abort();
 #ifdef TODO
 	PPLDomain out = summary;
 	// decaler
@@ -1101,7 +1083,6 @@ PPLDomain PPLDomain::onCompose(const PPLDomain &summary) const {
 }
 
 PPLDomain PPLDomain::onMerge(const PPLDomain &r, bool widen) const {
-#ifdef TODO
 	/*
 	 * The merge works in two phases:
 	 *
@@ -1124,6 +1105,9 @@ PPLDomain PPLDomain::onMerge(const PPLDomain &r, bool widen) const {
 #endif
 		return r;
 	}
+
+	cout << "not implemented" << endl; abort();
+#ifdef TODO
 	ASSERT(!trash.countOnes());
 	ASSERT(!r.trash.countOnes());
 	ASSERT(compare_reg.getType() == Ident::ID_INVALID);
@@ -1349,7 +1333,7 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 			Ident idEquiv;                          /* Identifier equivalent to the store addr, if any. */
 			elm::genstruct::Vector<Ident> overlaps; /* List of identifiers overlapping the store addr. */
 
-			for (MyHTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++) {
+			for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = s_out.idmap.getPairIter(); it; it++) {
 				const Ident &idCurrent = (*it).fst;
 				if (idCurrent.getType() == Ident::ID_MEM_ADDR) {
 					const WVar &current = WVar((*it).snd);
@@ -1400,7 +1384,7 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 			/*
 			 * Looking for existing abstract location equivalent to load address.
 			 */
-			for (MyHTable<Ident, int, HashIdent>::PairIterator it(s_out.id2axis); it; it++) {
+			for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = s_out.idmap.getPairIter(); it; it++) {
 				if ((*it).fst.getType() == Ident::ID_MEM_ADDR) {
 					WVar current = WVar((*it).snd);
 
@@ -1480,51 +1464,38 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 }
 
 template <class F> void PPLDomain::doMapPoly(F pfunc, bool noproj) {
-	if (poly.space_dimension() > 0) {
-		MapHelper<F> a(pfunc, poly.space_dimension() - 1);
+	if (poly.variable_count() > 0) {
+		MapHelper<F> a(pfunc, poly.highest_guid() - 1);
 		poly.map_vars(a);
 	}
 }
 
 template <class F> void PPLDomain::doMapIdents(F pfunc) {
-	genstruct::Vector<Ident> todel;
-	genstruct::Vector<Ident> newAxis2id;
-	newAxis2id.setLength(axis2id.length());
-	Vector<Ident> newDamaged;
+	Mapping new_idmap;
 
 #ifdef POLY_DEBUG
 	cout << "Remapping: ";
 #endif
-	for (MyHTable<Ident, int, HashIdent>::MutableIter it(id2axis); it; it++) {
-		int &n = it.item();
-		guid_t old_axis = n;
-		guid_t new_axis = n;
-		if (pfunc.maps(old_axis, new_axis)) {
-			if (new_axis >= (unsigned) num_axis)
-				num_axis = new_axis + 1;
-			if (old_axis != new_axis) {
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+		guid_t old_guid = (*it).snd;
+		guid_t new_guid = (*it).snd;
+		if (pfunc.maps(old_guid, new_guid)) {
+			new_idmap.add((*it).fst, new_guid);
+
+			if (old_guid != new_guid) {
 #ifdef POLY_DEBUG
-				cout << axis2id[old_axis] << "[" << WVar(old_axis) << "->" << WVar(new_axis) << "] ";
+				cout << (*it).fst  << "[" << WVar(old_guid) << "->" << WVar(new_guid) << "] ";
 #endif
-				n = new_axis;
 			}
-			if (new_axis >= (unsigned) newAxis2id.length()) {
-				newAxis2id.setLength(new_axis + 1);
-			}
-			newAxis2id[new_axis] = axis2id[old_axis];
-		} else {
-			todel.add(axis2id[old_axis]);
 		}
 	}
 #ifdef POLY_DEBUG
 	cout << endl;
 #endif
-	for (genstruct::Vector<Ident>::Iterator it(todel); it; it++) {
-		id2axis.remove(*it);
-	}
-
-	axis2id = newAxis2id;
+	idmap = new_idmap;
+	// TODO take care of damage
 }
+
 template <class F> void PPLDomain::doMap(F pfunc, bool noproj) {
 	doMapPoly(pfunc, noproj);
 	doMapIdents(pfunc);
@@ -1546,7 +1517,7 @@ void PPLDomain::doIntegerWrap() {
 void PPLDomain::doKillTemporaries() {
 	Vector<Ident> toDel;
 
-	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++)
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++)
 		if ((((*it).fst.getType() == Ident::ID_REG) && (*it).fst.getId() < 0)) {
 			toDel.add((*it).fst);
 #ifdef POLY_DEBUG
@@ -1562,7 +1533,7 @@ void PPLDomain::doKillTemporaries() {
 void PPLDomain::doKillRegisters(BitVector bv) {
 	Vector<Ident> toDel;
 
-	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++)
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++)
 		if (((*it).fst.getType() == Ident::ID_REG) && 
 			(*it).fst.getId() >= 0 &&
 			(*it).fst.getId() < bv.size() &&
@@ -1592,9 +1563,9 @@ void PPLDomain::doKillRegisters(BitVector bv) {
 void PPLDomain::doLeaveFunction() {
 	Vector<Ident> toDel;
 
-	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
-		elm::Pair<Ident, int> p = *it;
-		WVar v = WVar(p.snd);
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+		elm::Pair<Ident, guid_t> p = *it;
+		WVar v = WVar((*it).snd);
 
 		if (p.fst.getType() == Ident::ID_MEM_ADDR) {
 			Ident idSp(13, Ident::ID_REG);
@@ -1624,21 +1595,30 @@ void PPLDomain::doFinalizeUpdate() {
 
 	_sanityChecks();
 #ifdef POLY_DEBUG
-	if (PPLDomain::trash.countOnes() == 0) {
+	if (victims.count()  == 0) {
 		cout << "Nothing to clean" << endl;
 		_sanityChecks();
 		return;
 	}
 #endif
-	PPLDomain::RemoveMarked rm(PPLDomain::trash, poly.space_dimension());
-	doMap(rm);
-	num_axis -= PPLDomain::trash.countOnes();
-	PPLDomain::trash.clear();
+	for (Vector<guid_t>::Iter it(victims); it; it++)
+		poly.unconstrain(WVar(*it));
+
+	victims.clear();
 	_sanityChecks();
 }
 
 WVar PPLDomain::varNew(const Ident &ident, bool allow_replace, bool create_damaged) {
-	WVar v = WVar(_doAllocAxis(ident, allow_replace));
+	WVar v;
+	if (idmap.has1(ident)) {
+		ASSERT(allow_replace);
+		victims.add(idmap.find1(ident));
+#ifdef POLY_DEBUG
+		cout << "Variable " << idmap.find1(ident) << ", formerly associated with ident " << ident << ", will be replaced. " << endl;
+#endif
+	}
+	idmap.add(ident, v.guid());
+#ifdef TODO
 	if (_summary != nullptr && create_damaged) {
 		if ((ident.getType() == Ident::ID_REG) && ((ident.getId() >= 0) && ident.getId() <= 3)) {
 			// TODO tester les registres qu'il faut garder en fonction de la convention d'appel
@@ -1667,10 +1647,11 @@ WVar PPLDomain::varNew(const Ident &ident, bool allow_replace, bool create_damag
 			}
 		}
 	}
+#endif
 	return v;
 }
 
-WVar PPLDomain::getVar(const Ident &ident) const { return WVar(id2axis[ident]); }
+WVar PPLDomain::getVar(const Ident &ident) const { return WVar(idmap.find1(ident)); }
 
 WVar PPLDomain::getVarOrNew(const Ident &ident, bool create_input) {
 	if (!hasIdent(ident)) {
@@ -1697,7 +1678,7 @@ void PPLDomain::varCreatePtr(Ident &addr, Ident &val) {
 	mem_ref++;
 }
 
-bool PPLDomain::hasIdent(const Ident &ident) const { return id2axis.hasKey(ident); }
+bool PPLDomain::hasIdent(const Ident &ident) const { return idmap.has1(ident); }
 
 WVar PPLDomain::memReplace(const WVar &address, const WVar &valueSource) {
 	const Ident &idOldAddress = getIdent(address);
@@ -1713,6 +1694,7 @@ WVar PPLDomain::memReplace(const WVar &address, const WVar &valueSource) {
 	const WVar &newValue = varNew(idNewValue, false, true); //memReplace donc on cree un damaged
 	doNewConstraint(newValue == valueSource);
 
+#ifdef TODO
 	const Ident &idOldInput = Ident(idOldAddress.getId(), Ident::ID_MEM_VAL_INPUT);
 	if (hasIdent(idOldInput)) {
 		ASSERT(_summary);
@@ -1727,7 +1709,7 @@ WVar PPLDomain::memReplace(const WVar &address, const WVar &valueSource) {
 #endif
 		varKill(oldInput);
 	}
-
+#endif
 	varKill(oldValue);
 	varKill(address);
 	return newAddress;
@@ -1755,11 +1737,12 @@ WVar PPLDomain::memMerge(const WVar &address, const WVar &newValue) {
 	const WVar oldValue = getVar(idOldValue);
 
 	PPLDomain tempState = *this;
+	ASSERT(idmap == tempState.idmap);
 
 	WVar newAddr1 = tempState.memReplace(address, newValue);
+	WVar::_guid_generator -= 2; // TODO HACK FIXME 
 	WVar newAddr2 = memReplace(address, oldValue);
-
-	ASSERT(axis2id == tempState.axis2id);
+	ASSERT(idmap == tempState.idmap);
 	ASSERT(newAddr1.id() == newAddr2.id());
 	poly.poly_hull_assign(tempState.poly);
 	return newAddr1;
@@ -1810,6 +1793,7 @@ void PPLDomain::_sanityChecks(bool allow_holes) {
 		return;
 	}
 	ASSERT(!poly.is_empty());
+#ifdef TODO
 	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
 		ASSERT((*it).snd < num_axis);
 		if (trash.bit((*it).snd)) {
@@ -1837,14 +1821,18 @@ void PPLDomain::_sanityChecks(bool allow_holes) {
 		Ident &ident = axis2id[i];
 		ASSERT(id2axis[ident] == i);
 	}
+#endif
+	/*
 	ASSERT(max_axis + 1 <= num_axis);
 	ASSERT(max_axis + 1 + trash.countOnes() >= num_axis);
-	ASSERT(poly.space_dimension() <= (unsigned)num_axis); // unused axis can exist at the end
+	ASSERT(poly.space_dimension() <= (unsigned)num_axis); 
 	ASSERT(trash.size() >= num_axis);
 	ASSERT(trash.countOnes() <= num_axis);
+	*/
 }
 #endif
 
+/*
 void PPLDomain::_doFreeAxis(int axis) {
 	ASSERT(axis2id[axis].getType() != Ident::ID_INVALID);
 #ifdef POLY_DEBUG
@@ -1865,6 +1853,8 @@ void PPLDomain::_doFreeAxis(int axis) {
 }
 
 int PPLDomain::_doAllocAxis(const Ident &ident, bool allow_replace) {
+	cout << "obsolete method" << endl;
+	abort();
 	ASSERT(!isBottom());
 	ASSERT(num_axis < trash.size())
 	ASSERT(allow_replace || !id2axis.hasKey(ident));
@@ -1886,12 +1876,10 @@ int PPLDomain::_doAllocAxis(const Ident &ident, bool allow_replace) {
 	num_axis++;
 	return num_axis - 1;
 }
-
+*/
 // Return the first constraint in poly for which the coef of specified variable axis is non-zero
 const WCons *PPLDomain::_getConstraintFor(int axis) const {
-#ifdef TODO
-	WCons_System cons_sys = poly.minimized_constraints();
-	for (WCons_System::const_iterator it = cons_sys.begin(); it != cons_sys.end(); it++) {
+	for (WPoly::ConsIterator it(poly); it; it++) {
 		const WCons &c = *it;
 		if (!c.is_equality()) {
 			continue;
@@ -1900,7 +1888,6 @@ const WCons *PPLDomain::_getConstraintFor(int axis) const {
 			return new WCons(c);
 		}
 	}
-#endif
 	return nullptr;
 }
 
@@ -1910,6 +1897,8 @@ const WCons *PPLDomain::_getConstraintFor(int axis) const {
  */
 void PPLDomain::_identifyAncestorVars(PPLDomain &l, MyHTable<int, int> &commonVarsL, PPLDomain &r,
                                       MyHTable<int, int> &commonVarsR) const {
+	cout << "not implemented" << endl; abort();
+#ifdef TODO
 	int idx = 0;
 #ifdef POLY_DEBUG
 	cout << "Identifying common variables\n";
@@ -1928,6 +1917,7 @@ void PPLDomain::_identifyAncestorVars(PPLDomain &l, MyHTable<int, int> &commonVa
 			idx++;
 		}
 	}
+#endif
 }
 
 /*
@@ -1936,6 +1926,7 @@ void PPLDomain::_identifyAncestorVars(PPLDomain &l, MyHTable<int, int> &commonVa
  */
 void PPLDomain::_indexPointersByExpr(MyHTable<WCons, int, HashCons> &map_ptr,
                                      MyHTable<int, int> &commonRegs) const {
+	cout << "not implemented" << endl; abort();
 #ifdef TODO
 	int axis = commonRegs.count();
 	for (MyHTable<Ident, int, HashIdent>::PairIterator it(id2axis); it; it++) {
@@ -1960,6 +1951,7 @@ void PPLDomain::_doMatchSummaries(PPLDomain &l1, PPLDomain &r1, unsigned int& ax
 		MyHTable<WCons, int, HashCons> &indexPtrsL,
 		MyHTable<WCons, int, HashCons> &indexPtrsR) const {
 
+#ifdef TODO
 
 	for (MyHTable<Ident, int, HashIdent>::PairIterator it(l1.id2axis); it; it++) {
 		guid_t old_axis = (*it).snd;
@@ -2101,17 +2093,18 @@ void PPLDomain::_doMatchSummaries(PPLDomain &l1, PPLDomain &r1, unsigned int& ax
 			}
 		}
 	}
+#endif
 }
 
 void PPLDomain::_doMatchGlobals(PPLDomain &l1, PPLDomain &r1, unsigned int& axis, 
 		MyHTable<int,int> &mappingL, MyHTable<int,int> &mappingR) const {
-	for (MyHTable<Ident, int, HashIdent>::PairIterator it(l1.id2axis); it; it++) {
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = l1.idmap.getPairIter(); it; it++) {
 		if ((*it).fst.getType() != Ident::ID_MEM_ADDR)
 			continue;
 		uint32_t addressL, valueL;
 		if (l1.memGetInitial((*it).fst, addressL, valueL) && valueL) {
 			bool found = false;
-			for (MyHTable<Ident, int, HashIdent>::PairIterator it2(r1.id2axis); it2; it2++) {
+			for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it2 = r1.idmap.getPairIter(); it2; it2++) {
 				if ((*it2).fst.getType() != Ident::ID_MEM_ADDR)
 					continue;
 				uint32_t addressR, valueR;
@@ -2168,6 +2161,7 @@ void PPLDomain::_doMatchGlobals(PPLDomain &l1, PPLDomain &r1, unsigned int& axis
 // TODO unifier le summary aussi ici
 // TODO faire la projection sur le damaged
 void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
+	cout << "not implemented" << endl; abort();
 #ifdef TODO
 	unsigned int axis = 0;
 

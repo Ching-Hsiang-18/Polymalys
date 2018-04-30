@@ -4,7 +4,7 @@ LIBS=`otawa-config otawa/poly otawa/oslice --libs`
 all: poly
 
 poly: poly.cpp
-	c++ -o poly poly.cpp $(CXXFLAGS) $(LIBS) -march=native -O3
+	c++ -o poly poly.cpp $(CXXFLAGS) $(LIBS) -O0 -g
 	
 clean:
 	rm -f *~ core* target poly *.o target.ffx *.dot *.orange `cat tests.txt` tmp
