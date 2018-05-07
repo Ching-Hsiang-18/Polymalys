@@ -52,12 +52,26 @@ void WLinExpr::print(output_t &out) const {
 }
 
 void WPoly::print(output_t &out) const {
+	  out << "\nRaw poly: [";
+	  fflush(stdout);
 	  poly.print();
-	  out << endl;
+	  fflush(stdout);
+	  out << "]\n" << endl;
+	  out << "Map: [";
 	  for (std::map<guid_t,dim_t>::const_iterator it=adapter.begin(); it != adapter.end(); it++) {
-		  out <<  it->first << " -> " << it->second << endl;
+		  PPL::Variable pv(it->second);
+		char letter = (pv.id() % 26) + 'A';
+		int number = pv.id() / 26;
+		char name[32];
+		if (number != 0) {
+			snprintf(name, sizeof(name), "%c%u", letter, number);
+		} else {
+			snprintf(name, sizeof(name), "%c", letter);
+		}
+		  out << "v" << it->first << " -> " << name << "; ";
 	  }
-	  out << "[";
+	  out << "] " << endl << endl;
+	  out << "WPoly: ";
 	  for (WPoly::ConsIterator it(*this); it; it++) {
 		  out << (*it) << "; ";
 	  }

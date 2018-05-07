@@ -118,13 +118,15 @@ void PPLDomain::print(io::Output &out) const {
 
 	int ncons = 0;
 
-	if (!is_loop_bound)
+	if (!is_loop_bound) {
 		out << "Constraints: ";
+	} else out << "Bound: " ;
 
 	out << poly << endl;
 
 	for (WPoly::ConsIterator it(poly); it; it++) {
 		const WCons &c = *it;
+		ncons++;
 
 		bool firstTerm = true;
 		for (WCons::TermIterator it2(*it); it2; it2++) {
@@ -639,7 +641,8 @@ PPLDomain PPLDomain::onBranch(bool taken) const {
 		default:
 			break;
 	};
-	res.victims.add(res.getVar(res.compare_reg).guid());
+	//res.victims.add(res.getVar(res.compare_reg).guid());
+	res.varKill(res.compare_reg);
 	res.compare_reg = Ident();
 	if (res.isBottom()) {
 #ifdef POLY_DEBUG
@@ -1106,12 +1109,12 @@ PPLDomain PPLDomain::onMerge(const PPLDomain &r, bool widen) const {
 		return r;
 	}
 
-	cout << "not implemented" << endl; abort();
-#ifdef TODO
+	/*
 	ASSERT(!trash.countOnes());
 	ASSERT(!r.trash.countOnes());
 	ASSERT(compare_reg.getType() == Ident::ID_INVALID);
 	ASSERT(r.compare_reg.getType() == Ident::ID_INVALID);
+	*/
 
 #ifdef POLY_DEBUG
 	cout << "Non-trivial merge, type=" << (widen ? "widening" : "convex-hull") << endl;
@@ -1122,7 +1125,8 @@ PPLDomain PPLDomain::onMerge(const PPLDomain &r, bool widen) const {
 	PPLDomain r1 = r;
 
 	_doUnify(l1, r1);
-
+exit(0);
+#ifdef TODO
 //	cout << "before " << (widen ? "widening" : "join") << ", l= " << l1.getConsCount() << " r=" << r1.getConsCount() << endl;
 	for (int i = 0; i < r1.bounds.length(); i++)
 		l1.setBound(i, r1.getBound(i));
@@ -2161,8 +2165,6 @@ void PPLDomain::_doMatchGlobals(PPLDomain &l1, PPLDomain &r1, unsigned int& axis
 // TODO unifier le summary aussi ici
 // TODO faire la projection sur le damaged
 void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
-	cout << "not implemented" << endl; abort();
-#ifdef TODO
 	unsigned int axis = 0;
 
 #ifdef POLY_DEBUG
@@ -2173,7 +2175,82 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 	cout << "Right state: " << endl;
 	cout << r1;
 #endif
+	WPoly inter = l1.poly;
+	inter.intersection_assign(r1.poly);
+	MyHTable<guid_t,guid_t> rename;
 
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = l1.idmap.getPairIter(); it; it++) {
+		for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it2 = r1.idmap.getPairIter(); it2; it2++) {
+			// Memory variables substitution
+			if (((*it).fst.getType() == Ident::ID_MEM_ADDR) && ((*it2).fst.getType() == Ident::ID_MEM_ADDR)) {
+				WVar x1((*it).snd);
+				WVar x2((*it2).snd);
+				if ((x1.guid() == x2.guid()) ||
+					inter.relation_with(x1 == x2).implies(PPL::Poly_Con_Relation::is_included())) {
+					cout << "Identified " << x1 << " with " << x2 << endl;
+					WVar x1v = l1.getVar(Ident((*it).fst.getId(), Ident::ID_MEM_VAL));
+					WVar x2v = r1.getVar(Ident((*it2).fst.getId(), Ident::ID_MEM_VAL));
+					rename.add(x1.guid(), x2.guid());
+					rename.add(x1v.guid(), x2v.guid());
+					cout << "[A] mapping " << x1.guid() << " to " << x2.guid() << endl;
+					cout << "[V] mapping " << x1v.guid() << " to " << x2v.guid() << endl;
+				}
+			} 
+		}
+
+		if (((*it).fst.getType() != Ident::ID_MEM_ADDR) && ((*it).fst.getType() != Ident::ID_MEM_VAL))
+			if (r1.idmap.has1((*it).fst)) {
+				rename.add((*it).snd, r1.idmap.find1((*it).fst));
+				cout << "[R] mapping " << (*it).snd << " to " << r1.idmap.find1((*it).fst) << endl;
+			}
+
+	}
+	MapGuid mg(rename);
+	l1.doMap(mg);
+
+
+
+#ifdef POLY_DEBUG
+	cout << "Unified, pre-remove:" << endl;
+	cout << "Left state: " << endl;
+	cout << l1;
+	fflush(stdout);
+
+	cout << "Right state: " << endl;
+	cout << r1;
+#endif
+
+	l1.poly.poly_hull_assign(r1.poly);
+#ifdef POLY_DEBUG
+	cout << "Joined state:" << endl;
+	cout << l1;
+	fflush(stdout);
+#endif
+
+	exit(0);
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = l1.idmap.getPairIter(); it; it++) {
+		if ((*it).fst.getType() == Ident::ID_MEM_ADDR) {
+			if (!r1.idmap.has2((*it).snd)) {
+				cout << "Removing unmatched memory: " << (*it).fst << endl;
+				l1.victims.add((*it).snd);
+				l1.victims.add(l1.getVar(Ident((*it).fst.getId(), Ident::ID_MEM_VAL)).guid());
+			}
+
+		} else if ((*it).fst.getType() != Ident::ID_MEM_VAL) {
+			if (r1.idmap.has1((*it).fst)) {
+				ASSERT((*it).snd == r1.idmap.find1((*it).fst));
+			} else {
+				l1.victims.add((*it).snd);
+				cout << "Removing unmatched register: " << (*it).fst << endl;
+			}
+		}
+	}
+
+
+
+
+	exit(0);
+#ifdef TODO
 	/*
 	 * These hashtables will represent the substitution to perform in the two input states.
 	 *

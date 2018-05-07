@@ -275,6 +275,20 @@ private:
 	 * Partial mapping function accoring to passed hashtable.
 	 * Needs to be wrapped with MapHelper before usage with PPL.
 	 */
+	class MapGuid {
+	  public:
+		inline explicit MapGuid(MyHTable<guid_t, guid_t> &map) : _map(map) {}
+		inline bool maps(guid_t i, guid_t &j) const {
+			if (_map.hasKey(i)) {
+				j = _map[i];
+				return true;
+			}
+			{ return false; }
+		}
+
+	  private:
+		MyHTable<guid_t, guid_t> &_map;
+	};
 	class MapWithHash {
 	  public:
 		inline explicit MapWithHash(MyHTable<int, int> &map) : _map(map) {}

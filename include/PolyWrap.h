@@ -148,8 +148,9 @@ class WPoly {
 				inline bool maps(PPL::dimension_type i, PPL::dimension_type &j) const { 
 					PPL::dimension_type k = 0;
 					for (std::vector<PPL::dimension_type>::const_iterator it = _victims.begin(); it != _victims.end(); it++) {
-						if ((*it) == i)
+						if ((*it) == i) {
 							return false;
+						}
 						if ((*it) < i)
 							k++;
 					}
@@ -252,6 +253,10 @@ class WPoly {
 			if (adapter.find(g) == adapter.end()) {
 //				std::cout << "v" << g << " does not exists\n";
 				adapter[g] = next;
+				if (g == 26) 
+				{
+					int k = 26;
+				}
 				next++;
 			}
 			return PPL::Variable(adapter[g]);
@@ -398,7 +403,10 @@ class WPoly {
 		template <class F> inline void map_with_dim(F pfunc) {
 			poly.map_space_dimensions(pfunc);
 			next = pfunc.max_in_codomain() + 1;
-			assert(next == poly.space_dimension());
+			if (next != poly.space_dimension()) {
+				print(elm::cout);
+				abort();
+			}
 			map_adapter_dim(pfunc);
 		}
 
@@ -440,10 +448,10 @@ template <class F> void WPoly::map_vars(F pfunc) {
 		guid_t j = i;
 		bool b = pfunc.maps(i, j);
 		if (b) {
-			std::cout << "v" << i << " mapped to " << "v" << j << "\n";
+			//std::cout << "v" << i << " mapped to " << "v" << j << "\n";
 			new_adapter[j] = it->second;
 		} else {
-			std::cout << "v" << i << " removed\n";
+			//std::cout << "v" << i << " removed\n";
 			victims.push_back(it->second);
 		}
 	}
