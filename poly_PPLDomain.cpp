@@ -1125,6 +1125,15 @@ PPLDomain PPLDomain::onMerge(const PPLDomain &r, bool widen) const {
 	PPLDomain r1 = r;
 
 	_doUnify(l1, r1);
+
+	l1.poly.poly_hull_assign(r1.poly);
+	l1.doFinalizeUpdate();
+	return l1;
+#ifdef POLY_DEBUG
+	cout << "Joined state:" << endl;
+	cout << l1;
+	fflush(stdout);
+#endif
 exit(0);
 #ifdef TODO
 //	cout << "before " << (widen ? "widening" : "join") << ", l= " << l1.getConsCount() << " r=" << r1.getConsCount() << endl;
@@ -2187,13 +2196,13 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 				WVar x2((*it2).snd);
 				if ((x1.guid() == x2.guid()) ||
 					inter.relation_with(x1 == x2).implies(PPL::Poly_Con_Relation::is_included())) {
-					cout << "Identified " << x1 << " with " << x2 << endl;
+					// cout << "Identified " << x1 << " with " << x2 << endl;
 					WVar x1v = l1.getVar(Ident((*it).fst.getId(), Ident::ID_MEM_VAL));
 					WVar x2v = r1.getVar(Ident((*it2).fst.getId(), Ident::ID_MEM_VAL));
 					rename.add(x1.guid(), x2.guid());
 					rename.add(x1v.guid(), x2v.guid());
-					cout << "[A] mapping " << x1.guid() << " to " << x2.guid() << endl;
-					cout << "[V] mapping " << x1v.guid() << " to " << x2v.guid() << endl;
+					//cout << "[A] mapping " << x1.guid() << " to " << x2.guid() << endl;
+					//cout << "[V] mapping " << x1v.guid() << " to " << x2v.guid() << endl;
 				}
 			} 
 		}
@@ -2201,7 +2210,7 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 		if (((*it).fst.getType() != Ident::ID_MEM_ADDR) && ((*it).fst.getType() != Ident::ID_MEM_VAL))
 			if (r1.idmap.has1((*it).fst)) {
 				rename.add((*it).snd, r1.idmap.find1((*it).fst));
-				cout << "[R] mapping " << (*it).snd << " to " << r1.idmap.find1((*it).fst) << endl;
+				//cout << "[R] mapping " << (*it).snd << " to " << r1.idmap.find1((*it).fst) << endl;
 			}
 
 	}
@@ -2211,7 +2220,7 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 
 
 #ifdef POLY_DEBUG
-	cout << "Unified, pre-remove:" << endl;
+	cout << "Unified:" << endl;
 	cout << "Left state: " << endl;
 	cout << l1;
 	fflush(stdout);
@@ -2219,6 +2228,7 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 	cout << "Right state: " << endl;
 	cout << r1;
 #endif
+	return;
 
 	l1.poly.poly_hull_assign(r1.poly);
 #ifdef POLY_DEBUG
