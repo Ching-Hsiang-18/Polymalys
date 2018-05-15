@@ -226,26 +226,32 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 	 * First, attempt to show that the states are different using quick checks.
 	 */
 	if (poly.variable_count() != b.poly.variable_count()) {
+		cout << "c est pas egal pcq: pas le meme nombre de variables" << endl;
 		return false;
 	}
 
 	if (compare_reg != b.compare_reg) {
+		cout << "c est pas egal pcq: pas le meme compare reg" << endl;
 		return false;
 	}
 
 	if (compare_op != b.compare_op) {
+		cout << "c est pas egal pcq: pas le meme compare op" << endl;
 		return false;
 	}
 
 	if (idmap.count() != b.idmap.count()) {
+		cout << "c est pas egal pcq: pas le meme idmap count" << endl;
 		return false;
 	}
 
 	if (victims != b.victims) {
+		cout << "c est pas egal pcq: pas le meme victim map" << endl;
 		return false;
 	}
 
 	if (bounds != b.bounds) {
+		cout << "c est pas egal pcq: pas le meme bounds" << endl;
 		return false;
 	}
 
@@ -261,21 +267,24 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 		if ((p.fst.getType() == Ident::ID_MEM_VAL) || (p.fst.getType() == Ident::ID_MEM_ADDR) || (p.fst.getType() == Ident::ID_MEM_VAL_INPUT)) {
 			continue;
 		}
+		cout << "expect: " << p.fst << endl;
 		expectedVarCount++;
 	}
 
 	_doUnify(l, r, true);
 
-	if ((l.idmap.count() != expectedVarCount) || (r.idmap.count() != expectedVarCount)) {
+	if ((l.idmap.count() != expectedVarCount)) {
 		/* There was some unmatched registers */ 
+		cout << "c est pas egal pcq: different ensemble de registres" << endl;
 		return false;
 	}
 
-
+/* TODO
 	if (l.poly != r.poly) {
+		cout << "c est pas egal pcq: poly pas egal (reg)" << endl;
 		return false;
 	}
-	
+*/	
 	/*
 	 * At this point we are almost sure that the states are equal. We do a full unification (costly) to detect if the states are equal.
 	 */
@@ -285,10 +294,12 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 
 	if ((l.idmap.count() != idmap.count()) || (r.idmap.count() != b.idmap.count())) {
 		/* There was some unmatched memory locations */
+		cout << "c est pas egal pcq: different ensemble de memory locations" << endl;
 		return false;
 	}
 
 	if (l.poly != r.poly) {
+		cout << "c est pas egal pcq: poly pas egal (mem)" << endl;
 		return false;
 	}
 
@@ -515,6 +526,8 @@ bound_t PPLDomain::getLoopBound(int loopId) const {
 
 PPLDomain PPLDomain::onLoopExitLinear(int loop, const PPLDomain &bound) const {
 	PPLManager::t s_out = *this;
+	cout << "before onLoopExitLinear: " << s_out << endl;
+	cout << "bound: " << bound << endl;
 	Ident id(loop, Ident::ID_LOOP);
 	ASSERT(s_out.hasIdent(id)); /* You are supposed to be already inside the loop when you call onLoopExit() */
 	WVar v = s_out.getVar(id);
@@ -541,6 +554,7 @@ PPLDomain PPLDomain::onLoopExitLinear(int loop, const PPLDomain &bound) const {
 
 	s_out.poly.intersection_assign(copy.poly);
 	s_out.varKill(v);
+	cout << "after onLoopExitLinear: " << s_out << endl;
 	return s_out;
 }
 
@@ -593,6 +607,8 @@ PPLDomain PPLDomain::onBranch(bool taken) const {
 	cout << "Filtering, compare_reg is: " << compare_reg << ", compare_op is: " << compare_op << ", taken=" << taken
 	     << endl;
 #endif
+
+
 	switch (this_op) {
 		case sem::NE: {
 			WPoly poly2 = res.poly;
@@ -1125,9 +1141,15 @@ PPLDomain PPLDomain::onMerge(const PPLDomain &r, bool widen) const {
 	PPLDomain r1 = r;
 
 	_doUnify(l1, r1);
+	for (int i = 0; i < r1.bounds.length(); i++)
+		l1.setBound(i, r1.getBound(i));
 
 	l1.poly.poly_hull_assign(r1.poly);
+	if (widen)
+		l1.poly.bounded_H79_extrapolation_assign(r1.poly);
 	l1.doFinalizeUpdate();
+	for (int i = 0; i < r1.bounds.length(); i++)
+		l1.setBound(i, r1.getBound(i));
 	return l1;
 #ifdef POLY_DEBUG
 	cout << "Joined state:" << endl;
@@ -1137,8 +1159,6 @@ PPLDomain PPLDomain::onMerge(const PPLDomain &r, bool widen) const {
 exit(0);
 #ifdef TODO
 //	cout << "before " << (widen ? "widening" : "join") << ", l= " << l1.getConsCount() << " r=" << r1.getConsCount() << endl;
-	for (int i = 0; i < r1.bounds.length(); i++)
-		l1.setBound(i, r1.getBound(i));
 
 	l1.poly.poly_hull_assign(r1.poly);
 	if (widen) {
@@ -2185,32 +2205,41 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 	cout << r1;
 #endif
 	WPoly inter = l1.poly;
-	inter.intersection_assign(r1.poly);
+	Ident cmp(16, Ident::ID_REG);
+	if (!noPtr) {
+		inter.intersection_assign(r1.poly);
+	}
 	MyHTable<guid_t,guid_t> rename;
-
+/*
+	cout << "Inter: " << inter << endl;
+	if (!noPtr) {
+		ASSERT(!inter.is_empty());
+	}
+*/
 	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = l1.idmap.getPairIter(); it; it++) {
-		for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it2 = r1.idmap.getPairIter(); it2; it2++) {
-			// Memory variables substitution
-			if (((*it).fst.getType() == Ident::ID_MEM_ADDR) && ((*it2).fst.getType() == Ident::ID_MEM_ADDR)) {
-				WVar x1((*it).snd);
-				WVar x2((*it2).snd);
-				if ((x1.guid() == x2.guid()) ||
-					inter.relation_with(x1 == x2).implies(PPL::Poly_Con_Relation::is_included())) {
-					// cout << "Identified " << x1 << " with " << x2 << endl;
-					WVar x1v = l1.getVar(Ident((*it).fst.getId(), Ident::ID_MEM_VAL));
-					WVar x2v = r1.getVar(Ident((*it2).fst.getId(), Ident::ID_MEM_VAL));
-					rename.add(x1.guid(), x2.guid());
-					rename.add(x1v.guid(), x2v.guid());
-					//cout << "[A] mapping " << x1.guid() << " to " << x2.guid() << endl;
-					//cout << "[V] mapping " << x1v.guid() << " to " << x2v.guid() << endl;
-				}
-			} 
-		}
+		if (!noPtr)
+			for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it2 = r1.idmap.getPairIter(); it2; it2++) {
+				// Memory variables substitution
+				if (((*it).fst.getType() == Ident::ID_MEM_ADDR) && ((*it2).fst.getType() == Ident::ID_MEM_ADDR)) {
+					WVar x1((*it).snd);
+					WVar x2((*it2).snd);
+					if ((x1.guid() == x2.guid()) ||
+						(!inter.is_empty() && inter.relation_with(x1 == x2).implies(PPL::Poly_Con_Relation::is_included()))) {
+						cout << "Identified " << x1 << " with " << x2 << endl;
+						WVar x1v = l1.getVar(Ident((*it).fst.getId(), Ident::ID_MEM_VAL));
+						WVar x2v = r1.getVar(Ident((*it2).fst.getId(), Ident::ID_MEM_VAL));
+						rename.add(x1.guid(), x2.guid());
+						rename.add(x1v.guid(), x2v.guid());
+						//cout << "[A] mapping " << x1.guid() << " to " << x2.guid() << endl;
+						//cout << "[V] mapping " << x1v.guid() << " to " << x2v.guid() << endl;
+					}
+				} 
+			}
 
 		if (((*it).fst.getType() != Ident::ID_MEM_ADDR) && ((*it).fst.getType() != Ident::ID_MEM_VAL))
 			if (r1.idmap.has1((*it).fst)) {
 				rename.add((*it).snd, r1.idmap.find1((*it).fst));
-				//cout << "[R] mapping " << (*it).snd << " to " << r1.idmap.find1((*it).fst) << endl;
+				// cout << "[R] mapping " << (*it).snd << " to " << r1.idmap.find1((*it).fst) << endl;
 			}
 
 	}

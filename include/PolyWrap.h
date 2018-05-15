@@ -378,6 +378,12 @@ class WPoly {
 		inline void intersection_assign(const WPoly &src) {
 			WPoly copie = src;
 			combine(copie, true);
+			elm::cout << "raw inter: ";
+			fflush(stdout); poly.minimized_constraints().print(); fflush(stdout);
+			elm::cout << "\n";
+			elm::cout << "raw inter: ";
+			fflush(stdout); copie.poly.minimized_constraints().print(); fflush(stdout);
+			elm::cout << "\n";
 			poly.intersection_assign(copie.poly);
 		}
 

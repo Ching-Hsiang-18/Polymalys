@@ -65,28 +65,34 @@ PolyAnalysis::state_t PolyAnalysis::processHeader(ai::CFGGraph &graph, MyHTable<
 #endif
 	//state_t oldState = headerState[header->id()];
 
+#ifndef LINBOUND 
 	bound_t bound = backState.getLoopBound(header->id());
 	backState.setBound(header->id(), bound);
-
+#endif
+#ifdef LINBOUND
 	PPLDomain linearBound = backState.getLinearExpr(Ident(header->id(), Ident::ID_LOOP));
 	backState.setLinBound(header->id(), linearBound);
+#endif
 
 #ifdef POLY_DEBUG
 			cout << "ITERATION: " << int(bound) << endl;
 #endif
-			/*
+
+
+#ifndef LINBOUND
 	if ((MAX_ITERATION(header) != bound_t::UNBOUNDED) &&
 		((MAX_ITERATION(header) < bound) || (bound == bound_t::UNBOUNDED)))
 		MAX_ITERATION(header) = bound;
-		*/
+#endif
 
 
 	if (!lb.hasKey(header->id()))
 		lb[header->id()] = PPLDomain();
 
+#ifdef LINBOUND
 	const PPLDomain &oldBound = lb[header->id()];
-
 	lb[header->id()] = oldBound.onMerge(linearBound, false);
+#endif
 	headerState[header->id()] = man.widening(backState, headerState[header->id()]);
 
 #ifdef POLY_DEBUG
@@ -331,10 +337,13 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 					 * FIXME: should be bound = s.getLoopBound(bb->id()) but we need to fix the widening to make it work
 					 */
 					int bound = edgeState.getBound(bb->id());
+#ifdef LINBOUND
 					PPLDomain linBound = edgeState.getLinBound(bb->id());
-#ifdef POLY_DEBUG
-					cout << "Bound on loop exit: " << bound << endl;
 #endif
+					cout << "Bound on loop exit: " << bound << endl;
+#ifdef POLY_DEBUG
+#endif
+#ifdef LINBOUND
 					if (!linBound.isBottom()) {
 						edgeState = edgeState.onLoopExitLinear(bb->id(), linBound);
 						if (edgeState.isBottom())
@@ -343,14 +352,16 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 #ifdef POLY_DEBUG
 					cout << "linbound for " << bb->id() << " is " << linBound << endl;
 #endif
-					/*
+#endif
+
+#ifndef LINBOUND 
 					if (bound >= 0) {
 						edgeState = edgeState.onLoopExit(bb->id(), bound);
 						if (edgeState.isBottom()) {
 							continue;
 						}
 					}
-					*/
+#endif
 				}
 				edgeState.doFinalizeUpdate();
 				ana.check(*e, edgeState);
@@ -503,6 +514,7 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	MyHTable<int, PPLDomain> bounds;
 	MyHTable<int, int> static_bounds;
 	processCFG(*entry, dummy, bounds, true /* is entry */, false /* summarize */);
+#ifdef LINBOUND
 	cout << "PARAMETRIC LOOP BOUNDS: " << endl;
 	for (MyHTable<int, PPLDomain>::PairIterator it(bounds); it; it++) {
 		cout << "linear bound expr for (" << (*it).fst << "): " << (*it).snd << endl;
@@ -538,6 +550,23 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 		}
 		delete _orders[(*iter2)->index()];
 	}
+#else
+	cout << "LOOP BOUNDS: " << endl;
+	for (CFGCollection::Iter iter2(coll); iter2; iter2++) {
+		for (CFG::BlockIter iter((*iter2)->blocks()); iter; iter++) {
+			Block *bb = (*iter);
+			if (LOOP_HEADER(bb)) {
+				cout << "[" << (*iter2)->name() << "]"
+				     << "MAX_ITERATION(" << bb->id() << ") = " << MAX_ITERATION(bb) << endl;
+				/*
+				cout << "[" << (*iter2)->name() << "]"
+				     << "TOTAL_ITERATION(" << bb->id() << ") = " << TOTAL_ITERATION(bb) << endl;
+					 */
+			}
+		}
+		delete _orders[(*iter2)->index()];
+	}
+#endif
 }
 
 } // namespace poly
