@@ -402,7 +402,6 @@ class WPoly {
 			poly.bounded_H79_extrapolation_assign(copie.poly, dummy);
 		}
 
-
 	private:
 		template <class F> void map_adapter_dim(F pfunc);
 
