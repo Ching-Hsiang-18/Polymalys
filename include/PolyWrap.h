@@ -10,6 +10,11 @@ namespace poly {
 
 namespace PPL = Parma_Polyhedra_Library;
 
+//typedef PPL::C_Polyhedron Shape;
+
+typedef PPL::Octagonal_Shape<PPL::Coefficient> Shape;
+
+
 typedef unsigned long long guid_t;
 typedef std::GMP_Integer coef_t;
 typedef PPL::dimension_type dim_t;
@@ -139,7 +144,7 @@ class WPoly {
 		class Eliminator {
 			public:
 				inline Eliminator(const std::vector<PPL::dimension_type> &victims, 
-						PPL::C_Polyhedron &p) : _victims(victims), _p(p), _dom(_p.space_dimension() - 1),
+						Shape &p) : _victims(victims), _p(p), _dom(_p.space_dimension() - 1),
 						_codom(_dom - _victims.size()) { 
 				}
 
@@ -160,7 +165,7 @@ class WPoly {
 				inline bool has_empty_codomain() const { return _p.space_dimension() == _victims.size(); }
 			private:
 				const std::vector<PPL::dimension_type> &_victims;
-				const PPL::C_Polyhedron & _p;
+				const Shape & _p;
 				const int _dom;
 				const int _codom;
 		};
@@ -241,7 +246,7 @@ class WPoly {
 
 
 		inline WPoly(bool empty) {
-			poly = PPL::C_Polyhedron(0, empty ? PPL::EMPTY : PPL::UNIVERSE);
+			poly = Shape(0, empty ? PPL::EMPTY : PPL::UNIVERSE);
 		}
 
 
@@ -301,7 +306,8 @@ class WPoly {
 			elm::cout << "\n\n";
 			*/
 			PPL::Constraint pplc = translate(c);
-			poly.add_constraint(pplc);
+		//	poly.add_constraint(pplc);
+			poly.refine_with_constraint(pplc);
 			/*
 			elm::cout << "constraint added: " << c << "\ntranslated to: ";
 			pplc.print();
@@ -322,7 +328,7 @@ class WPoly {
 		WCons back_translate(const PPL::Constraint &c) const;
 		void print(output_t &out) const;
 
-		inline const PPL::C_Polyhedron& getPoly() { return poly; }
+		inline const Shape& getPoly() { return poly; }
 
 		inline bool maximize(const WLinExpr&expr, coef_t &sup_n, coef_t &sup_d, bool &maximum) const {
 			return poly.maximize(translate(expr), sup_n, sup_d, maximum);
@@ -391,7 +397,7 @@ class WPoly {
 		inline void poly_hull_assign(const WPoly &src) {
 			WPoly copie = src;
 			combine(copie, false);
-			poly.poly_hull_assign(copie.poly);
+			poly.upper_bound_assign(copie.poly);
 		}
 
 		// widening	
@@ -399,7 +405,7 @@ class WPoly {
 			WPoly copie = src;
 			combine(copie, false);
 			PPL::Constraint_System dummy;
-			poly.bounded_H79_extrapolation_assign(copie.poly, dummy);
+			poly.widening_assign(copie.poly /* , dummy */);
 		}
 
 	private:
@@ -424,7 +430,7 @@ class WPoly {
 
 		std::map<guid_t,dim_t> adapter;
 		dim_t next = 0;
-		PPL::C_Polyhedron poly;
+		Shape poly;
 };
 
 

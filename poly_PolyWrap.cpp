@@ -57,6 +57,13 @@ void WPoly::print(output_t &out) const {
 	  poly.print();
 	  fflush(stdout);
 	  out << "]\n" << endl;
+
+	  poly.minimized_constraints();
+	  out << "\nRaw poly: [";
+	  fflush(stdout);
+	  poly.print();
+	  fflush(stdout);
+	  out << "]\n" << endl;
 	  out << "Map: [";
 	  for (std::map<guid_t,dim_t>::const_iterator it=adapter.begin(); it != adapter.end(); it++) {
 		  PPL::Variable pv(it->second);
@@ -71,12 +78,22 @@ void WPoly::print(output_t &out) const {
 		  out << "v" << it->first << " -> " << name << "; ";
 	  }
 	  out << "] " << endl << endl;
+	  out << "\nRaw poly1: [";
+	  fflush(stdout);
+	  poly.print();
+	  fflush(stdout);
 	  out << "WPoly: ";
 	  for (WPoly::ConsIterator it(*this); it; it++) {
-		  out << (*it) << "; ";
+//		  out << (*it) << "; ";
 	  }
 	  out << "]" << endl;
 	  out << endl;
+
+	  out << "\nRaw poly2: [";
+	  fflush(stdout);
+	  poly.print();
+	  fflush(stdout);
+	  out << "]\n" << endl;
 }
 
 /* Constraint & Linear combination building operators */
@@ -200,6 +217,8 @@ WCons WPoly::back_translate(const Constraint &c) const {
 		}
 	}
 	le = le + c.inhomogeneous_term();
+	elm::cout << "to be translated:" << "\n";
+	c.print();
 	if (c.is_equality()) {
 		return le == 0;
 	} else {
