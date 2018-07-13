@@ -11,7 +11,7 @@
 
 #include "MyHTable.h"
 
-//#define POLY_DEBUG 1
+// #define POLY_DEBUG 1
 
 namespace otawa {
 namespace poly {

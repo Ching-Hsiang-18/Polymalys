@@ -2255,8 +2255,10 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 
 			WPoly::ConsIterator it2(temp);
 			for (; it2 && !(*it2).is_equality(); it2++);
-			if (!it2)
+			if (!it2) {
+				if (v.guid() < 20)
 				indepVars.insert(*it);
+			}
 		}
 
 #ifdef POLY_DEBUG
@@ -2599,8 +2601,14 @@ void PPLDomain::_doBinaryOp(int op, WVar *v, WVar *vs1, WVar *vs2) {
 
 void PPLDomain::_identifyPolyVars(const PPLDomain &d, const std::set<guid_t> &vars, const std::set<guid_t> &indep, MyHTable<guid_t, Vector<PPL::Coefficient> > &vmap) const {
 	const WPoly &poly = d.poly;
+#ifdef POLY_DEBUG
+	cout << "Begin _identifyPolyVars" << endl;
+#endif
 	for (std::set<guid_t>::const_iterator it = vars.begin(); it != vars.end(); it++) {
 		WVar v(*it);
+#ifdef POLY_DEBUG
+		cout << "trying for: " << v << endl;
+#endif
 		if (!d.isVarMapped(v) || d.getIdent(v).getType() != Ident::ID_MEM_ADDR)
 			continue;
 		WPoly temp = poly;
@@ -2609,7 +2617,10 @@ void PPLDomain::_identifyPolyVars(const PPLDomain &d, const std::set<guid_t> &va
 		});
 
 		WPoly::ConsIterator it2(temp);
-		for (; it2 && !(*it2).is_equality(); it2++);
+		for (; it2 && !((*it2).is_equality() && (*it2).has_var(v)); it2++);
+#ifdef POLY_DEBUG
+		cout << "Found equality: " << (*it2) << endl;
+#endif
 
 		if (it2) {
 			WCons c = *it2;
@@ -2617,20 +2628,30 @@ void PPLDomain::_identifyPolyVars(const PPLDomain &d, const std::set<guid_t> &va
 			vect.setLength(indep.size() + 2); /* vector format: [Indep. vars coefs, Current var (v) coef, Constant] */
 			for (int i = 0; i < vect.length(); i++)
 				vect[i] = 0;
-			PPL::Coefficient curVarCoef = c.coefficient(v);
-			PPL::Coefficient constant = c.inhomogeneous_term();
-			ASSERT(curVarCoef); // curVarCoef==0 would imply that the indep set contains non-independant variables
-			bool normalizeSign = curVarCoef < 0;
-			vect[vect.length() - 2] = normalizeSign ? -curVarCoef : curVarCoef;
-			vect[vect.length() - 1] = normalizeSign ? -constant : constant;
+			bool seen_v = false;
 			for (WCons::TermIterator it3(c); it3; it3++) {
 				WVar v2(*it3);
 				if ((v2.guid() != v.guid()) && (c.coefficient(v2) != 0)) {
 					ASSERT(indep.find(v2.guid()) != indep.end()); // must be true because of projection, and because v2!=v
 					PPL::Coefficient coef = c.coefficient(v2);
-					vect[std::distance(indep.begin(), indep.find(v2.guid()))] = normalizeSign ? -coef : coef;
+					vect[std::distance(indep.begin(), indep.find(v2.guid()))] = coef;
+				}
+				if (v2.guid() == v.guid()) {
+					seen_v = true;
+					vect[vect.length() - 2] = c.coefficient(v);
+					ASSERT(c.coefficient(v) != 0);
 				}
 			}
+			if (!seen_v) {
+				ASSERT(false);
+#ifdef POLY_DEBUG
+				cout << "nvm. " << endl;
+#endif
+				continue;
+			}
+
+			vect[vect.length() - 1] = c.inhomogeneous_term();
+
 			PPL::Coefficient pgcd = vect[vect.length() - 1];
 
 			for (int i = 0; i < vect.length() - 1; i++) {

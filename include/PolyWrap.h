@@ -73,6 +73,7 @@ class WLinExpr {
 
 		inline coef_t inhomogeneous_term() const { return cst; }
 		inline coef_t coefficient(const WVar &v) const { return coefs.at(v.guid()); }
+		inline bool has_var(const WVar &v) const { return coefs.find(v.guid()) != coefs.end(); }
 
 		void print(output_t &out) const;
 
@@ -124,6 +125,7 @@ class WCons {
 		}
 		inline coef_t inhomogeneous_term() const { return expr.inhomogeneous_term(); }
 		inline coef_t coefficient(const WVar &v) const { return expr.coefficient(v); }
+		inline bool has_var(const WVar &v) const { return expr.has_var(v); }
 		inline const WLinExpr& getLE() const { return expr; }
 		inline ctype_t getType() const { return ctype; }
 		inline bool is_equality() const { return ctype == CONS_EQ; }
