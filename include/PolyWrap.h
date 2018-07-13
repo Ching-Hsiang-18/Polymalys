@@ -409,8 +409,8 @@ class WPoly {
 			poly.map_space_dimensions(pfunc);
 			next = pfunc.max_in_codomain() + 1;
 			if (next != poly.space_dimension()) {
-				print(elm::cout);
-				abort();
+				// print(elm::cout);
+				// abort();
 			}
 			map_adapter_dim(pfunc);
 		}

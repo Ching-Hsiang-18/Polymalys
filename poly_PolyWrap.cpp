@@ -255,4 +255,3 @@ guid_t WVar::_guid_generator = 0;
 
 }
 
-
