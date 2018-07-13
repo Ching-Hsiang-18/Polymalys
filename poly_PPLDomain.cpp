@@ -226,32 +226,44 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 	 * First, attempt to show that the states are different using quick checks.
 	 */
 	if (poly.variable_count() != b.poly.variable_count()) {
+#ifdef POLY_DEBUG
 		cout << "c est pas egal pcq: pas le meme nombre de variables" << endl;
+#endif
 		return false;
 	}
 
 	if (compare_reg != b.compare_reg) {
+#ifdef POLY_DEBUG
 		cout << "c est pas egal pcq: pas le meme compare reg" << endl;
+#endif
 		return false;
 	}
 
 	if (compare_op != b.compare_op) {
+#ifdef POLY_DEBUG
 		cout << "c est pas egal pcq: pas le meme compare op" << endl;
+#endif
 		return false;
 	}
 
 	if (idmap.count() != b.idmap.count()) {
+#ifdef POLY_DEBUG
 		cout << "c est pas egal pcq: pas le meme idmap count" << endl;
+#endif
 		return false;
 	}
 
 	if (victims != b.victims) {
+#ifdef POLY_DEBUG
 		cout << "c est pas egal pcq: pas le meme victim map" << endl;
+#endif
 		return false;
 	}
 
 	if (bounds != b.bounds) {
+#ifdef POLY_DEBUG
 		cout << "c est pas egal pcq: pas le meme bounds" << endl;
+#endif
 		return false;
 	}
 
@@ -267,7 +279,9 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 		if ((p.fst.getType() == Ident::ID_MEM_VAL) || (p.fst.getType() == Ident::ID_MEM_ADDR) || (p.fst.getType() == Ident::ID_MEM_VAL_INPUT)) {
 			continue;
 		}
+#ifdef POLY_DEBUG
 		cout << "expect: " << p.fst << endl;
+#endif
 		expectedVarCount++;
 	}
 
@@ -275,7 +289,9 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 
 	if ((l.idmap.count() != expectedVarCount)) {
 		/* There was some unmatched registers */ 
+#ifdef POLY_DEBUG
 		cout << "c est pas egal pcq: different ensemble de registres" << endl;
+#endif
 		return false;
 	}
 
@@ -294,12 +310,16 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 
 	if ((l.idmap.count() != idmap.count()) || (r.idmap.count() != b.idmap.count())) {
 		/* There was some unmatched memory locations */
+#ifdef POLY_DEBUG
 		cout << "c est pas egal pcq: different ensemble de memory locations" << endl;
+#endif
 		return false;
 	}
 
 	if (l.poly != r.poly) {
+#ifdef POLY_DEBUG
 		cout << "c est pas egal pcq: poly pas egal (mem)" << endl;
+#endif
 		return false;
 	}
 
