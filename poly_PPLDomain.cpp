@@ -226,32 +226,44 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 	 * First, attempt to show that the states are different using quick checks.
 	 */
 	if (poly.variable_count() != b.poly.variable_count()) {
+#ifdef POLY_DEBUG
 		cout << "c est pas egal pcq: pas le meme nombre de variables" << endl;
+#endif
 		return false;
 	}
 
 	if (compare_reg != b.compare_reg) {
+#ifdef POLY_DEBUG
 		cout << "c est pas egal pcq: pas le meme compare reg" << endl;
+#endif
 		return false;
 	}
 
 	if (compare_op != b.compare_op) {
+#ifdef POLY_DEBUG
 		cout << "c est pas egal pcq: pas le meme compare op" << endl;
+#endif
 		return false;
 	}
 
 	if (idmap.count() != b.idmap.count()) {
+#ifdef POLY_DEBUG
 		cout << "c est pas egal pcq: pas le meme idmap count" << endl;
+#endif
 		return false;
 	}
 
 	if (victims != b.victims) {
+#ifdef POLY_DEBUG
 		cout << "c est pas egal pcq: pas le meme victim map" << endl;
+#endif
 		return false;
 	}
 
 	if (bounds != b.bounds) {
+#ifdef POLY_DEBUG
 		cout << "c est pas egal pcq: pas le meme bounds" << endl;
+#endif
 		return false;
 	}
 
@@ -267,7 +279,9 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 		if ((p.fst.getType() == Ident::ID_MEM_VAL) || (p.fst.getType() == Ident::ID_MEM_ADDR) || (p.fst.getType() == Ident::ID_MEM_VAL_INPUT)) {
 			continue;
 		}
+#ifdef POLY_DEBUG
 		cout << "expect: " << p.fst << endl;
+#endif
 		expectedVarCount++;
 	}
 
@@ -275,7 +289,9 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 
 	if ((l.idmap.count() != expectedVarCount)) {
 		/* There was some unmatched registers */ 
+#ifdef POLY_DEBUG
 		cout << "c est pas egal pcq: different ensemble de registres" << endl;
+#endif
 		return false;
 	}
 
@@ -294,12 +310,16 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 
 	if ((l.idmap.count() != idmap.count()) || (r.idmap.count() != b.idmap.count())) {
 		/* There was some unmatched memory locations */
+#ifdef POLY_DEBUG
 		cout << "c est pas egal pcq: different ensemble de memory locations" << endl;
+#endif
 		return false;
 	}
 
 	if (l.poly != r.poly) {
+#ifdef POLY_DEBUG
 		cout << "c est pas egal pcq: poly pas egal (mem)" << endl;
+#endif
 		return false;
 	}
 
@@ -2204,12 +2224,124 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 	cout << "Right state: " << endl;
 	cout << r1;
 #endif
+
+	MyHTable<guid_t,guid_t> rename;
+	if (!noPtr) {
+		std::set<guid_t> leftVars = _collectPolyVars(l1.poly); // aka V1 dans l'algo
+		std::set<guid_t> rightVars = _collectPolyVars(r1.poly); // aka V2 dans l'algo
+		std::set<guid_t> commonVars /* C dans l'algo */ , leftOnlyVars /* V1' dans l'algo */, rightOnlyVars /* V2' dans l'algo */;
+		std::set_intersection(leftVars.begin(), leftVars.end(), rightVars.begin(), rightVars.end(), std::inserter(commonVars, commonVars.begin()));
+		std::set_difference(leftVars.begin(), leftVars.end(), rightVars.begin(), rightVars.end(), std::inserter(leftOnlyVars, leftOnlyVars.begin()));
+		std::set_difference(rightVars.begin(), rightVars.end(), leftVars.begin(), leftVars.end(), std::inserter(rightOnlyVars, rightOnlyVars.begin()));
+
+
+		WPoly commonPoly = l1.poly;
+		commonPoly.poly_hull_assign(r1.poly); /* TODO PERF : maybe we can avoid this operation */
+#ifdef POLY_DEBUG
+		cout << "Common vars: ";
+		for (std::set<guid_t>::const_iterator it = commonVars.begin(); it != commonVars.end(); it++)
+			cout << "v" << *it << " ";
+
+		cout << endl;
+#endif
+
+		std::set<guid_t> indepVars; /* C' dans l'algo */
+		for (std::set<guid_t>::const_iterator it = commonVars.begin(); it != commonVars.end(); it++) {
+			WPoly temp = commonPoly;
+			WVar v(*it);
+			temp.filter_lambda([v, &indepVars](guid_t guid) {
+				return ((guid == v.guid()) || (indepVars.find(guid) != indepVars.end()));
+			});
+
+			WPoly::ConsIterator it2(temp);
+			for (; it2 && !(*it2).is_equality(); it2++);
+			if (!it2) {
+				if (v.guid() < 20)
+				indepVars.insert(*it);
+			}
+		}
+
+#ifdef POLY_DEBUG
+		cout << "Independant common vars: ";
+		for (std::set<guid_t>::const_iterator it = indepVars.begin(); it != indepVars.end(); it++)
+			cout << "v" << *it << " ";
+
+		cout << endl;
+#endif
+
+		MyHTable<guid_t, Vector<PPL::Coefficient> > leftVMap;
+		MyHTable<guid_t, Vector<PPL::Coefficient> > rightVMap;
+		_identifyPolyVars(l1, leftOnlyVars, indepVars, leftVMap);
+		_identifyPolyVars(r1, rightOnlyVars, indepVars, rightVMap);
+
+		MyHTable<Vector<PPL::Coefficient> , guid_t, VectCoefIdent> invLeftVMap;
+
+		for (MyHTable<guid_t, Vector<PPL::Coefficient> >::PairIterator it(leftVMap); it; it++) {
+			invLeftVMap.put((*it).snd, (*it).fst);
+		}
+
+		for (MyHTable<guid_t, Vector<PPL::Coefficient> >::PairIterator it(rightVMap); it; it++) {
+			if (invLeftVMap.hasKey((*it).snd)) {
+#ifdef POLY_DEBUG
+				cout << "Variable " << WVar(invLeftVMap[(*it).snd]) << "(left) == " << WVar((*it).fst) << "(right)" << endl;
+#endif
+				// rename memory address variable
+				rename.add(invLeftVMap[(*it).snd], (*it).fst);
+
+				// also rename memory value variable
+				Ident leftIdAddr = l1.getIdent(WVar(invLeftVMap[(*it).snd]));
+				Ident rightIdAddr = r1.getIdent(WVar((*it).fst));
+				Ident leftIdVal = Ident(leftIdAddr.getId(), Ident::ID_MEM_VAL);
+				Ident rightIdVal = Ident(rightIdAddr.getId(), Ident::ID_MEM_VAL);
+				rename.add(l1.getVar(leftIdVal).guid(), r1.getVar(rightIdVal).guid());
+			}
+		}
+
+		// take care of memory variables that were already same()
+		for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = l1.idmap.getPairIter(); it; it++) {
+			for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it2 = r1.idmap.getPairIter(); it2; it2++) {
+				WVar x1((*it).snd);
+				WVar x2((*it2).snd);
+				if (((*it).fst.getType() == Ident::ID_MEM_ADDR) || ((*it).fst.getType() == Ident::ID_MEM_VAL)) {
+					if (x1.guid() == x2.guid()) {
+						rename.add(x1.guid(), x2.guid());
+					}
+				}
+			}
+		}
+	}
+
+	// rename register variables
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = l1.idmap.getPairIter(); it; it++) {
+		if (((*it).fst.getType() != Ident::ID_MEM_ADDR) && ((*it).fst.getType() != Ident::ID_MEM_VAL))
+			if (r1.idmap.has1((*it).fst)) {
+				rename.add((*it).snd, r1.idmap.find1((*it).fst));
+				// cout << "[R] mapping " << (*it).snd << " to " << r1.idmap.find1((*it).fst) << endl;
+			}
+	}
+
+	MapGuid mg(rename);
+	l1.doMap(mg);
+
+#ifdef POLY_DEBUG
+	cout << "Unified:" << endl;
+	cout << "Left state: " << endl;
+	cout << l1;
+	fflush(stdout);
+
+	cout << "Right state: " << endl;
+	cout << r1;
+#endif
+	return;
+
+
+
+	exit(0);
 	WPoly inter = l1.poly;
 	Ident cmp(16, Ident::ID_REG);
 	if (!noPtr) {
 		inter.intersection_assign(r1.poly);
 	}
-	MyHTable<guid_t,guid_t> rename;
 /*
 	cout << "Inter: " << inter << endl;
 	if (!noPtr) {
@@ -2243,21 +2375,6 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 			}
 
 	}
-	MapGuid mg(rename);
-	l1.doMap(mg);
-
-
-
-#ifdef POLY_DEBUG
-	cout << "Unified:" << endl;
-	cout << "Left state: " << endl;
-	cout << l1;
-	fflush(stdout);
-
-	cout << "Right state: " << endl;
-	cout << r1;
-#endif
-	return;
 
 	l1.poly.poly_hull_assign(r1.poly);
 #ifdef POLY_DEBUG
@@ -2481,6 +2598,100 @@ void PPLDomain::_doBinaryOp(int op, WVar *v, WVar *vs1, WVar *vs2) {
 			break;
 	}
 }
+
+void PPLDomain::_identifyPolyVars(const PPLDomain &d, const std::set<guid_t> &vars, const std::set<guid_t> &indep, MyHTable<guid_t, Vector<PPL::Coefficient> > &vmap) const {
+	const WPoly &poly = d.poly;
+#ifdef POLY_DEBUG
+	cout << "Begin _identifyPolyVars" << endl;
+#endif
+	for (std::set<guid_t>::const_iterator it = vars.begin(); it != vars.end(); it++) {
+		WVar v(*it);
+#ifdef POLY_DEBUG
+		cout << "trying for: " << v << endl;
+#endif
+		if (!d.isVarMapped(v) || d.getIdent(v).getType() != Ident::ID_MEM_ADDR)
+			continue;
+		WPoly temp = poly;
+		temp.filter_lambda([&indep, v](guid_t guid) {
+				return ((guid == v.guid()) || (indep.find(guid) != indep.end()));
+		});
+
+		WPoly::ConsIterator it2(temp);
+		for (; it2 && !((*it2).is_equality() && (*it2).has_var(v)); it2++);
+#ifdef POLY_DEBUG
+		cout << "Found equality: " << (*it2) << endl;
+#endif
+
+		if (it2) {
+			WCons c = *it2;
+			Vector<PPL::Coefficient> vect;
+			vect.setLength(indep.size() + 2); /* vector format: [Indep. vars coefs, Current var (v) coef, Constant] */
+			for (int i = 0; i < vect.length(); i++)
+				vect[i] = 0;
+			bool seen_v = false;
+			for (WCons::TermIterator it3(c); it3; it3++) {
+				WVar v2(*it3);
+				if ((v2.guid() != v.guid()) && (c.coefficient(v2) != 0)) {
+					ASSERT(indep.find(v2.guid()) != indep.end()); // must be true because of projection, and because v2!=v
+					PPL::Coefficient coef = c.coefficient(v2);
+					vect[std::distance(indep.begin(), indep.find(v2.guid()))] = coef;
+				}
+				if (v2.guid() == v.guid()) {
+					seen_v = true;
+					vect[vect.length() - 2] = c.coefficient(v);
+					ASSERT(c.coefficient(v) != 0);
+				}
+			}
+			if (!seen_v) {
+				ASSERT(false);
+#ifdef POLY_DEBUG
+				cout << "nvm. " << endl;
+#endif
+				continue;
+			}
+
+			vect[vect.length() - 1] = c.inhomogeneous_term();
+
+			PPL::Coefficient pgcd = vect[vect.length() - 1];
+
+			for (int i = 0; i < vect.length() - 1; i++) {
+				PPL::Coefficient coef2 = vect[i];
+				while (coef2 != 0) {
+					PPL::Coefficient tmp = pgcd;
+					pgcd = coef2;
+					coef2 = tmp % coef2;
+				}
+			}
+
+			if (pgcd != 1) {
+				for (int i = 0; i < vect.length(); i++) {
+					vect[i] /= pgcd;
+				}
+			}
+
+#ifdef POLY_DEBUG
+			cout << "variable " << v << " has vect: ";
+			for (int i = 0; i < vect.length(); i++)
+				cout << vect[i] << ", ";
+			cout << endl;
+#endif
+			vmap.put(v.guid(), vect);
+		}
+	}
+}
+
+std::set<guid_t> PPLDomain::_collectPolyVars(const WPoly &poly) const {
+	std::set<guid_t> result;
+	for (WPoly::ConsIterator it(poly); it; it++) {
+		WCons c = *it;
+		for (WCons::TermIterator it2(c); it2; it2++) {
+			if (c.coefficient(*it2) != 0)
+			result.insert((*it2).guid());
+		}
+	}
+	return result;
+}
+
 
 void PPLDomain::enableSummary() {
 	_summary = new PPLSummary();
