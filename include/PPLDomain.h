@@ -89,6 +89,21 @@ class HashIdent {
 	static inline bool equals(const Ident &key1, const Ident &key2) { return key1.equals(key2); }
 };
 
+class VectCoefIdent {
+	public:
+		static inline t::hash hash(const Vector<PPL::Coefficient> &v) { 
+			int prime = 31;
+			t::hash result = 1;
+			for (int i = 0; i < v.length(); i++) {
+				result = prime * result + PPL::raw_value(v[i]).get_ui();
+			}
+			return 0; 
+		}
+		static inline bool equals(const Vector<PPL::Coefficient> &v1, const Vector<PPL::Coefficient> &v2) {
+			return v1 == v2;
+		}
+};
+
 class HashCons {
   public:
 	static t::hash hash(const PPL::Constraint &key);
@@ -268,6 +283,7 @@ private:
 		BitVector &_bv;
 		int _size;
 	};
+
 
 	/**
 	 * @class MapWithHash
@@ -860,6 +876,12 @@ private:
 
   private:
 	/* Private helper functions. Subject to changes, and should not be used directly. */
+
+
+	std::set<guid_t> _collectPolyVars(const WPoly &poly) const;
+
+	void _identifyPolyVars(const PPLDomain &d, const std::set<guid_t> &vars, const std::set<guid_t> &indep, MyHTable<guid_t, Vector<PPL::Coefficient> > &vmap) const;
+
 //	int _doAllocAxis(const Ident & /*ident*/, bool allow_replace = false);
 //	void _doFreeAxis(int axis);
 #ifdef POLY_DEBUG

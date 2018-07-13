@@ -366,6 +366,10 @@ class WPoly {
 		// Mapping (projection)
 		template <class F> void map_vars(F pfunc);
 
+		template <class F> void map_lambda(F lambda);
+
+		template <class F> void filter_lambda(F lambda);
+
 		// equality
 		inline bool equals(const WPoly &src) const {
 			WPoly copie1 = src;
@@ -427,6 +431,42 @@ class WPoly {
 		PPL::C_Polyhedron poly;
 };
 
+/**
+ * @class FilterLambda 
+ *
+ * Partial mapping function that filters according to lambda function
+ */
+template <class F>
+class FilterLambda {
+  public:
+	inline explicit FilterLambda(F &lambda) : _lambda(lambda) {}
+	inline bool maps(guid_t i, guid_t &j) const {
+		if (_lambda(i)) {
+				j = i;
+				return true;
+		} else return false;
+	}
+
+  private:
+	F &_lambda;
+};
+
+/**
+ * @class FilterLambda 
+ *
+ * Partial mapping function that filters according to lambda function
+ */
+template <class F>
+class MapLambda {
+  public:
+	inline explicit MapLambda(F &lambda) : _lambda(lambda) {}
+	inline bool maps(guid_t i, guid_t &j) const {
+		return _lambda(i, j);
+	}
+
+  private:
+	F &_lambda;
+};
 
 /* Template implementations */
 template <class F> void WPoly::map_adapter_dim(F pfunc) {
@@ -467,6 +507,17 @@ template <class F> void WPoly::map_vars(F pfunc) {
 //	elm::cout << "after remap: \n";
 //	print(elm::cout);
 }
+
+template <class F> void WPoly::map_lambda(F lambda) {
+	MapLambda<F> helper(lambda);
+	map_vars(helper);
+}
+
+template <class F> void WPoly::filter_lambda(F lambda) {
+	FilterLambda<F> helper(lambda);
+	map_vars(helper);
+}
+
 
 } // end namespace poly 
 } // end namespace otawa
