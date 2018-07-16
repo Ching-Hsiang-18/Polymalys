@@ -335,7 +335,13 @@ class WPoly {
 		}
 
 		inline void unconstrain(const WVar &var) {
-			eliminate(translate(var).id());
+			assert(adapter.size() == poly.space_dimension());
+//			std::cout << adapter.size() << " == " << poly.space_dimension() << std::endl;
+			if (adapter.find(var.guid()) == adapter.end()) {
+				std::cout << "Attempted to unconstrain constraint-less variable v" << var.guid() << " (no biggie)" << std::endl;
+				return;
+			}
+			eliminate(const_cast<const WPoly*>(this)->translate(var.guid()).id());
 		}
 
 
@@ -412,10 +418,24 @@ class WPoly {
 		template <class F> void map_adapter_dim(F pfunc);
 
 		template <class F> inline void map_with_dim(F pfunc) {
+//				std::cout << "next= " << next << ", space_dimension()=" << poly.space_dimension() << std::endl;
+//				print(elm::cout);
+//				int x = adapter.size();
+//				std::cout << x << std::endl;
 			poly.map_space_dimensions(pfunc);
 			next = pfunc.max_in_codomain() + 1;
 			if (next != poly.space_dimension()) {
+				for (int i = 0; i < pfunc.max_in_domain() +10; i++) {
+					PPL::dimension_type a,b;
+					a = i;
+					bool m = pfunc.maps(a,b);
+					if (m)
+						std::cout << i << " => " << b << std::endl;
+				}
+				std::cout << "next= " << next << ", space_dimension()=" << poly.space_dimension() << std::endl;
 				print(elm::cout);
+				int x = adapter.size();
+				std::cout << "adapter size= " << x << std::endl;
 				abort();
 			}
 			map_adapter_dim(pfunc);

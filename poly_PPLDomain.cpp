@@ -1660,8 +1660,9 @@ void PPLDomain::doFinalizeUpdate() {
 		return;
 	}
 #endif
-	for (Vector<guid_t>::Iter it(victims); it; it++)
+	for (Vector<guid_t>::Iter it(victims); it; it++) {
 		poly.unconstrain(WVar(*it));
+	}
 
 	victims.clear();
 	_sanityChecks();
