@@ -1161,6 +1161,7 @@ PPLDomain PPLDomain::onMerge(const PPLDomain &r, bool widen) const {
 	PPLDomain r1 = r;
 
 	_doUnify(l1, r1);
+
 	for (int i = 0; i < r1.bounds.length(); i++)
 		l1.setBound(i, r1.getBound(i));
 
@@ -1171,6 +1172,11 @@ PPLDomain PPLDomain::onMerge(const PPLDomain &r, bool widen) const {
 	for (int i = 0; i < r1.bounds.length(); i++)
 		l1.setBound(i, r1.getBound(i));
 	return l1;
+
+
+
+
+
 #ifdef POLY_DEBUG
 	cout << "Joined state:" << endl;
 	cout << l1;
@@ -2149,65 +2155,44 @@ void PPLDomain::_doMatchSummaries(PPLDomain &l1, PPLDomain &r1, unsigned int& ax
 #endif
 }
 
-void PPLDomain::_doMatchGlobals(PPLDomain &l1, PPLDomain &r1, unsigned int& axis, 
-		MyHTable<int,int> &mappingL, MyHTable<int,int> &mappingR) const {
-	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = l1.idmap.getPairIter(); it; it++) {
-		if ((*it).fst.getType() != Ident::ID_MEM_ADDR)
-			continue;
-		uint32_t addressL, valueL;
-		if (l1.memGetInitial((*it).fst, addressL, valueL) && valueL) {
-			bool found = false;
-			for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it2 = r1.idmap.getPairIter(); it2; it2++) {
-				if ((*it2).fst.getType() != Ident::ID_MEM_ADDR)
-					continue;
-				uint32_t addressR, valueR;
-				if (r1.memGetInitial((*it2).fst, addressR, valueR) && valueL) {
-					if (addressR ==  addressL) {
-						found = true;
-						break;
-					}
-				}
-			}
-
-			if (!found) { /* TODO need faire dans les deux sens */ 
-				/*
-				 * Found a static address variable in l1 that was not in r1, and it is possible to
-				 * recover the value from the initial state. So we create the corresponding memory location
-				 * on r1 and initialize it with the value recovered from the initial state.
-				 */
-#ifdef POLY_DEBUG
-				cout << "Left-side identifier " << (*it).fst << " has static address 0x" << hex(addressL)
-					<< " and no corresponding identifier in right-side state." << endl;
-
+void PPLDomain::_doMatchGlobals(PPLDomain &l1, PPLDomain &r1, 
+		MyHTable<guid_t, Vector<PPL::Coefficient> > &leftVMap, 
+		MyHTable<Vector<PPL::Coefficient> , guid_t, VectCoefIdent> &invRightVMap) const {
+		// Look for unmatched global variables
+		for (MyHTable<guid_t, Vector<PPL::Coefficient> >::PairIterator it(leftVMap); it; it++) {
+			Vector<PPL::Coefficient> vect = (*it).snd;
+			int i;
+			for (i = 0; (i < vect.length() - 2) && (vect[i] == 0); i++);
+			if (i == vect.length() - 2) {
+#ifdef POLY_DEBUG				
+				cout << "GLOBAL: " << WVar((*it).fst) << endl;
 #endif
-				WVar addrL = WVar((*it).snd);
-				WVar valL = l1.getVar(Ident((*it).fst.getId(), Ident::ID_MEM_VAL));
-				Ident idAddrR, idValR;
+				if (!invRightVMap.hasKey((*it).snd)) {
+#ifdef POLY_DEBUG				
+					cout << "Global does not exists in other state." << endl;
+#endif
+					uint32_t staticAddr = 
+						PPL::raw_value(- vect[vect.length() - 1] / vect[vect.length() - 2]).get_ui();
+					uint32_t staticVal;
+					dfa::INITIAL_STATE(_ws)->get(staticAddr, staticVal);
+#ifdef POLY_DEBUG				
+					cout << "Static adress: " << hex(staticAddr) << " value: " << hex(staticVal) << endl;
+#endif
 
-				r1.varCreatePtr(idAddrR, idValR);
-				WVar addrR = r1.varNew(idAddrR);
-				WVar valR = r1.varNew(idValR);
+					Ident leftIdAddr = l1.getIdent(WVar((*it).fst));
+					Ident leftIdVal = Ident(leftIdAddr.getId(), Ident::ID_MEM_VAL);
+					WVar val = l1.getVar(leftIdVal);
 
-				r1.doNewConstraint(addrR == addressL);
-				r1.doNewConstraint(valR == valueL);
+					r1.poly.add_constraint(WVar((*it).fst) == staticAddr);
+					r1.poly.add_constraint(val == staticVal);
 
-				mappingL[addrL.id()] = axis;
-				mappingR[addrR.id()] = axis;
-				mappingL[valL.id()] = axis + 1;
-				mappingR[valR.id()] = axis + 1;
-				axis += 2;
-				if (l1.hasIdent(Ident((*it).fst.getId(), Ident::ID_MEM_VAL_INPUT))) {
-					WVar inputL = l1.getVar(Ident((*it).fst.getId(), Ident::ID_MEM_VAL_INPUT));
-					Ident idInput(idAddrR.getId(), Ident::ID_MEM_VAL_INPUT);
-					WVar inputR = r1.varNew(idInput);
-					mappingL[inputL.id()] = axis;
-					mappingR[inputR.id()] = axis;
-					axis++;
-
+					Ident rightIdAddr, rightIdVal;
+					r1.varCreatePtr(rightIdAddr, rightIdVal);
+					r1.idmap.add(rightIdAddr, (*it).fst);
+					r1.idmap.add(rightIdVal, val.guid());
 				}
 			}
 		}
-	}
 }
 
 // TODO modifier pour garder quand meme des deux cotés ce qui est dans DAMAGED
@@ -2268,19 +2253,19 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 
 		cout << endl;
 #endif
-
 		MyHTable<guid_t, Vector<PPL::Coefficient> > leftVMap;
 		MyHTable<guid_t, Vector<PPL::Coefficient> > rightVMap;
 		_identifyPolyVars(l1, leftOnlyVars, indepVars, leftVMap);
 		_identifyPolyVars(r1, rightOnlyVars, indepVars, rightVMap);
 
-		MyHTable<Vector<PPL::Coefficient> , guid_t, VectCoefIdent> invLeftVMap;
+		MyHTable<Vector<PPL::Coefficient> , guid_t, VectCoefIdent> invLeftVMap, invRightVMap;
 
 		for (MyHTable<guid_t, Vector<PPL::Coefficient> >::PairIterator it(leftVMap); it; it++) {
 			invLeftVMap.put((*it).snd, (*it).fst);
 		}
 
 		for (MyHTable<guid_t, Vector<PPL::Coefficient> >::PairIterator it(rightVMap); it; it++) {
+			invRightVMap.put((*it).snd, (*it).fst);
 			if (invLeftVMap.hasKey((*it).snd)) {
 #ifdef POLY_DEBUG
 				cout << "Variable " << WVar(invLeftVMap[(*it).snd]) << "(left) == " << WVar((*it).fst) << "(right)" << endl;
@@ -2296,6 +2281,10 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 				rename.add(l1.getVar(leftIdVal).guid(), r1.getVar(rightIdVal).guid());
 			}
 		}
+
+		// _doMatchGlobals(l1, r1, leftVMap, invRightVMap);
+//		_doMatchGlobals(r1, l1, rightVMap, invLeftVMap);
+
 
 		// take care of memory variables that were already same()
 		for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = l1.idmap.getPairIter(); it; it++) {
@@ -2319,6 +2308,8 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 				// cout << "[R] mapping " << (*it).snd << " to " << r1.idmap.find1((*it).fst) << endl;
 			}
 	}
+	//_doMatchGlobals(l1, r1, axis, mappingL, mappingR);
+	//
 
 	MapGuid mg(rename);
 	l1.doMap(mg);
@@ -2333,211 +2324,6 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 	cout << r1;
 #endif
 	return;
-
-
-
-	exit(0);
-	WPoly inter = l1.poly;
-	Ident cmp(16, Ident::ID_REG);
-	if (!noPtr) {
-		inter.intersection_assign(r1.poly);
-	}
-/*
-	cout << "Inter: " << inter << endl;
-	if (!noPtr) {
-		ASSERT(!inter.is_empty());
-	}
-*/
-	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = l1.idmap.getPairIter(); it; it++) {
-		if (!noPtr)
-			for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it2 = r1.idmap.getPairIter(); it2; it2++) {
-				// Memory variables substitution
-				if (((*it).fst.getType() == Ident::ID_MEM_ADDR) && ((*it2).fst.getType() == Ident::ID_MEM_ADDR)) {
-					WVar x1((*it).snd);
-					WVar x2((*it2).snd);
-					if ((x1.guid() == x2.guid()) ||
-						(!inter.is_empty() && inter.relation_with(x1 == x2).implies(PPL::Poly_Con_Relation::is_included()))) {
-						cout << "Identified " << x1 << " with " << x2 << endl;
-						WVar x1v = l1.getVar(Ident((*it).fst.getId(), Ident::ID_MEM_VAL));
-						WVar x2v = r1.getVar(Ident((*it2).fst.getId(), Ident::ID_MEM_VAL));
-						rename.add(x1.guid(), x2.guid());
-						rename.add(x1v.guid(), x2v.guid());
-						//cout << "[A] mapping " << x1.guid() << " to " << x2.guid() << endl;
-						//cout << "[V] mapping " << x1v.guid() << " to " << x2v.guid() << endl;
-					}
-				} 
-			}
-
-		if (((*it).fst.getType() != Ident::ID_MEM_ADDR) && ((*it).fst.getType() != Ident::ID_MEM_VAL))
-			if (r1.idmap.has1((*it).fst)) {
-				rename.add((*it).snd, r1.idmap.find1((*it).fst));
-				// cout << "[R] mapping " << (*it).snd << " to " << r1.idmap.find1((*it).fst) << endl;
-			}
-
-	}
-
-	l1.poly.poly_hull_assign(r1.poly);
-#ifdef POLY_DEBUG
-	cout << "Joined state:" << endl;
-	cout << l1;
-	fflush(stdout);
-#endif
-
-	exit(0);
-	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = l1.idmap.getPairIter(); it; it++) {
-		if ((*it).fst.getType() == Ident::ID_MEM_ADDR) {
-			if (!r1.idmap.has2((*it).snd)) {
-				cout << "Removing unmatched memory: " << (*it).fst << endl;
-				l1.victims.add((*it).snd);
-				l1.victims.add(l1.getVar(Ident((*it).fst.getId(), Ident::ID_MEM_VAL)).guid());
-			}
-
-		} else if ((*it).fst.getType() != Ident::ID_MEM_VAL) {
-			if (r1.idmap.has1((*it).fst)) {
-				ASSERT((*it).snd == r1.idmap.find1((*it).fst));
-			} else {
-				l1.victims.add((*it).snd);
-				cout << "Removing unmatched register: " << (*it).fst << endl;
-			}
-		}
-	}
-
-
-
-
-	exit(0);
-#ifdef TODO
-	/*
-	 * These hashtables will represent the substitution to perform in the two input states.
-	 *
-	 * Hashtable keys contains original numbering of the common variables in each states.
-	 * Hashtable values contains a (new) common numbering of these varialbes.
-	 */
-	MyHTable<int, int> mappingL;
-	MyHTable<int, int> mappingR;
-
-	/* Create substitution entries for common vars created in merge ancestor */
-	_identifyAncestorVars(l1, mappingL, r1, mappingR);
-	axis = mappingL.count();
-
-	MyHTable<WCons, int, HashCons> indexedPtrsL;
-	MyHTable<WCons, int, HashCons> indexedPtrsR;
-
-	if (!noPtr) {
-#ifdef POLY_DEBUG
-		cout << "Identifying address expressions appearing on both sides\n";
-#endif
-
-		/*
-		 * Attempts to index each pointer by the expression of their address in terms of ancestor variables
-		 *
-		 * The hashkey is the linear expression
-		 * The hashvalue is the (original) memory location index.
-		 * */
-
-		l1._indexPointersByExpr(indexedPtrsL, mappingL);
-		r1._indexPointersByExpr(indexedPtrsR, mappingR);
-
-		/*
-		 * Pointer pairs with the same expression are equivalent, so we add a substitution for each one of them, so
-		 * they will be mapped to the same variable number.
-		 */
-#ifdef POLY_DEBUG
-				
-		cout << "Memory locations appearing on both states: ";
-#endif
-		for (MyHTable<WCons, int, HashCons>::PairIterator it(indexedPtrsL); it; it++) {
-			const WCons &cons = (*it).fst;
-			if (indexedPtrsR.hasKey(cons)) {
-				int ptrIdxL = (*it).snd;
-				int ptrIdxR = indexedPtrsR[cons];
-				/* pointer with index ptrIdxL in l represents the same address as pointer with index ptrIdxR in r */
-				WVar addrL = l1.getVar(Ident(ptrIdxL, Ident::ID_MEM_ADDR));
-				WVar valL = l1.getVar(Ident(ptrIdxL, Ident::ID_MEM_VAL));
-				WVar addrR = r1.getVar(Ident(ptrIdxR, Ident::ID_MEM_ADDR));
-				WVar valR = r1.getVar(Ident(ptrIdxR, Ident::ID_MEM_VAL));
-
-
-				mappingL[addrL.id()] = axis;
-				mappingR[addrR.id()] = axis;
-				mappingL[valL.id()] = axis + 1;
-				mappingR[valR.id()] = axis + 1;
-
-				axis += 2;
-				Ident idInputL(ptrIdxL, Ident::ID_MEM_VAL_INPUT);
-				Ident idInputR(ptrIdxR, Ident::ID_MEM_VAL_INPUT);
-				bool hasInput = false;
-				if (l1.hasIdent(idInputL) || r1.hasIdent(idInputR)) {
-					WVar valLI = l1.getVarOrNew(idInputL);
-					WVar valRI = r1.getVarOrNew(idInputR);
-					mappingL[valLI.id()] = axis;
-					mappingR[valRI.id()] = axis;
-					axis++;
-					hasInput = true;
-				}
-
-#ifdef POLY_DEBUG
-				cout << "ptr" << ptrIdxL << "/ptr" << ptrIdxR << "(input=" << hasInput << "), ";
-#endif
-			}
-		}
-#ifdef POLY_DEBUG
-		cout << endl;
-#endif
-
-		/*
-		 * Add pointer-from-initial-state for each global variable without a corresponding ptr in other state
-		 */
-
-		_doMatchGlobals(l1, r1, axis, mappingL, mappingR);
-		_doMatchGlobals(r1, l1, axis, mappingR, mappingL);  // TODO check
-	}
-
-	/*
-	 * Finally, add a substitution for each register that appears in both states.
-	 */
-
-	for (MyHTable<Ident, int, HashIdent>::PairIterator it(l1.id2axis); it; it++) {
-		const Ident &ident = (*it).fst;
-		if ((ident.getType() != Ident::ID_REG_INPUT) && (ident.getType() != Ident::ID_REG) && (ident.getType() != Ident::ID_LOOP)) {
-			continue;
-		}
-		if (r1.id2axis.hasKey(ident)) {
-			mappingL.put((*it).snd, axis);
-			mappingR.put(r1.id2axis[ident], axis);
-			axis++;
-		}
-	}
-	ASSERT((l1._summary == nullptr) == (r1._summary == nullptr));
-	if (!noPtr && l1._summary) {
-#ifdef POLY_DEBUG
-		cout << "Dans L: " << endl;
-#endif
-		_doMatchSummaries(l1, r1, axis, mappingL, mappingR, indexedPtrsL, indexedPtrsR);
-#ifdef POLY_DEBUG
-		cout << "Dans R: " << endl;
-#endif
-		_doMatchSummaries(r1, l1, axis, mappingR, mappingL, indexedPtrsR, indexedPtrsL);
-	}
-
-
-	l1.doMap(PPLDomain::MapWithHash(mappingL));
-	r1.doMap(PPLDomain::MapWithHash(mappingR));
-	ASSERT(l1.poly.space_dimension() == r1.poly.space_dimension());
-	ASSERT(l1.poly.space_dimension() == axis);
-	l1.num_axis = l1.poly.space_dimension();
-
-#ifdef POLY_DEBUG
-	cout << "unify done. " << endl;
-	cout << "Left state: " << endl;
-	cout << l1;
-
-	cout << "Right state: " << endl;
-	cout << r1;
-
-	cout << "Merge phase. " << endl;
-#endif
-#endif
 }
 
 void PPLDomain::_doBinaryOp(int op, WVar *v, WVar *vs1, WVar *vs2) {
