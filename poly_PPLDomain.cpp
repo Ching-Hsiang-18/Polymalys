@@ -2283,8 +2283,8 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 			}
 		}
 
-		// _doMatchGlobals(l1, r1, leftVMap, invRightVMap);
-//		_doMatchGlobals(r1, l1, rightVMap, invLeftVMap);
+		_doMatchGlobals(l1, r1, leftVMap, invRightVMap);
+		_doMatchGlobals(r1, l1, rightVMap, invLeftVMap);
 
 
 		// take care of memory variables that were already same()
@@ -2309,8 +2309,6 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 				// cout << "[R] mapping " << (*it).snd << " to " << r1.idmap.find1((*it).fst) << endl;
 			}
 	}
-	//_doMatchGlobals(l1, r1, axis, mappingL, mappingR);
-	//
 
 	MapGuid mg(rename);
 	l1.doMap(mg);
