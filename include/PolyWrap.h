@@ -39,6 +39,9 @@ WLinExpr operator-(const WLinExpr &a, const WLinExpr &b);
 WLinExpr operator+=(WLinExpr &a, const WLinExpr &b);
 WLinExpr operator-=(WLinExpr &a, const WLinExpr &b);
 
+class TranslationFailed : public std::exception {
+};
+
 class WVar {
 	public:
 		inline WVar() {
@@ -248,6 +251,8 @@ class WPoly {
 
 
 		inline PPL::Variable translate(const guid_t g) const {
+			if (adapter.find(g) == adapter.end())
+				throw TranslationFailed();
 			return PPL::Variable(adapter.at(g));
 		}
 
@@ -327,21 +332,28 @@ class WPoly {
 		inline const PPL::C_Polyhedron& getPoly() { return poly; }
 
 		inline bool maximize(const WLinExpr&expr, coef_t &sup_n, coef_t &sup_d, bool &maximum) const {
-			return poly.maximize(translate(expr), sup_n, sup_d, maximum);
+			try {
+				return poly.maximize(translate(expr), sup_n, sup_d, maximum);
+			} catch(TranslationFailed&) {
+				return false;
+			}
 		}
 
 		inline bool minimize(const WLinExpr&expr, coef_t &sup_n, coef_t &sup_d, bool &maximum) const {
-			return poly.minimize(translate(expr), sup_n, sup_d, maximum);
+			try {
+				return poly.minimize(translate(expr), sup_n, sup_d, maximum);
+			} catch(TranslationFailed&) {
+				return false;
+			}
 		}
 
 		inline void unconstrain(const WVar &var) {
 			assert(adapter.size() == poly.space_dimension());
-//			std::cout << adapter.size() << " == " << poly.space_dimension() << std::endl;
-			if (adapter.find(var.guid()) == adapter.end()) {
-				std::cout << "Attempted to unconstrain constraint-less variable v" << var.guid() << " (no biggie)" << std::endl;
+			try {
+				eliminate(const_cast<const WPoly*>(this)->translate(var.guid()).id());
+			} catch (TranslationFailed&) {
 				return;
 			}
-			eliminate(const_cast<const WPoly*>(this)->translate(var.guid()).id());
 		}
 
 

@@ -2405,11 +2405,11 @@ void PPLDomain::_identifyPolyVars(const PPLDomain &d, const std::set<guid_t> &va
 
 		WPoly::ConsIterator it2(temp);
 		for (; it2 && !((*it2).is_equality() && (*it2).has_var(v)); it2++);
-#ifdef POLY_DEBUG
-		cout << "Found equality: " << (*it2) << endl;
-#endif
 
 		if (it2) {
+#ifdef POLY_DEBUG
+			cout << "Found equality: " << (*it2) << endl;
+#endif
 			WCons c = *it2;
 			Vector<PPL::Coefficient> vect;
 			vect.setLength(indep.size() + 2); /* vector format: [Indep. vars coefs, Current var (v) coef, Constant] */
