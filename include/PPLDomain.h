@@ -921,8 +921,9 @@ private:
 	/**
 	 * To be documented
 	 */
-	void _doMatchGlobals(PPLDomain &l1, PPLDomain &r1, unsigned int &axis, 
-			MyHTable <int,int> &mappingL, MyHTable<int,int> &mappingR) const;
+	void _doMatchGlobals(PPLDomain &l1, PPLDomain &r1, 
+		MyHTable<guid_t, Vector<PPL::Coefficient> > &leftVMap, 
+		MyHTable<Vector<PPL::Coefficient> , guid_t, VectCoefIdent> &invRightVMap) const;
 	/**
 	 * To be documented
 	 */

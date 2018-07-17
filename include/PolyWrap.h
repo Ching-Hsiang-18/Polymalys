@@ -39,6 +39,9 @@ WLinExpr operator-(const WLinExpr &a, const WLinExpr &b);
 WLinExpr operator+=(WLinExpr &a, const WLinExpr &b);
 WLinExpr operator-=(WLinExpr &a, const WLinExpr &b);
 
+class TranslationFailed : public std::exception {
+};
+
 class WVar {
 	public:
 		inline WVar() {
@@ -248,6 +251,8 @@ class WPoly {
 
 
 		inline PPL::Variable translate(const guid_t g) const {
+			if (adapter.find(g) == adapter.end())
+				throw TranslationFailed();
 			return PPL::Variable(adapter.at(g));
 		}
 
@@ -327,15 +332,28 @@ class WPoly {
 		inline const PPL::C_Polyhedron& getPoly() { return poly; }
 
 		inline bool maximize(const WLinExpr&expr, coef_t &sup_n, coef_t &sup_d, bool &maximum) const {
-			return poly.maximize(translate(expr), sup_n, sup_d, maximum);
+			try {
+				return poly.maximize(translate(expr), sup_n, sup_d, maximum);
+			} catch(TranslationFailed&) {
+				return false;
+			}
 		}
 
 		inline bool minimize(const WLinExpr&expr, coef_t &sup_n, coef_t &sup_d, bool &maximum) const {
-			return poly.minimize(translate(expr), sup_n, sup_d, maximum);
+			try {
+				return poly.minimize(translate(expr), sup_n, sup_d, maximum);
+			} catch(TranslationFailed&) {
+				return false;
+			}
 		}
 
 		inline void unconstrain(const WVar &var) {
-			eliminate(translate(var).id());
+			assert(adapter.size() == poly.space_dimension());
+			try {
+				eliminate(const_cast<const WPoly*>(this)->translate(var.guid()).id());
+			} catch (TranslationFailed&) {
+				return;
+			}
 		}
 
 
@@ -412,11 +430,25 @@ class WPoly {
 		template <class F> void map_adapter_dim(F pfunc);
 
 		template <class F> inline void map_with_dim(F pfunc) {
+//				std::cout << "next= " << next << ", space_dimension()=" << poly.space_dimension() << std::endl;
+//				print(elm::cout);
+//				int x = adapter.size();
+//				std::cout << x << std::endl;
 			poly.map_space_dimensions(pfunc);
 			next = pfunc.max_in_codomain() + 1;
 			if (next != poly.space_dimension()) {
-				// print(elm::cout);
-				// abort();
+				for (int i = 0; i < pfunc.max_in_domain() +10; i++) {
+					PPL::dimension_type a,b;
+					a = i;
+					bool m = pfunc.maps(a,b);
+					if (m)
+						std::cout << i << " => " << b << std::endl;
+				}
+				std::cout << "next= " << next << ", space_dimension()=" << poly.space_dimension() << std::endl;
+				print(elm::cout);
+				int x = adapter.size();
+				std::cout << "adapter size= " << x << std::endl;
+				abort();
 			}
 			map_adapter_dim(pfunc);
 		}
