@@ -3,11 +3,7 @@
 #include <otawa/dfa/FastState.h>
 #include <otawa/dfa/ai.h>
 #include <otawa/flowfact/features.h>
-#include <otawa/graph/Graph.h>
 #include <otawa/otawa.h>
-#include <otawa/util/HalfAbsInt.h>
-#include <otawa/util/WideningFixPoint.h>
-#include <otawa/util/WideningListener.h>
 #include <ppl.hh>
 
 #include "include/PPLDomain.h"
@@ -182,7 +178,7 @@ void PPLDomain::print(io::Output &out) const {
 	if (_summary != nullptr) {
 		cout << "Summary info: " << endl;
 		cout << "- Inputs: ";
-		for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+		for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it(); it++) {
 			const Pair<Ident, guid_t> &p = *it;
 			if ((p.fst.getType() == Ident::ID_MEM_VAL_INPUT) || (p.fst.getType() == Ident::ID_REG_INPUT)) 
 				cout << p.fst << ", ";
@@ -195,7 +191,7 @@ void PPLDomain::print(io::Output &out) const {
 		*/
 
 		cout << "- Outputs/Side-effects: ";
-		for (elm::genstruct::Vector<Ident>::Iterator it(_summary->_damaged); it; it++) {
+		for (elm::Vector<Ident>::Iter it(_summary->_damaged); it(); it++) {
 			cout << *it << ", ";
 		}
 		cout << endl;
@@ -274,7 +270,7 @@ bool PPLDomain::equals(const PPLDomain &b) const {
 	PPLDomain l = *this;
 
 	int expectedVarCount = 0;
-	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it(); it++) {
 		const Pair<Ident, guid_t> &p = *it;
 		if ((p.fst.getType() == Ident::ID_MEM_VAL) || (p.fst.getType() == Ident::ID_MEM_ADDR) || (p.fst.getType() == Ident::ID_MEM_VAL_INPUT)) {
 			continue;
@@ -365,7 +361,7 @@ void PPLDomain::displayLocVars(io::Output &out) const {
 		poly_copy.add_constraint(v == ssp - i - LOC_VAR_SIZE(_props));
 		out << " [SP - " << hex(i) << "] == ";
 		bool found = false;
-		for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+		for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it(); it++) {
 			elm::Pair<Ident, guid_t> p = *it;
 			WVar vsnd = WVar(p.snd);
 			if (p.fst.getType() == Ident::ID_MEM_ADDR) {
@@ -413,7 +409,7 @@ void PPLDomain::displayGlobVars(io::Output &out) const {
 	}
 	Ident id_ssp(Ident::ID_START_SP, Ident::ID_SPECIAL);
 	out << "Global variables: " << endl;
-	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it(); it++) {
 		elm::Pair<Ident, guid_t> p = *it;
 		if (p.fst.getType() == Ident::ID_MEM_ADDR) {
 			PPL::Coefficient num, den;
@@ -502,7 +498,7 @@ bool PPLDomain::mustAlias(const WVar &v1, const WVar &v2, int offset) const {
 
 void PPLDomain::displayIdentMap(io::Output &out) const {
 	out << "Mapping: ";
-	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it(); it++) {
 		const Ident &ident = (*it).fst;
 		WVar v = WVar((*it).snd);
 		out << ident << ":" << v << ", ";
@@ -519,7 +515,7 @@ PPLDomain PPLDomain::getLinearExpr(const Ident &id) {
 	int axis = 1;
 	PPLDomain dom(*this); /* make a working copy to do the projections */
 	inputs[getVar(id).id()] = 0;
-	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it(); it++) {
 		if (((*it).fst.getType() == Ident::ID_REG_INPUT) ||
 			((*it).fst.getType() == Ident::ID_MEM_VAL_INPUT)) {
 			inputs[(*it).snd] = axis;
@@ -553,7 +549,7 @@ PPLDomain PPLDomain::onLoopExitLinear(int loop, const PPLDomain &bound) const {
 	WVar v = s_out.getVar(id);
 	MyHTable<int,int> map;
 	Vector<int> mapped;
-	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it(); it++) {
 		if (((*it).fst.getType() == Ident::ID_REG_INPUT) || ((*it).fst.getType() == Ident::ID_MEM_VAL_INPUT) || ((*it).fst == id)) {
 			if (hasIdent((*it).fst)) {
 				const WVar &v2 = getVar((*it).fst);
@@ -1390,9 +1386,9 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 */
 
 			Ident idEquiv;                          /* Identifier equivalent to the store addr, if any. */
-			elm::genstruct::Vector<Ident> overlaps; /* List of identifiers overlapping the store addr. */
+			elm::Vector<Ident> overlaps; /* List of identifiers overlapping the store addr. */
 
-			for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = s_out.idmap.getPairIter(); it; it++) {
+			for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = s_out.idmap.getPairIter(); it(); it++) {
 				const Ident &idCurrent = (*it).fst;
 				if (idCurrent.getType() == Ident::ID_MEM_ADDR) {
 					const WVar &current = WVar((*it).snd);
@@ -1421,7 +1417,7 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 			}
 
 			/* Merge with overlapping abstract locations */
-			for (elm::genstruct::Vector<Ident>::Iterator it(overlaps); it; it++) {
+			for (elm::Vector<Ident>::Iter it(overlaps); it(); it++) {
 				const WVar &overlap = s_out.getVar((*it));
 #ifdef POLY_DEBUG
 				cout << "STORE: Merging existing location " << (*it) << " with new value." << endl;
@@ -1443,7 +1439,7 @@ PPLDomain PPLDomain::onSemInst(const sem::inst &si, int /*instaddr*/) const {
 			/*
 			 * Looking for existing abstract location equivalent to load address.
 			 */
-			for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = s_out.idmap.getPairIter(); it; it++) {
+			for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = s_out.idmap.getPairIter(); it(); it++) {
 				if ((*it).fst.getType() == Ident::ID_MEM_ADDR) {
 					WVar current = WVar((*it).snd);
 
@@ -1535,7 +1531,7 @@ template <class F> void PPLDomain::doMapIdents(F pfunc) {
 #ifdef POLY_DEBUG
 	cout << "Remapping: ";
 #endif
-	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it(); it++) {
 		guid_t old_guid = (*it).snd;
 		guid_t new_guid = (*it).snd;
 		if (pfunc.maps(old_guid, new_guid)) {
@@ -1576,7 +1572,7 @@ void PPLDomain::doIntegerWrap() {
 void PPLDomain::doKillTemporaries() {
 	Vector<Ident> toDel;
 
-	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++)
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it(); it++)
 		if ((((*it).fst.getType() == Ident::ID_REG) && (*it).fst.getId() < 0)) {
 			toDel.add((*it).fst);
 #ifdef POLY_DEBUG
@@ -1584,7 +1580,7 @@ void PPLDomain::doKillTemporaries() {
 #endif
 		}
 
-	for (Vector<Ident>::Iter it(toDel); it; it++) {
+	for (Vector<Ident>::Iter it(toDel); it(); it++) {
 		varKill(*it);
 	}
 }
@@ -1592,7 +1588,7 @@ void PPLDomain::doKillTemporaries() {
 void PPLDomain::doKillRegisters(BitVector bv) {
 	Vector<Ident> toDel;
 
-	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++)
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it(); it++)
 		if (((*it).fst.getType() == Ident::ID_REG) && 
 			(*it).fst.getId() >= 0 &&
 			(*it).fst.getId() < bv.size() &&
@@ -1614,7 +1610,7 @@ void PPLDomain::doKillRegisters(BitVector bv) {
 			toDel.add((*it).fst);
 		}
 
-	for (Vector<Ident>::Iter it(toDel); it; it++) {
+	for (Vector<Ident>::Iter it(toDel); it(); it++) {
 		varKill(*it);
 	}
 }
@@ -1622,7 +1618,7 @@ void PPLDomain::doKillRegisters(BitVector bv) {
 void PPLDomain::doLeaveFunction() {
 	Vector<Ident> toDel;
 
-	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it(); it++) {
 		elm::Pair<Ident, guid_t> p = *it;
 		WVar v = WVar((*it).snd);
 
@@ -1641,7 +1637,7 @@ void PPLDomain::doLeaveFunction() {
 		}
 	}
 
-	for (Vector<Ident>::Iter it(toDel); it; it++)
+	for (Vector<Ident>::Iter it(toDel); it(); it++)
 		varKill(*it);
 }
 
@@ -1660,7 +1656,7 @@ void PPLDomain::doFinalizeUpdate() {
 		return;
 	}
 #endif
-	for (Vector<guid_t>::Iter it(victims); it; it++) {
+	for (Vector<guid_t>::Iter it(victims); it(); it++) {
 		poly.unconstrain(WVar(*it));
 	}
 
@@ -2160,7 +2156,7 @@ void PPLDomain::_doMatchGlobals(PPLDomain &l1, PPLDomain &r1,
 		MyHTable<guid_t, Vector<PPL::Coefficient> > &leftVMap, 
 		MyHTable<Vector<PPL::Coefficient> , guid_t, VectCoefIdent> &invRightVMap) const {
 		// Look for unmatched global variables
-		for (MyHTable<guid_t, Vector<PPL::Coefficient> >::PairIterator it(leftVMap); it; it++) {
+		for (MyHTable<guid_t, Vector<PPL::Coefficient> >::PairIterator it(leftVMap); it(); it++) {
 			Vector<PPL::Coefficient> vect = (*it).snd;
 			int i;
 			for (i = 0; (i < vect.length() - 2) && (vect[i] == 0); i++);
@@ -2261,11 +2257,11 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 
 		MyHTable<Vector<PPL::Coefficient> , guid_t, VectCoefIdent> invLeftVMap, invRightVMap;
 
-		for (MyHTable<guid_t, Vector<PPL::Coefficient> >::PairIterator it(leftVMap); it; it++) {
+		for (MyHTable<guid_t, Vector<PPL::Coefficient> >::PairIterator it(leftVMap); it(); it++) {
 			invLeftVMap.put((*it).snd, (*it).fst);
 		}
 
-		for (MyHTable<guid_t, Vector<PPL::Coefficient> >::PairIterator it(rightVMap); it; it++) {
+		for (MyHTable<guid_t, Vector<PPL::Coefficient> >::PairIterator it(rightVMap); it(); it++) {
 			invRightVMap.put((*it).snd, (*it).fst);
 			if (invLeftVMap.hasKey((*it).snd)) {
 #ifdef POLY_DEBUG
@@ -2288,8 +2284,8 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 
 
 		// take care of memory variables that were already same()
-		for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = l1.idmap.getPairIter(); it; it++) {
-			for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it2 = r1.idmap.getPairIter(); it2; it2++) {
+		for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = l1.idmap.getPairIter(); it(); it++) {
+			for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it2 = r1.idmap.getPairIter(); it2(); it2++) {
 				WVar x1((*it).snd);
 				WVar x2((*it2).snd);
 				if (((*it).fst.getType() == Ident::ID_MEM_ADDR) || ((*it).fst.getType() == Ident::ID_MEM_VAL)) {
@@ -2302,7 +2298,7 @@ void PPLDomain::_doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtr) const {
 	}
 
 	// rename register variables
-	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = l1.idmap.getPairIter(); it; it++) {
+	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = l1.idmap.getPairIter(); it(); it++) {
 		if (((*it).fst.getType() != Ident::ID_MEM_ADDR) && ((*it).fst.getType() != Ident::ID_MEM_VAL))
 			if (r1.idmap.has1((*it).fst)) {
 				rename.add((*it).snd, r1.idmap.find1((*it).fst));

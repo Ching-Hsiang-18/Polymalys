@@ -16,7 +16,7 @@
 namespace otawa {
 namespace poly {
 using namespace otawa;
-using namespace otawa::util;
+//using namespace otawa::util;
 
 class PPLDomain;
 extern Identifier<int> NUM_LOC_VARS;

@@ -18,7 +18,7 @@ namespace otawa {
 namespace poly {
 
 using namespace otawa;
-using namespace otawa::util;
+//using namespace otawa::util;
 
 namespace PPL = Parma_Polyhedra_Library;
 using Variable = PPL::Variable;
@@ -137,7 +137,7 @@ class PPLInput {
  */
 class PPLSummary {
 	public:
-		genstruct::Vector<Ident> _damaged; ///< The list of output (or side-effects) variables (registers or pointers)
+		elm::Vector<Ident> _damaged; ///< The list of output (or side-effects) variables (registers or pointers)
 //		genstruct::Vector<Ident> _inputs; ///< The list of inputs for the function
 		inline bool equals(const PPLSummary &b) const {
 			return true;
@@ -148,13 +148,13 @@ class PPLSummary {
 class Mapping {
 	public:
 		bool includes(const Mapping &src) const {
-			for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it(id2guid); it; it++) {
+			for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it(id2guid); it(); it++) {
 				if (!src.id2guid.hasKey((*it).fst))
 				   return false;	
 				if (src.id2guid[(*it).fst] != (*it).snd)
 					return false;
 			}
-			for (MyHTable<guid_t, Ident>::PairIterator it(guid2id); it; it++) {
+			for (MyHTable<guid_t, Ident>::PairIterator it(guid2id); it(); it++) {
 				if (!src.guid2id.hasKey((*it).fst))
 				   return false;	
 

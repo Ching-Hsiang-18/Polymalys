@@ -18,7 +18,7 @@
 namespace otawa {
 namespace poly {
 using namespace otawa;
-using namespace otawa::util;
+//using namespace otawa::util;
 using namespace elm;
 using namespace otawa::ai;
 
@@ -74,7 +74,7 @@ class PolyAnalysis : public Processor {
 	using state_t = PPLManager::t;
 	void processCFG(CFG & /* cfg */, state_t & /* s */, MyHTable<int,PPLDomain> &, bool /* isEntryCFG */, bool /* summarize */);
 	void processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,PPLDomain> &,
-	               WorkListDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> &ana,
+	               OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> &ana,
 				   ai::EdgeStore<PPLManager, ai::CFGGraph> &store,
 	               MyHTable<int, state_t> &headerState);
 	const PropList *_props{};

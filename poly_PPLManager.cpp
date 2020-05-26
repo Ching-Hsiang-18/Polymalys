@@ -4,11 +4,7 @@
 #include <otawa/dfa/ai.h>
 #include <otawa/dfa/State.h>
 #include <otawa/flowfact/features.h>
-#include <otawa/graph/Graph.h>
 #include <otawa/otawa.h>
-#include <otawa/util/HalfAbsInt.h>
-#include <otawa/util/WideningFixPoint.h>
-#include <otawa/util/WideningListener.h>
 #include <ppl.hh>
 
 #include "include/PPLDomain.h"
@@ -18,7 +14,6 @@
 namespace otawa {
 namespace poly {
 using namespace otawa;
-using namespace util;
 
 /**
  * Create PPLManager using a fresh init state.
