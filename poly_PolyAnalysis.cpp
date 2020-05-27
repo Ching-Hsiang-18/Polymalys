@@ -413,7 +413,7 @@ void PolyAnalysis::PseudoTopoOrder::_topoNodeHelper(const ai::CFGGraph &graph, B
 		return;
 
 	for (ai::CFGGraph::Predecessor e(graph, end); e(); e++) {
-		if (!BACK_EDGE(e->source()))
+		if (!BACK_EDGE(*e))
 			_topoNodeHelper(graph, e->source());
 	}
 
@@ -437,7 +437,7 @@ void PolyAnalysis::PseudoTopoOrder::_getPseudoTopo(const ai::CFGGraph &graph) {
 	for (ai::CFGGraph::Iterator it(graph); !it.ended(); it++) {
 		bool hasNonBackEdges = false;
 		for (ai::CFGGraph::Successor e(graph, (*it)); !e.ended() && !hasNonBackEdges; e++) {
-			if (!BACK_EDGE(e->sink()))
+			if (!BACK_EDGE(*e))
 				hasNonBackEdges = true;
 		}
 		if (!hasNonBackEdges)
