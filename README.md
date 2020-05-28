@@ -47,7 +47,7 @@ Modify your environment variables as follows:
 
 add `<otawa dir>/bin` to variable `PATH`
 
-add `<otawa dir>/lib` to variable `LD_LIBRARY_PATH`
+add `<otawa dir>/lib:<otawa dir>:/lib/otawa/otawa` to variable `LD_LIBRARY_PATH`
 
 
 ## Compiling: 
