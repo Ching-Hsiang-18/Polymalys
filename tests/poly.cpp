@@ -20,6 +20,7 @@ int main(int argc, char **argv) {
 	otawa::Manager manager;
 	PropList props;
 
+	VERBOSE(props) = true;
 	NO_SYSTEM(props) = true; //No operating system (standalone program)
 	otawa::Processor::VERBOSE(props) = true; //Verbose display
 	TASK_ENTRY(props) = "main"; //Target program entry point
