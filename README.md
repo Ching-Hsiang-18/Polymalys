@@ -29,13 +29,9 @@ theory, refer to [1].
 
 * Parma Polyhedra Library (PPL): http://bugseng.com/products/ppl/
 
-* Having otawa-config in $PATH: export PATH=$PATH:/path/to/otawa/binaries/
-
-* Having otawa lib dir in $LD_LIBRARY_PATH: export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(otawa-config --libdir)
+* OTAWA 2 (see below)
 
 * For testing, you will need an ARM cross-compiler
-
-* OTAWA 2
 
 First, install all required dependencies. On debian/ubuntu:
 
@@ -43,12 +39,10 @@ First, install all required dependencies. On debian/ubuntu:
 sudo apt install build-essential python2 git cmake flex bison libxml2-dev libxslt-dev ocaml gcc-arm-none-eabi
 ```
 
-To download and install OTAWA v2, first download the following script
-and execute it using python 2.7:
+To prevent compatibility issues, Polymalys is linked to a specific
+version of OTAWA 2. To install that version, run the script
+`otawa-install.py` provided in this directory using python 2.7.
 
-```
-http://www.tracesgroup.net/otawa/packages/otawa-install.py
-```
 *Warning*: the script is compatible with python 2.7 (NOT python 3). If
 your default python installation is python3, you need to edit the first
 line of `otawa-install.py` and replace `#!/usr/bin/python` by
@@ -72,7 +66,7 @@ Modify your environment variables as follows:
 
 add `<otawa dir>/bin` to variable `PATH`
 
-add `<otawa dir>/lib:<otawa dir>:/lib/otawa/otawa` to variable `LD_LIBRARY_PATH`
+add `<otawa dir>/lib:<otawa dir>/lib/otawa/otawa` to variable `LD_LIBRARY_PATH`
 
 
 ## Compiling: 
@@ -87,7 +81,7 @@ make
 make install
 ```
 
-## Automated tests
+## Automated tests (optionnal)
 
 ```
 make test
