@@ -11,5 +11,5 @@ fi
 ln -sf "${1}" ./target
 ulimit -c unlimited
 ./poly 2>&1
-orange --auto "${1}".c main > "${1}".orange
+#orange --auto "${1}".c main > "${1}".orange
 
