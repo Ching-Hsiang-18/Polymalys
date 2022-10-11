@@ -39,14 +39,17 @@ void WLinExpr::print(output_t &out) const {
 	for (std::map<guid_t,coef_t>::const_iterator it=coefs.begin(); it!=coefs.end(); ++it) {
 		if (!first && (it->second >= 0)) {
 			out << "+ ";
-		} else if (it->second < 0) out << "- ";
-		out << (it->second > 0 ? it->second : -it->second) << ".v" << it->first << " ";
+		} else if (it->second < 0) out << "− ";
+		if(it->second == 1 || it->second == -1)
+			out << "v" << it->first << " ";
+		else
+			out << (it->second > 0 ? it->second : -it->second) << ".v" << it->first << " ";
 		first = false;
 	}
 	if (cst != 0) {
 		if (cst >= 0) {
 			out << "+ ";
-		} else out << "- ";
+		} else out << "− ";
 		out << (cst > 0 ? cst : -cst);
 	} 
 }
@@ -68,12 +71,12 @@ void WPoly::print(output_t &out) const {
 		} else {
 			snprintf(name, sizeof(name), "%c", letter);
 		}
-		  out << "v" << it->first << " -> " << name << "; ";
+		  out << "v" << it->first << " -> " << name << " █";
 	  }
 	  out << "] " << endl << endl;
-	  out << "WPoly: ";
+	  out << "WPoly: [";
 	  for (WPoly::ConsIterator it(*this); it; it++) {
-		  out << (*it) << "; ";
+		  out << (*it) << " █";
 	  }
 	  out << "]" << endl;
 	  out << endl;
