@@ -120,9 +120,9 @@ class WCons {
 		}
 		inline void print(output_t &out) const {
 			if (ctype == CONS_EQ) {
-				out << "0 == ";
+				out << "0 = ";
 			} else if (ctype == CONS_GE) {
-				out << "0 <= ";
+				out << "0 ≤ ";
 			} else abort();
 			expr.print(out);
 		}
@@ -203,7 +203,7 @@ class WPoly {
 	public:
 		class ConsIterator {
 			public:
-				inline ConsIterator(const WPoly &p): _p(p), sys(p.poly.minimized_constraints()), real_it(sys.begin()) { }
+                inline ConsIterator(const WPoly &p): _p(p), sys(p.poly.minimized_constraints()), real_it(sys.begin()) { }
 				inline void operator++() {
 					++real_it;
 				}
@@ -256,13 +256,17 @@ class WPoly {
 			return PPL::Variable(adapter.at(g));
 		}
 
+        inline bool isTracked(const guid_t g) const {
+            return (adapter.find(g) != adapter.end());
+        }
+
 		inline PPL::Variable translate(const guid_t g) {
 			if (adapter.find(g) == adapter.end()) {
 //				std::cout << "v" << g << " does not exists\n";
 				adapter[g] = next;
 				if (g == 26) 
 				{
-					int k = 26;
+					// int k = 26;
 				}
 				next++;
 			}
@@ -327,7 +331,7 @@ class WPoly {
 		}
 
 		WCons back_translate(const PPL::Constraint &c) const;
-		void print(output_t &out) const;
+        void print(output_t &out) const;
 
 		inline const PPL::C_Polyhedron& getPoly() { return poly; }
 
@@ -361,6 +365,10 @@ class WPoly {
 		PPL::Poly_Con_Relation relation_with(const WCons &c) const {
 			return poly.relation_with(translate(c));
 		}
+
+        PPL::Poly_Con_Relation relation_with(const WCons &c) {
+            return poly.relation_with(translate(c));
+        }
 
 		inline bool is_empty() const {
 			return poly.is_empty();
@@ -402,12 +410,12 @@ class WPoly {
 		inline void intersection_assign(const WPoly &src) {
 			WPoly copie = src;
 			combine(copie, true);
-			elm::cout << "raw inter: ";
+            /*elm::cout << "raw inter: ";
 			fflush(stdout); poly.minimized_constraints().print(); fflush(stdout);
 			elm::cout << "\n";
 			elm::cout << "raw inter: ";
 			fflush(stdout); copie.poly.minimized_constraints().print(); fflush(stdout);
-			elm::cout << "\n";
+            elm::cout << "\n"; */
 			poly.intersection_assign(copie.poly);
 		}
 
@@ -437,7 +445,7 @@ class WPoly {
 			poly.map_space_dimensions(pfunc);
 			next = pfunc.max_in_codomain() + 1;
 			if (next != poly.space_dimension()) {
-				for (int i = 0; i < pfunc.max_in_domain() +10; i++) {
+				for (int i = 0; i < (int)pfunc.max_in_domain() +10; i++) {
 					PPL::dimension_type a,b;
 					a = i;
 					bool m = pfunc.maps(a,b);
@@ -527,10 +535,10 @@ template <class F> void WPoly::map_vars(F pfunc) {
 		guid_t j = i;
 		bool b = pfunc.maps(i, j);
 		if (b) {
-			//std::cout << "v" << i << " mapped to " << "v" << j << "\n";
+            // std::cout << "v" << i << " mapped to " << "v" << j << "\n";
 			new_adapter[j] = it->second;
 		} else {
-			//std::cout << "v" << i << " removed\n";
+            // std::cout << "v" << i << " removed\n";
 			victims.push_back(it->second);
 		}
 	}

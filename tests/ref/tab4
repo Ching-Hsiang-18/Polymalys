@@ -1,0 +1,4 @@
+[main]MAX_ITERATION(2) = 10
+[main]MAX_ITERATION(10) = 6
+[main]MAX_ITERATION(13) = 6
+[main]MAX_ITERATION(16) = 42

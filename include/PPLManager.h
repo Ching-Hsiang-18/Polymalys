@@ -38,15 +38,20 @@ class PPLManager {
 	inline t &bot() { return _bot; }
 	inline t &top() { return _top; }
 
-	inline t join(t &v1, const t &v2) { return v1.onMerge(v2, false); }
-	inline t widening(t &v1, const t &v2) { return v1.onMerge(v2, true); }
+    inline t join(t &v1, const t &v2, bool avcreate = false) { return v1.onMerge(v2, false, avcreate); }
+    inline t widening(t &v1, const t &v2, bool avcreate = false) { return v1.onMerge(v2, true, avcreate); }
 	inline bool equals(const t &v1, const t &v2) { return v1.equals(v2); }
 
 	inline void enableSummary() { _init.enableSummary(); }
+
+	void setName(elm::String str) {
+		cfg_name = str;
+	}
   private:
 	t _init;
 	t _bot;
 	t _top;
+	elm::String cfg_name;
 };
 
 } // namespace poly

@@ -18,12 +18,19 @@
 namespace otawa {
 namespace poly {
 using namespace otawa;
-//using namespace otawa::util;
+using namespace otawa::util;
 using namespace elm;
 using namespace otawa::ai;
 
+
+
 class PolyAnalysis : public Processor {
   private:
+    int max_vars;
+    int max_cons;
+
+
+
 	/**
 	 * Computes a pseudo-topological order on the CFG. 
 	 *
@@ -72,13 +79,18 @@ class PolyAnalysis : public Processor {
 
   private:
 	using state_t = PPLManager::t;
+    struct HeaderState {
+        bool avcreate;
+        state_t state;
+        state_t entry;
+    };
 	void processCFG(CFG & /* cfg */, state_t & /* s */, MyHTable<int,PPLDomain> &, bool /* isEntryCFG */, bool /* summarize */);
 	void processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,PPLDomain> &,
-	               OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> &ana,
+	               WorkListDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> &ana,
 				   ai::EdgeStore<PPLManager, ai::CFGGraph> &store,
-	               MyHTable<int, state_t> &headerState);
+                   MyHTable<int, HeaderState> &headerState);
 	const PropList *_props{};
-	state_t processHeader(ai::CFGGraph &graph, MyHTable<int,PPLDomain> &, BasicBlock *header, PPLManager& man, ai::EdgeStore<PPLManager, ai::CFGGraph>& store, MyHTable<int, state_t> &headerState);
+    state_t processHeader(ai::CFGGraph &graph, MyHTable<int,PPLDomain> &, BasicBlock *header, PPLManager& man, ai::EdgeStore<PPLManager, ai::CFGGraph>& store, MyHTable<int, HeaderState> &headerState);
 
 
 

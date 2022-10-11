@@ -187,6 +187,7 @@ public:
 	public:
 		inline PairIterator(const MyHTable<K, T, H>& htab): InternIterator(htab) { };
 		inline Pair<K, T> item(void) const { return pair(type_info<K>::get(this->node->key), this->node->value); }
+		inline const PairIterator* operator->(void) const { return this; }
 	};
 
 	// SameKeyIterator

@@ -7,18 +7,25 @@
 #include <otawa/ipet.h>
 #include <otawa/otawa.h>
 #include <otawa/prog/sem.h>
+#include<otawa/prog/File.h>
 #include <otawa/dfa/ai.h>
 #include <otawa/dfa/State.h>
 #include <ppl.hh>
 
+// #include "Clp.h"
 #include "PolyCommon.h"
 #include "PolyWrap.h"
+
 
 namespace otawa {
 namespace poly {
 
+#define DEBUG_REG_COMMAND 0x42
+#define DEBUG_COMMAND_PRINTSTATE 0x00000001
+#define DEBUG_REG_ASSERT 0x43
+
 using namespace otawa;
-//using namespace otawa::util;
+using namespace otawa::util;
 
 namespace PPL = Parma_Polyhedra_Library;
 using Variable = PPL::Variable;
@@ -34,6 +41,20 @@ enum stackconf_t : int32_t {
 	STACK_SIZE = 0x10000000,
 };
 
+#define NO_STEP (-1)
+#define STEP_BOT 0
+#define MAX_STEP 16
+
+// #define showpointertovar true // comment if you dont want to show these relations
+// #define CheckWritingArea true //comment if don't want to check the Call stack access at each STORE op 
+#define CheckReturnAddress true // comment if you don't want to check whether a LR gets overwrited during a function execution
+/*These 3 constants are used in the segment checking process* - they need to be defined is CheckWritingArea is defined too*/
+#define CASE_SAFE 100 
+#define CASE_UNSAFE 101
+#define CASE_UNKNOWN 102
+
+
+
 /**
  * @class Ident
  *
@@ -47,12 +68,15 @@ enum stackconf_t : int32_t {
 class Ident {
   public:
 	enum IdentType {
-		ID_REG = 0,
+		ID_REG = 0, // mappe sur une variable register
 		ID_REG_INPUT,
-		ID_MEM_ADDR,
-		ID_MEM_VAL,
-		ID_MEM_VAL_INPUT,
-		ID_SPECIAL,
+		ID_MEM_ADDR, // mappe sur un (variable base, step)
+		ID_MEM_COUNT, // mappe sur une variable de count
+		ID_MEM_VAL, // *ptr
+        ID_MEM_VAL_PLUS, // *ptr
+        ID_MEM_VAL_MINUS, // *ptr
+		ID_MEM_VAL_INPUT, // *ptr_0
+		ID_SPECIAL, // SP/FP/LR
 		ID_LOOP,
 		ID_INVALID,
 		ID_MAX_TYPE,
@@ -61,6 +85,7 @@ class Ident {
 		ID_START_SP = 0,
 		ID_START_FP = 1,
 		ID_START_LR = 2,
+		
 	};
 	inline Ident() : _type(ID_INVALID) {}
 	inline Ident(int id, IdentType typ) : _id(id), _type(typ) {}
@@ -71,8 +96,11 @@ class Ident {
 
 	void print(io::Output &out) const;
 
+
 	inline bool operator==(const Ident &i) const { return (_id == i._id) && (_type == i._type); }
 	inline bool operator!=(const Ident &i) const { return (_id != i._id) || (_type != i._type); }
+
+	
 
   private:
 	int _id{};
@@ -85,25 +113,31 @@ inline Output &operator<<(Output &o, const Ident &i) {
 
 class HashIdent {
   public:
-	static inline t::hash hash(const Ident &key) { return key.getId(); };
+	static inline t::hash hash(const Ident &key) { return key.getId(); }
 	static inline bool equals(const Ident &key1, const Ident &key2) { return key1.equals(key2); }
 };
 
-class VectCoefIdent {
-	public:
-		static inline t::hash hash(const Vector<PPL::Coefficient> &v) { 
-			int prime = 31;
-			t::hash result = 1;
-			for (int i = 0; i < v.length(); i++) {
-				result = prime * result + PPL::raw_value(v[i]).get_ui();
-			}
-			return 0; 
-		}
-		static inline bool equals(const Vector<PPL::Coefficient> &v1, const Vector<PPL::Coefficient> &v2) {
-			return v1 == v2;
-		}
-};
 
+
+struct LEVect {
+	Vector<PPL::Coefficient> cv;
+    LEVect() : cv() { }
+    LEVect(const Vector<PPL::Coefficient>& cv_) : cv(cv_) { }
+};
+class HashLEVect {
+  public:
+    static inline t::hash hash(const LEVect &v) {
+		int prime = 31;
+		t::hash result = 1;
+        for (int i = 0; i < v.cv.length(); i++) {
+            result = prime * result + PPL::raw_value(v.cv[i]).get_ui();
+		}
+		return result; 
+	}
+    static inline bool equals(const LEVect &v1, const LEVect &v2) {
+        return v1.cv == v2.cv;
+	}
+};
 class HashCons {
   public:
 	static t::hash hash(const PPL::Constraint &key);
@@ -137,24 +171,59 @@ class PPLInput {
  */
 class PPLSummary {
 	public:
-		elm::Vector<Ident> _damaged; ///< The list of output (or side-effects) variables (registers or pointers)
+		genstruct::Vector<Ident> _damaged; ///< The list of output (or side-effects) variables (registers or pointers)
 //		genstruct::Vector<Ident> _inputs; ///< The list of inputs for the function
 		inline bool equals(const PPLSummary &b) const {
 			return true;
 		}
 };
 
-// TODO make this a template and put in elm/whatever
+
+
+
+
+struct idval_t {
+	guid_t g;
+	int s;
+	idval_t(guid_t _g, int _s) : g(_g), s(_s) { }
+	idval_t() { // elm htable needs default constructor
+		g = 0;
+		s = NO_STEP;
+	}
+};
+
+inline bool operator==(const idval_t &v1, const idval_t &v2) {
+	return v1.g == v2.g && v1.s == v2.s;
+}
+
+inline bool operator!=(const idval_t &v1, const idval_t &v2) {
+	return !(v1 == v2);
+}
+
+class HashIdVal {
+	public:
+		static inline t::hash hash(const idval_t &v) {
+			int prime = 31;
+			t::hash result = 1;
+			result = prime*result + v.g;
+			result = prime*result + v.s;
+			return result;
+		}
+		static inline bool equals(const idval_t &v1, const idval_t &v2) {
+			return v1 == v2;
+		}
+};
+
 class Mapping {
 	public:
 		bool includes(const Mapping &src) const {
-			for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it(id2guid); it(); it++) {
+			for (MyHTable<Ident, idval_t, HashIdent>::PairIterator it(id2guid); it; it++) {
 				if (!src.id2guid.hasKey((*it).fst))
 				   return false;	
 				if (src.id2guid[(*it).fst] != (*it).snd)
 					return false;
 			}
-			for (MyHTable<guid_t, Ident>::PairIterator it(guid2id); it(); it++) {
+			for (MyHTable<idval_t, Ident, HashIdVal>::PairIterator it(guid2id); it; it++) {
 				if (!src.guid2id.hasKey((*it).fst))
 				   return false;	
 
@@ -170,7 +239,7 @@ class Mapping {
 			return this->includes(src) && src.includes(*this);
 		}
 
-		inline void add(const Ident &id, guid_t guid) {
+		inline void add(const Ident &id, idval_t guid) {
 			if (id2guid.hasKey(id))
 				guid2id.remove(id2guid[id]);
 
@@ -181,11 +250,11 @@ class Mapping {
 			guid2id[guid] = id;
 		}
 
-		inline guid_t find1(const Ident &id) const {
+		inline idval_t find1(const Ident &id) const {
 			return id2guid[id];
 		}
 
-		inline const Ident& find2(guid_t guid) const {
+		inline const Ident& find2(idval_t guid) const {
 			return guid2id[guid];
 		}
 
@@ -195,7 +264,7 @@ class Mapping {
 
 		}
 
-		inline void del2(guid_t guid) {
+		inline void del2(idval_t guid) {
 			id2guid.remove(guid2id[guid]);
 			guid2id.remove(guid);
 		}
@@ -204,16 +273,16 @@ class Mapping {
 			return id2guid.hasKey(id);
 		}
 
-		inline bool has2(guid_t guid) const {
+		inline bool has2(idval_t guid) const {
 			return guid2id.hasKey(guid);
 		}
 
-		inline MyHTable<Ident, guid_t, HashIdent>::PairIterator getPairIter() const {
-			return MyHTable<Ident, guid_t, HashIdent>::PairIterator(id2guid);
+		inline MyHTable<Ident, idval_t, HashIdent>::PairIterator getPairIter() const {
+			return MyHTable<Ident, idval_t, HashIdent>::PairIterator(id2guid);
 		}
 
-		inline MyHTable<Ident, guid_t, HashIdent>::MutableIter getMutableIter() {
-			return MyHTable<Ident, guid_t, HashIdent>::MutableIter(id2guid);
+		inline MyHTable<Ident, idval_t, HashIdent>::MutableIter getMutableIter() {
+			return MyHTable<Ident, idval_t, HashIdent>::MutableIter(id2guid);
 		}
 		
 		inline int count() const {
@@ -222,10 +291,11 @@ class Mapping {
 		}
 
 	private:
-		MyHTable<Ident, guid_t, HashIdent> id2guid;
-		MyHTable<guid_t, Ident> guid2id;
+		MyHTable<Ident, idval_t, HashIdent> id2guid;
+		MyHTable<idval_t, Ident, HashIdVal> guid2id;
 
 };
+
 
 class PPLDomain {
 
@@ -285,12 +355,6 @@ private:
 	};
 
 
-	/**
-	 * @class MapWithHash
-	 *
-	 * Partial mapping function accoring to passed hashtable.
-	 * Needs to be wrapped with MapHelper before usage with PPL.
-	 */
 	class MapGuid {
 	  public:
 		inline explicit MapGuid(MyHTable<guid_t, guid_t> &map) : _map(map) {}
@@ -305,6 +369,12 @@ private:
 	  private:
 		MyHTable<guid_t, guid_t> &_map;
 	};
+	/**
+	 * @class MapWithHash
+	 *
+	 * Partial mapping function accoring to passed hashtable.
+	 * Needs to be wrapped with MapHelper before usage with PPL.
+	 */
 	class MapWithHash {
 	  public:
 		inline explicit MapWithHash(MyHTable<int, int> &map) : _map(map) {}
@@ -335,7 +405,21 @@ private:
 		guid_t _shift;
 	};
 
+	/*
+		(Vector<Coeff>, Step) -> guid_t
+	*/
+	// class MapCoeffId : {
+	//   public:
+	// 	inline explicit MapGuid() : _map() {}
+	//   private:
+	// 	MyHTable<CoeffStep, guid_t> &_map;
+	// };
+
   public:
+	
+	
+	void showTab(const Ident&);
+
 	/* Basic operations (constructor, destructor, copy, comparison) */
 
 	/**
@@ -352,6 +436,8 @@ private:
 	/**
 	 * Builds a top state
 	 * @param maxAxis Maximum number of variables this state can hold
+	 * @param ws workspace
+	 * @param summary function summary information
 	 */
 	inline explicit PPLDomain(int maxAxis, WorkSpace *ws, PPLSummary *summary = nullptr) : poly(false) {
 		num_axis = 0;
@@ -446,6 +532,10 @@ private:
 	 */
 	void displayGlobVars(io::Output &out) const;
 
+    void clpFold(WVar &base1, int step1, WVar &base2, int step2, WVar &baseMerged, int stepMerged, WVar &countMerged);
+
+    bool shouldFold(WVar &, int, WVar &, WVar &);
+
 	/**
 	 * Display mappings in this state
 	 */
@@ -527,6 +617,9 @@ private:
 	 */
 	bool mayAlias(const WVar &v1, const WVar &v2) const;
 
+    bool mayRange(const WVar &base, const WVar &count, const WVar &target, int step) const;
+
+
 	/**
 	 * Tests if two variables must be equal (i.e. they are equal for all concrete states in this abstract state)
 	 *
@@ -560,6 +653,13 @@ private:
 	/* TODO documenter */
 	PPLDomain getLinearExpr(const Ident &id);
 
+    void handleCommand(uint64_t cmd) const {
+        if (cmd == DEBUG_COMMAND_PRINTSTATE) {
+            cout << "DEBUG COMMAND: printing state" << endl;
+            this->print(cout);
+        }
+    }
+    void listMemoryVariables();
 	/**
 	 * Attempts to get the current loop bound estimation, in the current state.
 	 *
@@ -627,7 +727,7 @@ private:
 	 *
 	 * @return The updated state.
 	 */
-	PPLDomain onSemInst(const sem::inst &si, int instaddr) const;
+    PPLDomain onSemInst(const BasicBlock *bb, const sem::inst &si, int instaddr) const;
 
 	/**
 	 * Process a conditional branch instruction, and apply the filtering.
@@ -642,11 +742,12 @@ private:
 	/**
 	 * Process join and widening
 	 *
+	 * widening: this == big state, r == small state, actually computes: r widening this U r
 	 * @param r Other state to merge with
 	 * @param widen true if we perform a widening, false for normal join
 	 * @return The updated state.
 	 */
-	PPLDomain onMerge(const PPLDomain &r, bool widen = false) const;
+    PPLDomain onMerge(const PPLDomain &r, bool widen = false, bool avcreate = false);
 	/**
 	 * Process loop entry
 	 *
@@ -722,25 +823,48 @@ private:
 	 */
 	void doNewConstraint(const WCons &c) { poly.add_constraint(c); }
 
+    /**
+     * Fold variable
+     *
+     * @param s Summary (target) variable
+     * @param v1 Variable to fold (1)
+     * @param v1 Variable to fold (2)
+     */
+    void doFold(WVar &s, WVar &v1, WVar &v2);
+
+    void doExpand(WVar &s, WVar &v1);
+    void doAvExpand(WVar &splus, WVar &sminus, WVar &vplus, WVar &vminus);
+
 	/* Variable/Idents handling operations */
 
 	/**
 	 * create a new variable to represent an identifier.
 	 *
 	 * @param id The identifier to associate the variable with.
+	 * @param step The step, if id is an address.
 	 * @param allow_replace true if we allow replacing an existing variable that was mapped to id, false otherwise
 	 * @return The new variable.
 	 */
-	WVar varNew(const Ident &id, bool allow_replace = false, bool create_damaged = false);
+	WVar varNew(const Ident &id, int step, bool allow_replace, bool create_damaged);
+
+	/**
+	 * create a new, unmapped variable
+	 * 
+	 */
+	WVar varNew() {
+		WVar v;
+		return v;
+	}
 
 	/**
 	 * Schedule a variable (associated with an identifier) to be destroyed.
 	 * The actual variable removal will be done at the next _doFinalizeUpdate()
+	 * If the identifier is associated with a CLP, the "base" variable of the CLP is destroyed.
 	 *
 	 * @param id Target identifier
 	 */
-	inline void varKill(const Ident &id) { 
-		varKill(WVar(idmap.find1(id)));
+	inline void varKill(const Ident &id) {
+		varKill(idmap.find1(id));
 	}
 
 	/**
@@ -748,14 +872,18 @@ private:
 	 * The actual variable removal will be done at the next _doFinalizeUpdate()
 	 *
 	 * @param v Target variable
+	 * @param step Step
 	 */
-	inline void varKill(const WVar &v) { 
-		idmap.del2(v.guid());
-		victims.add(v.guid()); 
+	inline void varKill(const WVar &v, int step) {
+		varKill(idval_t(v.guid(), step));
+	}
+	inline void varKill(idval_t id) { 
+		idmap.del2(id);
+		victims.add(id.g);  // TODO tableaux, should we change victims also?
 	}
 
 	/**
-	 * Gets the variable associated with an identifier, creating a new variable if it doesn't exists (i.e. lookup).
+	 * DEPECRATED. Gets the variable associated with an identifier, creating a new variable if it doesn't exists (i.e. lookup).
 	 *
 	 * @param id The target identifier
 	 * @param create_input if true, and the identifier is unknown, and we are summarizing, create an input
@@ -767,27 +895,121 @@ private:
 	 * Gets the variable associated with an identifier, aborting if the variables doesn't exists (i.e. lookup).
 	 *
 	 * @param id The target identifier
+	 * @param out step Collects step information if id is an address. If not, use nullptr.
 	 * @return The variable.
 	 */
-	WVar getVar(const Ident &id) const;
+	WVar getVar(const Ident &id, int *step) const;
+
+
+	/**
+	 * Gets the memory value variable associated to the memory address variable
+	 * Example: *ptr1 = x1  or *(ptr2, s, n) = x2 if ptr2 is associated to step s and count n
+	 * @param addr The address variable
+	 * @param step A step to return
+	 * @param count A count to return (todo, this should be a pointer and return NULL if this is a single access?)
+	 * @return The value variable.
+	 */
+	/*
+	bool getStar(const WVar &addr, const unsigned int &step, WVar &count, WVar &value) const {
+		Ident addrIdent = getIdent(addr, step);
+		ASSERT(addrIdent.getId() == Ident::ID_MEM_ADDR);
+
+		Ident clpIdent(addrIdent.getId(), Ident::ID_MEM_CLP); // verif cas particulier
+		guid_t clpGuid = idmap.find1(clpIdent);
+		step = clpGuid >> 56;
+		count = WVar(clpGuid & ((1ULL << 56)-1));
+
+		Ident valIdent(addrIdent.getId(), Ident::ID_MEM_VAL);
+		WVar val = getVar(valIdent);
+		return val;
+	}
+	*/
+
+	/**
+	 * Gets the memory address variable associated to a memory value variable (inverse of getStar function)
+	 *
+	 */
+	/*
+	WVar getStarInv(const WVar &val, unsigned int &step, WVar &count) const {
+		Ident valIdent = getIdent(val);
+		ASSERT(valIdent.getId() == Ident::ID_MEM_VAL);
+
+		Ident clpIdent(valIdent.getId(), Ident::ID_MEM_CLP); // verif cas particulier
+		guid_t clpGuid = idmap.find1(clpIdent);
+		step = clpGuid >> 56;
+		count = WVar(clpGuid & ((1ULL << 56)-1));
+
+		Ident addrIdent(valIdent.getId(), Ident::ID_MEM_ADDR);
+		WVar addr = getVar(addrIdent);
+		return addr;
+	}
+	*/
+
+	/*
+	 * For a variable addr and a value val, adds "*addr = val" or "*(addr,step,count) = val"
+	 * @param addr The address variable
+	 * @param val The value variable to return
+	 * @param step The step associated to the address
+	 * @param count The count associated to the address
+	 */
+	/*
+	void doAddStar(const WVar &addr, const WVar &val, unsigned int step, const WVar &count) {
+		Ident addrIdent, valIdent, clpIdent;
+		varCreateClp(addrIdent, valIdent, clpIdent);
+		idmap.add(addrIdent, addr.guid());
+		idmap.add(valIdent, val.guid());
+		guid_t clpGuid = (guid_t(step) << 56) | count.guid();
+		idmap.add(clpIdent, clpGuid);
+	}
+	*/
+
+	/*
+	 * Deletes any mapping associated with addr
+	 * @param addr The address variable
+	 */
+	/*
+	void doDelStar(const WVar &addr) {
+		Ident addrIdent = getIdent(addr);
+		ASSERT(addrIdent.getId() == Ident::ID_MEM_ADDR);
+		Ident valIdent(addrIdent.getId(), Ident::ID_MEM_VAL);
+		Ident clpIdent(addrIdent.getId(), Ident::ID_MEM_CLP); // verif cas particulier
+		idmap.del1(addrIdent);
+		idmap.del1(valIdent);
+		idmap.del1(clpIdent);
+	}
+*/
 
 	/**
 	 * Tests if a variable is associated with an identifier.
 	 *
 	 * @param v Variable to test
+	 * @param step The step, if v is an address
 	 * @return true if the variable is mapped to an identifier, false otherwise
 	 */
-	inline bool isVarMapped(const WVar &v) const {
-		return idmap.has2(v.guid());
+	inline bool isVarMapped(const WVar &v, int step) const { 
+		return idmap.has2(idval_t(v.guid(), step)); 
 	}
 
 	/**
 	 * Returns the identifier associated with a variable
 	 *
 	 * @param v The variable
+	 * @param step The step
 	 * @return The identifier
 	 */
-	inline const Ident &getIdent(const WVar &v) const { return idmap.find2(v.guid()); }
+	inline const Ident &getIdent(const WVar &v, int step) const { return getIdent(idval_t(v.guid(), step)); }
+	inline const Ident &getIdent(idval_t i) const { return idmap.find2(i); }
+    inline const Ident &getIdent(guid_t g, int *step_ptr) const {
+        for (int step = NO_STEP; step < MAX_STEP; step++) {
+            if (idmap.has2(idval_t(g, step))) {
+                if (step_ptr != nullptr)
+                    *step_ptr = step;
+                return idmap.find2(idval_t(g, step));
+            }
+        }
+        cout << "Variable v" << g << " has no identifier" << endl;
+        ASSERT(false);
+    }
 
 	/**
 	 * Tests if an identifier exists
@@ -809,15 +1031,61 @@ private:
 	 */
 	void doKillRegisters(BitVector bv);
 
+
+	/** Checks if a var is between sp and ssp
+	* @param v The variable
+	* @return true if var between sp and ssp, false otherwise
+	*/
+
+	bool isInStack(WVar v) const;
+
+	/**
+	* Checks whether a variable is in the stack or not = checks if it is above ssp of below sp
+	* @param v The variable
+	* @return false if the var is not in the stack, otherwise the var may be in the stack 
+	* approximation cfrom the case false is when we are sure it is not in the stack, we can prove it, when the return is true, we simply can not prove it is not in the stak, which means it may be in the stack ( or not ! )
+	*/
+	bool mayBeInStack(WVar v) const;
+	
+
+	/**
+	 * Checks whether a Variable is in a writable segment, a non writable segment, or between the segments
+	 * @param v The variable
+	 * @return CASE_SAFE if in writable segment, CASE_UNSAFE if int not writable segment or gap between segment, and CASAE_UNKNOWN otherwise
+	 */
+
+	int segmentChecking(WVar v) const;
+
+	/**
+	 * Chechs whether v is in the segment seg
+	 * @param v The variable
+	 * @return true if v is in *seg, false otherwise
+	 */ 
+	bool mustBeInSegment(WVar v, Segment* seg) const;
+	
+	/**
+	 * Performs a routine when entering a new function 
+	 * mostly used for detecting overwrite on a saved LR
+	 */
+	void doEnterFunction() ;
+	
 	/**
 	 * Schedule the local variables to be destroyed, when leaving a function.
+	 * Performs a routine to compare the LR and the SLR saved when entering the function
 	 */
-	void doLeaveFunction();
+	void doLeaveFunction(elm::string);
 
 	/**
 	 * Performs garbage-collection of variables scheduled to be destroyed.
 	 */
 	void doFinalizeUpdate();
+
+    /**
+      * Remove useless avatars (when count == 0, or count > 0)
+      */
+    void doRemoveUselessAvatars();
+
+    void doRemoveAllAvatars();
 
 	/* Pointers/Memory-related operations */
 
@@ -825,6 +1093,9 @@ private:
 	 * Create new memory address/value variable and identifiers.
 	 */
 	void varCreatePtr(Ident & /*addr*/, Ident & /*val*/);
+	void varCreateClp(Ident & /*addr*/, Ident & /*val*/, Ident& /* clp */);
+    void varCreateAvClp(Ident & /*addr*/, Ident & /*val_plus*/, Ident& /* val_minus */, Ident& /* clp */);
+
 
 	/**
 	 * Associate a new value to the address variable, replacing existing value.
@@ -839,17 +1110,20 @@ private:
 	 * @param newValue A variable representing the new memory value.
 	 * @return new address variable
 	 */
-	WVar memReplace(const WVar & address, const WVar & newValue);
+	WVar memReplace(idval_t address, const WVar & newValue);
+    WVar memTabReplace(idval_t address, const WVar &valueSource, const WVar &count);
 
 	/**
-	 * Create a new abstract memory location at specified address, with the specified value.
+	 * Create a new single (0-step) abstract memory location at specified address, with the specified value.
 	 *
 	 * @param address A variable representing the memory address.
 	 * @param newValue A variable representing the memory value.
 	 * @param dmg If summarizing, mark address as damaged
 	 * @return new address variable
 	 */
-	WVar memCreate(const WLinExpr & address , const WLinExpr &newValue, bool dmg = true);
+	WVar memSingleCreate(const WLinExpr & address , const WLinExpr &newValue, bool dmg = true);
+
+    WVar memTabCreate(const WLinExpr & address , const WLinExpr &newValue, int step, const WLinExpr &count, bool unconstrained = false);
 
 	/**
 	 * Associate a new value to the address variable, merging with existing value.
@@ -862,7 +1136,7 @@ private:
 	 * @param newValue A variable representing the new memory value.
 	 * @return new address variable
 	 */
-	WVar memMerge(const WVar &address, const WVar &newValue);
+	WVar memMerge(idval_t address, const WVar &newValue);
 
 	/**
 	 * Attempts to use process initial state to discover value associated with a constant address-variable
@@ -873,6 +1147,12 @@ private:
 	 * @return true if success, false otherwise
 	 */
 	bool memGetInitial(const Ident &id, uint32_t &address, uint32_t &value, bool force = false);
+    int delta(const WVar &v1, const WVar &v2, int step) const;
+
+    int lca(const WVar &b1, const int s1, const WVar &n1, const WVar &b2, const int s2, const WVar &n2) const;
+    bool mayIntersect(const WVar &b1, const int s1, const WVar &n1, const WVar &b2, const int s2, const WVar &n2) const;
+    bool mustSupseteq(const WVar &b1, const int s1, const WVar &n1, const WVar &b2, const int s2, const WLinExpr &n2) const;
+
 
   private:
 	/* Private helper functions. Subject to changes, and should not be used directly. */
@@ -880,7 +1160,12 @@ private:
 
 	std::set<guid_t> _collectPolyVars(const WPoly &poly) const;
 
-	void _identifyPolyVars(const PPLDomain &d, const std::set<guid_t> &vars, const std::set<guid_t> &indep, MyHTable<guid_t, Vector<PPL::Coefficient> > &vmap) const;
+	// void _identifyPolyVars(const PPLDomain &d, const std::set<guid_t> &vars, const std::set<guid_t> &indep, MyHTable<guid_t, Vector<PPL::Coefficient> > &vmap) const;
+    void _identifyPolyVars(const PPLDomain &d, const std::set<guid_t> &vars, const std::set<guid_t> &indep, MyHTable<guid_t, LEVect > &csmap, Ident::IdentType = Ident::ID_MEM_ADDR) const;
+    bool _isArrayStore(const BasicBlock *bb, const WVar &storeAddr) const;
+    static void _euclid(int a, int b, int &pgcd, int &inverse);
+    static bool _avcreate_helper(PPLDomain&, PPLDomain&, const std::set<guid_t> &, const Ident &, const WVar &, int step, guid_t &, guid_t&, guid_t&, guid_t&);
+
 
 //	int _doAllocAxis(const Ident & /*ident*/, bool allow_replace = false);
 //	void _doFreeAxis(int axis);
@@ -909,21 +1194,27 @@ private:
 	 */
 	void _doBinaryOp(int op, WVar *v, WVar *vs1, WVar *vs2);
 
+
+    /* Replace v using the bi-avatar strategy (v becomes v-minus, and v-plus is returned) */
+    WVar _doAvatarSplit(WVar &v);
+
 	/**
 	 * Unify the two states so that variables refering to the same object (register, memory location, ...) have the same
 	 * number.
 	 *
-	 * @param l First state to unify
-	 * @param r Second state to unify
+	 * @param l1 First state to unify
+	 * @param r1 Second state to unify
+	 * @param this_dom The domain to use to do varNew etc. (tabcode)
+	 * @param noPtr Do not unify pointers if true
 	 */
-	void _doUnify(PPLDomain &l1, PPLDomain &r1, bool noPtre=false) const;
+    void _doUnify(PPLDomain &l1, PPLDomain &r1, PPLDomain* this_dom, bool noPtr=false, bool avcreate = false) const;
 
 	/**
-	 * To be documented
+	 * Jordy: Not sure about the parameters, this checks for global vars (static) and assigns them the value OTAWA gives
 	 */
 	void _doMatchGlobals(PPLDomain &l1, PPLDomain &r1, 
-		MyHTable<guid_t, Vector<PPL::Coefficient> > &leftVMap, 
-		MyHTable<Vector<PPL::Coefficient> , guid_t, VectCoefIdent> &invRightVMap) const;
+            const MyHTable<guid_t, LEVect > &leftVMap,
+            const MyHTable<LEVect , guid_t, HashLEVect> &invRightVMap) const;
 	/**
 	 * To be documented
 	 */
@@ -932,6 +1223,15 @@ private:
 			MyHTable<WCons, int, HashCons>&,
 			MyHTable<WCons, int, HashCons>&) const;
 
+	/**
+	 * Spawn CLP arrays whenever possible, on join
+	 * join(<>, <(x_b, 0, 1) = x_val>) = <(x_b, 0, x_n) = x_val; 0 ≤ x_n ≤ 1>
+	 *
+	 * @param x_b The variable representing the address of the lone pointer
+	 * @param dom The domain from which x_b comes from
+	 * @param this_dom The domain to use to do varNew etc.
+	 */
+	static void doCLPJoin(const WVar& x_b, const PPLDomain &dom, PPLDomain& this_dom);
 };
 
 inline Output &operator<<(Output &o, const PPLDomain &dom) {
@@ -941,6 +1241,21 @@ inline Output &operator<<(Output &o, const PPLDomain &dom) {
 inline bool operator==(const PPLDomain &a, const PPLDomain &b) { return a.equals(b); }
 inline bool operator!=(const PPLDomain &a, const PPLDomain &b) { return !(a == b); }
 
+template <class C>
+void printAll(const C& c, const char* desc = "") {
+	cout << desc;
+	for (typename C::const_iterator it = c.begin(); it != c.end(); it++)
+		cout << "v" << *it << " ";
+	cout << endl;
+}
+template <class C>
+Output &operator<<(Output &o, const Vector<C>& v) {
+	for (int i = 0; i < v.length(); i++)
+		o << v[i] << ", ";
+	return o;
+}
+
 } // namespace poly
 } // namespace otawa
 #endif
+

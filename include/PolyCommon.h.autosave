@@ -13,7 +13,7 @@
 #include "MyHTable.h"
 
 
-#undef POLY_DEBUG
+// #undef POLY_DEBUG
 //#define POLY_DEBUG 1
 #ifdef POLY_DEBUG
 	#define PDBG(x) { cout << x; }
