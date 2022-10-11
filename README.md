@@ -29,8 +29,6 @@ theory, refer to [1].
 
 * Parma Polyhedra Library (PPL): http://bugseng.com/products/ppl/
 
-* OTAWA 2 (see below)
-
 * For testing, you will need an ARM cross-compiler
 
 First, install all required dependencies. On debian/ubuntu:
@@ -40,34 +38,7 @@ sudo apt install build-essential python2 git cmake flex bison libxml2-dev libxsl
 ```
 
 To prevent compatibility issues, Polymalys is linked to a specific
-version of OTAWA 2. To install that version, run the script
-`otawa-install.py` provided in this directory using python 2.7.
-
-*Warning*: the script is compatible with python 2.7 (NOT python 3). If
-your default python installation is python3, you need to edit the first
-line of `otawa-install.py` and replace `#!/usr/bin/python` by
-`#!/usr/bin/python2`
-
-You will also need to install the OTAWA plugins for ARM, and
-lp-solve. Go to `<otawa dir>/bin` (where otawa dir is the directory
-where you just installed otawa) and type:
-
-```
-python otawa-install.py otawa-arm otawa-lp_solve5
-```
-
-*Warning*: to install plugins, do not use `otawa-install.py` in
-`<otawa_dir>`.
-
-
-## Setting up the environment:
-
-Modify your environment variables as follows:
-
-add `<otawa dir>/bin` to variable `PATH`
-
-add `<otawa dir>/lib:<otawa dir>/lib/otawa/otawa` to variable `LD_LIBRARY_PATH`
-
+version of OTAWA 2, which is bundled in the Polymalys directory.
 
 ## Compiling: 
 
@@ -98,7 +69,7 @@ cd tests
 
 ```
 cd tests
-./poly <binary> # where <binary> is an ARM binary program
+./poly.sh <binary> [<optional function name, defaults to main>] # where <binary> is an ARM binary program
 ```
 
 ## Using in your program:
