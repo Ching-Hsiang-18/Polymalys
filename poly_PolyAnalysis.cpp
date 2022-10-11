@@ -3,23 +3,26 @@
 #include <otawa/dfa/FastState.h>
 #include <otawa/dfa/ai.h>
 #include <otawa/flowfact/features.h>
-//#include <otawa/graph/Graph.h>
+#include <otawa/graph/Graph.h>
 #include <otawa/otawa.h>
-//#include <otawa/util/HalfAbsInt.h>
-//#include <otawa/util/WideningFixPoint.h>
+#include <otawa/util/HalfAbsInt.h>
+#include <otawa/util/WideningFixPoint.h>
 #include <otawa/hard/Memory.h>
-//#include <otawa/util/WideningListener.h>
+#include <otawa/util/WideningListener.h>
 #include <otawa/oslice/features.h>
 #include <otawa/ai/WorkListDriver.h>
 #include <ppl.hh>
+#include <sys/time.h>
 
+#include "elm/log/Log.h"
 #include "include/PPLDomain.h"
 #include "include/PPLManager.h"
 #include "include/PolyAnalysis.h"
 namespace otawa {
 namespace poly {
 using namespace otawa;
-//using namespace util;
+using namespace util;
+elm::String cfgname;
 
 p::declare PolyAnalysis::reg = p::init("otawa::poly::PolyAnalysis", Version(1, 0, 0))
                                    .require(COLLECTED_CFG_FEATURE)
@@ -35,14 +38,16 @@ void PolyAnalysis::configure(const PropList &props) {
 
 	Processor::configure(props);
 	_props = &props;
+    max_vars = 0;
+    max_cons = 0;
 }
 
 PolyAnalysis::state_t PolyAnalysis::processHeader(ai::CFGGraph &graph, MyHTable<int,PPLDomain> &lb,
-		BasicBlock *header, PPLManager& man, ai::EdgeStore<PPLManager, ai::CFGGraph>& store, MyHTable<int, state_t> &headerState) { 
+        BasicBlock *header, PPLManager& man, ai::EdgeStore<PPLManager, ai::CFGGraph>& store, MyHTable<int, HeaderState> &headerState) {
 	state_t entryState = man.bot();
 	state_t backState = man.bot();
 
-	for (ai::CFGGraph::Predecessor e(graph, header); e(); e++) {
+	for (ai::CFGGraph::Predecessor e(graph, header); e; e++) {
 		state_t edgeState = store.get(*e);
 
 		if (Dominance::dominates(e->sink(), e->source())) {
@@ -54,29 +59,47 @@ PolyAnalysis::state_t PolyAnalysis::processHeader(ai::CFGGraph &graph, MyHTable<
 		}
 	}
 
-	if (!headerState.hasKey(header->id())) {
-		headerState[header->id()] = man.bot();
+    if (!headerState.hasKey(header->id())) {
+        HeaderState hs;
+        hs.state = man.bot();
+        hs.avcreate = false; /* will be set to true below except if entrystate is bottom */
+        headerState[header->id()] = hs; // optimisation qui permet de virer le join avec entryState
 	}
+    HeaderState &hs =  headerState[header->id()];
 
-#ifdef POLY_DEBUG
-	cout << "Widening, backState = " << backState << endl;
-	cout << "Widening, entryState = " << entryState << endl;
-	cout << "Widening, oldHeaderState = " << state_t(headerState[header->id()]) << endl;
-#endif
+    if (!entryState.equals(hs.entry)) { /* if entrystate updates headerstate, recompute avatars */
+        hs.avcreate = true;
+        //cout << " avcreate set to true" << endl;
+        hs.entry = entryState;
+        hs.state = entryState;
+    }
+
+
+
+PDBG("Widening, backState = " << backState << endl)
+PDBG("Widening, entryState = " << entryState << endl)
+PDBG("Widening, oldHeaderState = " << HeaderState(headerState[header->id()]).state << endl)
+
+DBG("Widening, backState = " << backState)
+DBG("Widening, entryState = " << entryState)
+// DBG("Widening, oldHeaderState = " << state_t(headerState[header->id()]))
 	//state_t oldState = headerState[header->id()];
 
-#ifndef LINBOUND 
-	bound_t bound = backState.getLoopBound(header->id());
-	backState.setBound(header->id(), bound);
-#endif
 #ifdef LINBOUND
 	PPLDomain linearBound = backState.getLinearExpr(Ident(header->id(), Ident::ID_LOOP));
 	backState.setLinBound(header->id(), linearBound);
+#else
+	bound_t bound = backState.getLoopBound(header->id());
+	backState.setBound(header->id(), bound);
 #endif
 
-#ifdef POLY_DEBUG
-			cout << "ITERATION: " << int(bound) << endl;
-#endif
+	PDBG("ITERATION: bound=" << int(bound) << endl)
+	if(bound == -1)
+		DBG("ITERATION: bound=" << color::IRed << "UNREACHABLE")
+	else if(bound == -2)
+		DBG("ITERATION: bound=" << color::IRed << "UNBOUNDED")
+	else
+		DBG("ITERATION: bound=" << color::IRed << int(bound))
 
 
 #ifndef LINBOUND
@@ -85,7 +108,6 @@ PolyAnalysis::state_t PolyAnalysis::processHeader(ai::CFGGraph &graph, MyHTable<
 		MAX_ITERATION(header) = bound;
 #endif
 
-
 	if (!lb.hasKey(header->id()))
 		lb[header->id()] = PPLDomain();
 
@@ -93,17 +115,41 @@ PolyAnalysis::state_t PolyAnalysis::processHeader(ai::CFGGraph &graph, MyHTable<
 	const PPLDomain &oldBound = lb[header->id()];
 	lb[header->id()] = oldBound.onMerge(linearBound, false);
 #endif
-	headerState[header->id()] = man.widening(backState, headerState[header->id()]);
+	
+    // DBG("NOT applying widening")
+#if 1
+     /* headerState = headerState \/ (headerState U backState) */
+    //state_t old = HeaderState(headerState[header->id()]).state;
+    //cout << "avcreate: " <<(*headerState[header->id()]).avcreate  << endl;
+    (*headerState[header->id()]).state = man.widening(backState, (*headerState[header->id()]).state, (*headerState[header->id()]).avcreate);
+    if (backState.isBottom() == false)
+        (*headerState[header->id()]).avcreate = false;
+    //cout << "Test if header converges:" << endl;
+    //cout << "backState: " << backState << endl;
+    //cout << "Old headerState: " << old << endl;
+    //cout << "New headerState: " << HeaderState(headerState[header->id()]).state << endl;
+    /*
+    if (old.equals((*headerState[header->id()]).state)) {
+        cout << "header " << header->id();
 
-#ifdef POLY_DEBUG
-	cout << "Widening, after Widening = " << headerState[header->id()] << endl;
+        cout << "HEADER CONVERGES" << endl;
+    } else {
+        cout << "header " << header->id();
+
+        cout << "HEADER DIFF" << endl;
+    }
+    */
+    //PDBG("Widening, after Widening = [\n" << state_t(headerState[header->id()]) << endl)
+    //DBG("Widening, after Widening = [\n" << state_t(headerState[header->id()]))
+
+    // headerState[header->id()] = man.join(entryState, headerState[header->id()]); // sert a rien sauf 1ere iteration
+    //PDBG("Widening, newHeaderState after Join with entryState = " << state_t(headerState[header->id()]) << endl)
+    //DBG("Widening, newHeaderState after Join with entryState = " << state_t(headerState[header->id()]))
+#else
+    headerState[header->id()] = man.join(entryState, backState, true);
+    PDBG("no widening, new headerState after join(backState, entryState) = " << state_t(headerState[header->id()]))
 #endif
 
-	headerState[header->id()] = man.join(headerState[header->id()], entryState);
-
-#ifdef POLY_DEBUG
-	cout << "Widening, after Join with entryState = " << headerState[header->id()] << endl;
-#endif
 	/*
 	cout << "Widening, newHeaderState = " << state_t(headerState[header->id()]) << endl;
 	if (oldState.equals(headerState[header->id()])) {
@@ -112,13 +158,13 @@ PolyAnalysis::state_t PolyAnalysis::processHeader(ai::CFGGraph &graph, MyHTable<
 		cout << "NOT EQUAL" << endl;
 	}
 	*/
-	return headerState[header->id()];
+    return (*headerState[header->id()]).state;
 }
 
 void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,PPLDomain> &lb,
-                             OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> &ana,
+                             WorkListDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> &ana,
 							 ai::EdgeStore<PPLManager, ai::CFGGraph>& store,
-                             MyHTable<int, state_t> &headerState) {
+                             MyHTable<int, HeaderState> &headerState) {
 	/*
 	 * The processing is made up of two main parts:
 	 *
@@ -127,6 +173,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 	 */
 	state_t s = man->bot();
 
+	DBG("Processing " << color::On_Blu << "BB " << ((BasicBlock*)*ana)->index() << (LOOP_HEADER(*ana) ? " (loop header)" : "") << color::RCol)
 	/* Special processing for loop headers, to handle loop bounds and widening */
 	if (LOOP_HEADER(*ana)) {
 #ifdef POLY_DEBUG
@@ -151,12 +198,11 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 
 	if ((*ana)->isSynth()) {
 		/* Handle call to another function */
-
 		CFG *subCFG = (*ana)->toSynth()->callee();
 		cout << "Call from " << (*ana)->toSynth()->caller()->name() << " to " << subCFG->name() << endl;
-
+		
 		bool compose_ok = false;
-
+#ifdef INTER_PROCEDURAL
 		if (SUMMARIZE(workspace())) {
 			state_t sum;
 			if (SUMMARY(subCFG) == nullptr) {
@@ -193,7 +239,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 			} else {
 				compose_ok = true;
 				MyHTable<int, PPLDomain> *sublb = MAX_LINEAR(subCFG);
-				for (MyHTable<int, PPLDomain>::PairIterator it(*sublb); it(); it++) {
+				for (MyHTable<int, PPLDomain>::PairIterator it(*sublb); it; it++) {
 						PPLDomain composed((*it).snd);
 						cout << "linear bounds: " << composed << endl;
 						cout << "caller state: " << s << endl;
@@ -213,9 +259,9 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 #endif
 			}
 		} 
+#endif
 		if (!compose_ok) { // no summarizing
-			if ((*ana)->toSynth()->callee()->name() == "gsignal" ||
-			    (*ana)->toSynth()->callee()->name() == "__divsi3" ||  
+			if ((*ana)->toSynth()->callee()->name() == "__divsi3" ||  
 			    (*ana)->toSynth()->callee()->name() == "__aeabi_i2d" ||  
 			    (*ana)->toSynth()->callee()->name() == "__muldf3" ||  
 			    (*ana)->toSynth()->callee()->name() == "__divdf3" ||  
@@ -230,46 +276,43 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 			}
 		}
 	
-		for (ai::CFGGraph::Successor e(graph, *ana); e(); e++) {
+		for (ai::CFGGraph::Successor e(graph, *ana); e; e++) {
 			ana.check(*e, s);
 		}
 	} else {
 		/* Handle normal basic block */
 		BasicBlock *bl = (*ana)->toBasic();
-#ifdef POLY_DEBUG
-		cout << "Processing basic block: " << bl << " spaceDimension=" << s.getVarIDCount() << ", numCons=" << s.getConsCount() << "\n";
-#endif
-
+        cout << "Processing basic block: " << bl << " spaceDimension=" << s.getVarIDCount() << ", numCons=" << s.getConsCount() << "\n" ;
+        if (s.getVarIDCount() > max_vars) {
+            max_vars = s.getVarIDCount();
+        }
+        if (s.getConsCount() > max_cons) {
+            max_cons = s.getConsCount();
+        }
 		/* Basic block processing */
-		for (BasicBlock::InstIter inst(bl); inst(); inst++) {
-#ifdef POLY_DEBUG
-			cout << "Starting update for CPU (concrete) instruction: " << *inst << endl;
-#endif
+		for (BasicBlock::InstIter inst(bl); inst; inst++) {
+			/* cout << "Starting update for CPU (concrete) instruction: " << *inst << endl; */ 
+			DBG("\t" << *inst)
 			sem::Block block;
 			inst->semInsts(block);
-			for (sem::Block::InstIter semi(block); semi(); semi++) {
-#ifdef POLY_DEBUG
-				cout << "Updating for semantic instruction (IR): " << *semi << endl;
-#endif
-				s = s.onSemInst(*semi, inst->address().offset());
-#ifdef POLY_DEBUG
-				cout << "State after semantic instruction update: " << endl << s << endl << endl;
-#endif
+			for (sem::Block::InstIter semi(block); semi; semi++) {
+				/* cout << "Updating for semantic instruction (IR): " << *semi << endl; */ 
+                s = s.onSemInst(bl, *semi, inst->address());
+				PDBG("State after semantic instruction update: " << endl << s << endl << endl)
 				s.doIntegerWrap();
 			}
-#ifdef POLY_DEBUG
-			cout << "Finished update for CPU (concrete) instruction: " << *inst << endl;
-#endif
+			PDBG("Finished update for CPU (concrete) instruction: " << *inst << endl)
 
 			s.doKillTemporaries();
 			s.doFinalizeUpdate();
-#ifdef POLY_DEBUG
-			cout << "State after cleanup: " << endl << s << endl;
-#endif
+			PDBG("State after cleanup: " << endl << s << endl)
 		}
 
 		s.doKillRegisters(oslice::REG_BB_END_IN(bl));
+        s.doRemoveUselessAvatars();
 		s.doFinalizeUpdate();
+        s.listMemoryVariables();
+
 	}
 
 
@@ -277,14 +320,12 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 	for (int doExit = 0; doExit < 2; doExit++) {
 
 		/* Do loop exit edges last (improves performance) */
-		for (ai::CFGGraph::Successor e(graph, *ana); e(); e++) {
-			if ((LOOP_EXIT_EDGE(e->sink()) == nullptr) && !doExit)
+		for (ai::CFGGraph::Successor e(graph, *ana); e; e++) {
+			if ((LOOP_EXIT_EDGE(e) == nullptr) && !doExit)
 				continue;
-			if ((LOOP_EXIT_EDGE(e->sink()) != nullptr) && doExit)
+			if ((LOOP_EXIT_EDGE(e) != nullptr) && doExit)
 				continue;
-#ifdef POLY_DEBUG
-			cout << "OutEdge: " << *e << ", taken= " << (e->isTaken()) << endl;
-#endif
+			PDBG("OutEdge: " << *e << ", taken= " << (e->isTaken()) << endl)
 			/*
 			 * In most cases, the state is not updated (i.e. modified) by edge processing.
 			 * We need update on edge if any of these (non-mutually-exclusive) following conditions are true:
@@ -293,7 +334,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 			 * 2. The current output edge of current block is an exit-edge (need to do onLoopExit)
 			 * 3. The current block has a conditional branch (need to do onBranch, for filtering)
 			 */
-			if (!LOOP_HEADER(e->sink()) && (LOOP_EXIT_EDGE(e->sink()) == nullptr) && !s.hasFilter()) {
+			if (!LOOP_HEADER(e->sink()) && (LOOP_EXIT_EDGE(e) == nullptr) && !s.hasFilter()) {
 				/* no edge update: simply copy output state to successor input state */
 				ana.check(*e, s);
 			} else {
@@ -302,18 +343,14 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 
 				if (edgeState.hasFilter()) {
 					/* Filtering: apply branch condition on edge state */
-#ifdef POLY_DEBUG
-					cout << "BEFORE FILTERING: " << endl;
-					cout << edgeState;
-#endif
+					PDBG("BEFORE FILTERING: " << endl)
+					PDBG(edgeState)
 					edgeState = edgeState.onBranch(e->isTaken());
 					if (edgeState.isBottom()) {
 						continue;
 					}
-#ifdef POLY_DEBUG
-					cout << "FILTERED STATE: " << endl;
-					cout << edgeState;
-#endif
+					PDBG("FILTERED STATE: " << endl)
+					PDBG(edgeState)
 				}
 
 				if (LOOP_HEADER(e->sink())) {
@@ -329,39 +366,34 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 					}
 				}
 
-				if (LOOP_EXIT_EDGE(e->sink()) != nullptr) {
+				if (LOOP_EXIT_EDGE(e) != nullptr) {
 					/* Exit edge: remove virtual loop counter, and apply loop bound constraint on state */
-					Block *bb = LOOP_EXIT_EDGE(e->sink());
+					Block *bb = LOOP_EXIT_EDGE(e);
 
 					/* 
 					 * FIXME: should be bound = s.getLoopBound(bb->id()) but we need to fix the widening to make it work
 					 */
 					int bound = edgeState.getBound(bb->id());
 #ifdef LINBOUND
+
 					PPLDomain linBound = edgeState.getLinBound(bb->id());
-#endif
-					cout << "Bound on loop exit: " << bound << endl;
-#ifdef POLY_DEBUG
-#endif
-#ifdef LINBOUND
+
+					PDBG("Bound on loop exit: " << bound << endl)
 					if (!linBound.isBottom()) {
 						edgeState = edgeState.onLoopExitLinear(bb->id(), linBound);
 						if (edgeState.isBottom())
 							continue;
 					}
-#ifdef POLY_DEBUG
-					cout << "linbound for " << bb->id() << " is " << linBound << endl;
+					PDBG("linbound for " << bb->id() << " is " << linBound << endl)
 #endif
-#endif
-
-#ifndef LINBOUND 
+                            edgeState.doRemoveUselessAvatars();
+                            edgeState.doRemoveAllAvatars();
 					if (bound >= 0) {
 						edgeState = edgeState.onLoopExit(bb->id(), bound);
 						if (edgeState.isBottom()) {
 							continue;
 						}
 					}
-#endif
 				}
 				edgeState.doFinalizeUpdate();
 				ana.check(*e, edgeState);
@@ -412,8 +444,8 @@ void PolyAnalysis::PseudoTopoOrder::_topoNodeHelper(const ai::CFGGraph &graph, B
 	if (_visited->bit(end->index()))
 		return;
 
-	for (ai::CFGGraph::Predecessor e(graph, end); e(); e++) {
-		if (!BACK_EDGE(*e))
+	for (ai::CFGGraph::Predecessor e(graph, end); e; e++) {
+		if (!BACK_EDGE(e))
 			_topoNodeHelper(graph, e->source());
 	}
 
@@ -437,7 +469,7 @@ void PolyAnalysis::PseudoTopoOrder::_getPseudoTopo(const ai::CFGGraph &graph) {
 	for (ai::CFGGraph::Iterator it(graph); !it.ended(); it++) {
 		bool hasNonBackEdges = false;
 		for (ai::CFGGraph::Successor e(graph, (*it)); !e.ended() && !hasNonBackEdges; e++) {
-			if (!BACK_EDGE(*e))
+			if (!BACK_EDGE(e))
 				hasNonBackEdges = true;
 		}
 		if (!hasNonBackEdges)
@@ -448,58 +480,80 @@ void PolyAnalysis::PseudoTopoOrder::_getPseudoTopo(const ai::CFGGraph &graph) {
 }
 
 void PolyAnalysis::processCFG(CFG &cfg, state_t &s, MyHTable<int, PPLDomain> &lb, bool isEntryCFG, bool summarize){
+	#ifdef CheckReturnAddress
+	s.doEnterFunction();
+	#endif
 	PPLManager *man = isEntryCFG ? (new PPLManager(*_props, workspace())) : (new PPLManager(s, *_props, workspace()));
 	if (summarize) {
 		ASSERT(isEntryCFG);
 		man->enableSummary();
 	}
-	MyHTable<int, state_t> headerState;
+    MyHTable<int, HeaderState> headerState;
 	ai::CFGGraph graph(&cfg);
 	ai::EdgeStore<PPLManager, ai::CFGGraph> store(*man, graph);
 
-#ifdef POLY_DEBUG
-	cout << "Init state: " << s << endl;
-#endif
+	PDBG("Init state: " << s << endl)
 	cout << "Entering CFG: " << cfg.name() << endl;
-	OrderedDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> ana(*man, graph, store, _orders[cfg.index()]);
+	auto curname = cfgname;
+	cfgname = cfg.name();
 
-	while (ana()) {
+	WorkListDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> ana(*man, graph, store, _orders[cfg.index()]);
+
+	while (ana) {
 		processBB(man, graph, lb, ana, store, headerState);
 		ana++;
 	}
 
 	cout << "Exiting CFG: " << cfg.name() << endl;
+	cfgname = curname;
 
 	Block *bb = graph.exit();
 	Block::EdgeIter edge(bb->ins());
-	s = store.get(*edge);
+	s = store.get(edge);
 
-#ifdef POLY_DEBUG
-	cout << "FINAL STATE: " << endl;
-	cout << s;
-#endif
+	PDBG("FINAL STATE: " << endl)
+	PDBG(s)
 	if (isEntryCFG && !summarize) {
 		// ...
     cout << endl << "---- ANALYSIS ENDS ----" << endl << endl;
 	cout << "FINAL STATE: " << endl;
 	cout << s;
+
+    /* delta test */
+    /*
+    WVar v1(27);
+    WVar v2(35);
+    int result = s.delta(v1, v2, 4);
+    cout << " delta result: *ptr3 - *ptr2 mod 4 = " << result << endl;
+    */
+
+
 	} else {
-		s.doLeaveFunction();
+		s.doLeaveFunction(cfg.name());
 		s.doFinalizeUpdate();
-#ifdef POLY_DEBUG
-		cout << "SUMMARY STATE: " << endl;
-		cout << s;
-#endif
+		PDBG("SUMMARY STATE: " << endl)
+		PDBG(s)
 	}
+
+
 
 }
 
 void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
+#ifndef ELM_LOG
+	// logging
+	elm::log::Debug::setDebugFlag(false);
+	elm::log::Debug::setColorFlag(false);
+#endif
+
+    struct timeval now;
+    gettimeofday(&now, nullptr);
+
 	const CFGCollection *coll = INVOLVED_CFGS(ws);
 	ASSERT(coll);
 
 	_orders.setLength(coll->count());
-	for (CFGCollection::Iter iter2(coll); iter2(); iter2++) {
+	for (CFGCollection::Iter iter2(coll); iter2; iter2++) {
 		cout << "Preparing CFG: " << (*iter2)->name() << endl;
 		ai::CFGGraph graph((*iter2));
 		PseudoTopoOrder *pto = new PseudoTopoOrder(graph);
@@ -533,8 +587,8 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 
 	cout << endl;
 	cout << "LOOP BOUNDS: " << endl;
-	for (CFGCollection::Iter iter2(coll); iter2(); iter2++) {
-		for (CFG::BlockIter iter((*iter2)->blocks()); iter(); iter++) {
+	for (CFGCollection::Iter iter2(coll); iter2; iter2++) {
+		for (CFG::BlockIter iter((*iter2)->blocks()); iter; iter++) {
 			Block *bb = (*iter);
 			if (LOOP_HEADER(bb)) {
 				if (static_bounds.hasKey(bb->id())) {
@@ -552,8 +606,8 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	}
 #else
 	cout << "LOOP BOUNDS: " << endl;
-	for (CFGCollection::Iter iter2(coll); iter2(); iter2++) {
-		for (CFG::BlockIter iter((*iter2)->blocks()); iter(); iter++) {
+	for (CFGCollection::Iter iter2(coll); iter2; iter2++) {
+		for (CFG::BlockIter iter((*iter2)->blocks()); iter; iter++) {
 			Block *bb = (*iter);
 			if (LOOP_HEADER(bb)) {
 				cout << "[" << (*iter2)->name() << "]"
@@ -567,6 +621,25 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 		delete _orders[(*iter2)->index()];
 	}
 #endif
+    cout << "Max variable count: " << max_vars << endl;
+    cout << "Max constraint count:  " << max_cons << endl;
+    struct timeval after;
+    gettimeofday(&after, nullptr);
+    int elapsed = ((after.tv_usec - now.tv_usec)/1000) + 1000*(after.tv_sec - now.tv_sec);
+    cout << "Time elapsed: " << elapsed << endl;
+    int num_inst = 0;
+    for (CFGCollection::Iter iter2(coll); iter2; iter2++) {
+        for (CFG::BlockIter iter((*iter2)->blocks()); iter; iter++) {
+            Block *bb = (*iter);
+            if (bb->isBasic()) {
+                for (BasicBlock::InstIter inst(*bb); inst; inst++) {
+                    num_inst ++;
+                }
+            }
+        }
+    }
+    cout << "Number of instructions: " << num_inst << endl;
+    cout << " & " << num_inst << " & " << max_vars << " & " << max_cons << " & " << elapsed << " \\\\ " << endl;
 }
 
 } // namespace poly

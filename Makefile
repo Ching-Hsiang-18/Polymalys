@@ -1,10 +1,21 @@
-CXXFLAGS=`otawa-config otawa/oslice --cflags`
-LIBS=`otawa-config otawa/oslice --libs`
+CXXFLAGS=`otawa/bin/otawa-config otawa/oslice --cflags`
+LIBS=`otawa/bin/otawa-config otawa/oslice --libs`
 LIBS+=-lppl
 
-CXXFLAGS+=-fPIC -Wall -DUSE_CLANG_COMPLETER -std=c++14 -O0 -g
+CC=gcc
+CXX=g++
+
+
+CXXFLAGS+=-fPIC -Wall -DUSE_CLANG_COMPLETER -std=c++14 -O3 -march=native
+#CXXFLAGS+=-fPIC -Wall -DUSE_CLANG_COMPLETER -std=c++14 -O0 -g
 
 all: poly.so
+
+dbg: CXXFLAGS += -DELM_LOG
+dbg: poly.so
+
+debug: CXXFLAGS += -DPOLY_DEBUG
+debug: poly.so
 
 poly.so: poly_PolyAnalysis.o poly_PlugHook.o poly_PPLDomain.o poly_PPLManager.o poly_PolyWrap.o
 	$(CC) -shared -o poly.so poly_PolyAnalysis.o poly_PlugHook.o poly_PPLDomain.o poly_PPLManager.o poly_PolyWrap.o $(LIBS)
@@ -35,6 +46,9 @@ install: poly.so
 	mkdir -p $(HOME)/.otawa/proc/otawa
 	cp poly.eld $(HOME)/.otawa/proc/otawa/
 	cp poly.so $(HOME)/.otawa/proc/otawa/
+
+tabtest: install
+	make -C tests tabtest
 
 test: douter
 
