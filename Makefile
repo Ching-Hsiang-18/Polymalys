@@ -1,5 +1,5 @@
-CXXFLAGS=`otawa-config otawa/oslice --cflags`
-LIBS=`otawa-config otawa/oslice --libs`
+CXXFLAGS=`otawa/bin/otawa-config otawa/oslice --cflags`
+LIBS=`otawa/bin/otawa-config otawa/oslice --libs`
 LIBS+=-lppl
 
 CXXFLAGS+=-fPIC -Wall -DUSE_CLANG_COMPLETER -std=c++14 -O0 -g
