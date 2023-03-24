@@ -215,8 +215,8 @@ void PPLDomain::print(io::Output &out) const {
 #ifdef INTER_PROCEDURAL
 		cout << "Summary info: " << endl;
 		cout << "- Inputs: ";
-		for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
-			const Pair<Ident, guid_t> &p = *it;
+		for (MyHTable<Ident, idval_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+			const Pair<Ident, idval_t> &p = *it;
 			if ((p.fst.getType() == Ident::ID_MEM_VAL_INPUT) || (p.fst.getType() == Ident::ID_REG_INPUT)) 
 				cout << p.fst << ", ";
 		}
@@ -410,7 +410,7 @@ void PPLDomain::displayLocVars(io::Output &out) const {
 		//out << i << endl;
 		WPoly poly_copy = poly;
 		WVar v(num_axis);
-		poly_copy.add_constraint(v == ssp - i);
+		poly_copy.add_constraint(v == ssp - i - LOC_VAR_SIZE(_props));
         out << " [SSP - " << hex(i) << "] ∈ ";
 		bool found = false;
 		for (MyHTable<Ident, idval_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
@@ -732,11 +732,11 @@ PPLDomain PPLDomain::getLinearExpr(const Ident &id) {
 	MyHTable<int, int> inputs;
 	int axis = 1;
 	PPLDomain dom(*this); /* make a working copy to do the projections */
-	inputs[getVar(id).id()] = 0;
-	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+	inputs[getVar(id, nullptr).id()] = 0;
+	for (MyHTable<Ident, idval_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
 		if (((*it).fst.getType() == Ident::ID_REG_INPUT) ||
 			((*it).fst.getType() == Ident::ID_MEM_VAL_INPUT)) {
-			inputs[(*it).snd] = axis;
+			inputs[(*it).snd.g] = axis;
 			axis++;
 		}
 	}
@@ -785,6 +785,43 @@ void PPLDomain::doAvExpand(WVar &splus, WVar &sminus, WVar &vplus, WVar &vminus)
 }
 
 
+void PPLDomain::computeParamBound(Block* header) const {
+	int loopId = header->id();
+	int axis = 1;
+	if (isBottom()) {
+		// cout << "L'etat de la loop " << loopId << " est bottom\n\n";
+		return;
+	}
+	MyHTable<int, int> inputs;
+	MyHTable<int, int> paramMapping;
+	Ident id(loopId, Ident::ID_LOOP);
+
+	inputs[getVar(id, nullptr).id()] = 0;
+
+	for (MyHTable<Ident, idval_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+		if (((*it).fst.getType() == Ident::ID_SPECIAL) && (*it).fst.getId() < 0)  {
+			inputs[(*it).snd.g] = axis;
+			paramMapping[axis] = (*it).fst.getId();
+			axis++;
+		}
+	}
+	PPLDomain dom(*this);
+	// cout << "Etat avant projection: \n\n" << dom << "\n\n";
+	dom.doMap(MapWithHash(inputs));
+	// cout << "Etat projeté: \n\n" << dom << "\n\n";
+
+	// copy poly constraints
+	std::vector<WCons> csts;
+	for (WPoly::ConsIterator it(dom.poly); it; it++) {
+		const WCons &c = *it;
+		csts.push_back(c);
+	}
+	// extract the loop bound
+	LoopAnalyzer la;
+	la.computeLinearBound(header, csts, paramMapping);
+
+	return;
+}
 
 // getLoopBound: a appeler a l'INTERIEUR de la boucle pour avoir une maximisation de la variable d'induction
 bound_t PPLDomain::getLoopBound(int loopId) const {
@@ -800,21 +837,21 @@ bound_t PPLDomain::getLoopBound(int loopId) const {
 	return bound_t::UNBOUNDED;
 }
 
-PPLDomain PPLDomain::onLoopExitLinear(int loop, const PPLDomain &bound) const {
+PPLDomain PPLDomain::onLoopExitLinear(int loop, const PPLDomain &bound, Block* b) const {
 	PPLManager::t s_out = *this;
 #ifdef LINBOUND
-	cout << "before onLoopExitLinear: " << s_out << endl;
+	//cout << "before onLoopExitLinear: " << s_out << endl;
 	cout << "bound: " << bound << endl;
 	Ident id(loop, Ident::ID_LOOP);
 	ASSERT(s_out.hasIdent(id)); /* You are supposed to be already inside the loop when you call onLoopExit() */
-	WVar v = s_out.getVar(id);
+	WVar v = s_out.getVar(id, nullptr);
 	MyHTable<int,int> map;
 	Vector<int> mapped;
-	for (MyHTable<Ident, guid_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+	for (MyHTable<Ident, idval_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
 		if (((*it).fst.getType() == Ident::ID_REG_INPUT) || ((*it).fst.getType() == Ident::ID_MEM_VAL_INPUT) || ((*it).fst == id)) {
 			if (hasIdent((*it).fst)) {
-				const WVar &v2 = getVar((*it).fst);
-				map[(*it).snd] = v2.id();
+				const WVar &v2 = getVar((*it).fst, nullptr);
+				map[(*it).snd.g] = v2.id();
 				mapped.add(v2.id());
 			}
 		}
@@ -830,14 +867,57 @@ PPLDomain PPLDomain::onLoopExitLinear(int loop, const PPLDomain &bound) const {
 
 
 	s_out.poly.intersection_assign(copy.poly);
-	s_out.varKill(v);
-	cout << "after onLoopExitLinear: " << s_out << endl;
+	s_out.varKill(v, NO_STEP);
+	//cout << "after onLoopExitLinear: " << s_out << endl;
+
+	// addon to support linear loop bounds related to entry parameters
+	/*if(!(*this).isBottom()){
+		MyHTable<int, int> inputs; // prepare projection map
+		PPLDomain dom(*this); // copying the domain
+		
+		//cout << "BEFORE PROJECTION:" << endl << dom << endl;
+
+		// retrieve function parameters
+		Block* entry = ROOT_CFG(b->cfg())->entry();
+		std::map<int,WVar> used = USED_ARGS(entry);
+
+		int usedSize = 0;
+		if(used.size() > 0){
+			for (MyHTable<Ident, idval_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+				int tmp = 0;
+				WVar v = dom.getVar((*it).fst, &tmp);
+				ArmArgumentsDetector detector;
+				int reg_id = detector.getParamId(entry, v);
+				if(dom.hasIdent((*it).fst) && reg_id != -1){
+					inputs[(*it).snd.g] = reg_id;
+					//cout << "v" << (*it).snd.g << " = v" << reg_id << endl;
+					usedSize++;
+				}
+			}
+			//cout << "INPUT SIZE: " << inputs.count() << endl;
+
+			dom.doMap(MapWithHash(inputs));
+			//cout << "AFTER PROJECTION:" << endl << dom << endl;
+
+			// handle constraintq
+			std::vector<WCons> csts = CONSTRAINTS(b);
+			for (WPoly::ConsIterator it(dom.poly); it; it++) {
+				const WCons &c = *it;
+				csts.push_back(c);
+			}
+			CONSTRAINTS(b) = csts;
+			LoopAnalyzer la;
+			la.computeLinearBound(b);
+		}
+	}*/
+	// end of addon
+
 #endif
 	return s_out;
 
 }
 
-PPLDomain PPLDomain::onLoopExit(int loop, int bound) const {
+PPLDomain PPLDomain::onLoopExit(int loop, int bound, Block* b) const {
 	PPLManager::t s_out = *this;
 	Ident id(loop, Ident::ID_LOOP);
 	ASSERT(s_out.hasIdent(id)); /* You are supposed to be already inside the loop when you call onLoopExit() */
@@ -847,6 +927,49 @@ PPLDomain PPLDomain::onLoopExit(int loop, int bound) const {
 		s_out.poly.add_constraint(v <= bound);
 	}
 	s_out.varKill(v, NO_STEP);
+
+	// addon to support linear loop bounds related to entry parameters
+	/*if(!(*this).isBottom()){
+		MyHTable<int, int> inputs; // prepare projection map
+		PPLDomain dom(*this); // copying the domain
+		
+		//cout << "BEFORE PROJECTION:" << endl << dom << endl;
+
+		// retrieve function parameters
+		Block* entry = ROOT_CFG(b->cfg())->entry();
+		std::map<int,WVar> used = USED_ARGS(entry);
+
+		int usedSize = 0;
+		if(used.size() > 0){
+			for (MyHTable<Ident, idval_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+				int tmp = 0;
+				WVar v = dom.getVar((*it).fst, &tmp);
+				ArmArgumentsDetector detector;
+				int reg_id = detector.getParamId(entry, v);
+				if(dom.hasIdent((*it).fst) && reg_id != -1){
+					inputs[(*it).snd.g] = reg_id;
+					//cout << "v" << (*it).snd.g << " = v" << reg_id << endl;
+					usedSize++;
+				}
+			}
+			//cout << "INPUT SIZE: " << inputs.count() << endl;
+
+			dom.doMap(MapWithHash(inputs));
+			//cout << "AFTER PROJECTION:" << endl << dom << endl;
+
+			// handle constraintq
+			std::vector<WCons> csts = CONSTRAINTS(b);
+			for (WPoly::ConsIterator it(dom.poly); it; it++) {
+				const WCons &c = *it;
+				csts.push_back(c);
+			}
+			CONSTRAINTS(b) = csts;
+			LoopAnalyzer la;
+			la.computeLinearBound(b);
+		}
+	}*/
+	// end of addon
+
 	if (s_out.poly.is_empty()) {
 #ifdef POLY_DEBUG
 		cout << "State is Bottom after onLoopExit (will not propagate states to exit-edges)" << endl;
@@ -875,7 +998,7 @@ PPLDomain PPLDomain::onLoopEntry(int loop) const {
 	return s_out;
 }
 
-PPLDomain PPLDomain::onBranch(bool taken) const {
+PPLDomain PPLDomain::onBranch(bool taken, Block* b) const {
 	if (isBottom()) {
 		return PPLDomain();
 	}
@@ -887,19 +1010,22 @@ PPLDomain PPLDomain::onBranch(bool taken) const {
 	cout << "Filtering, compare_reg is: " << compare_reg << ", compare_op is: " << compare_op << ", taken=" << taken << endl;
 #endif
 
-
+	// cout << "======================================================= " << b->id() << " " << taken << endl;
+	// cout << "state before OP:" << endl << res << endl;
 	switch (this_op) {
 		case sem::NE: {
 			WPoly poly2 = res.poly;
 			res.poly.add_constraint(res.getVar(compare_reg, nullptr) <= -1);
 			poly2.add_constraint(res.getVar(compare_reg, nullptr) >= 1);
 			res.poly.poly_hull_assign(poly2);
+			// cout << "NE" << endl;
 			break;
 			PDBG("NE!" << endl)
 		}
 		case sem::EQ:
 			PDBG("EQ!" << endl)
 			res.poly.add_constraint(res.getVar(compare_reg, nullptr) == 0);
+			// cout << "EQ" << endl;
 			break;
 		case sem::GE:
 		case sem::UGE:
@@ -924,6 +1050,175 @@ PPLDomain PPLDomain::onBranch(bool taken) const {
 		default:
 			break;
 	};
+
+	//projection of res to get conditions
+	if (!res.isBottom()) {
+		MyHTable<int, int> inputs;
+		PPLDomain dom(res); /* make a working copy to do the projections */
+		// cout << "State after OP:" << endl << dom << endl;
+		//std::map<int,WVar> used = USED_ARGS(b->cfg()->entry());
+		Block* entry = ROOT_CFG(b->cfg())->entry();
+		std::map<int,WVar> used = USED_ARGS(entry);
+		//cout << "SIZE OF USED: " << used.size() << endl;
+		if(used.size() != 0){
+			//inputs[res.getVar(compare_reg).id()] = 0;
+			for (MyHTable<Ident, idval_t, HashIdent>::PairIterator it = idmap.getPairIter(); it; it++) {
+				int tmp = 0;
+				WVar v = dom.getVar((*it).fst, &tmp);
+				ArmArgumentsDetector detector;
+				int reg_id = detector.getParamId(entry, v);
+				if(dom.hasIdent((*it).fst) && reg_id != -1){
+					inputs[(*it).snd.g] = reg_id;
+					//cout << "v" << (*it).snd.g << " = v" << reg_id << endl;
+				}
+			}
+			//cout << "INPUT SIZE: " << inputs.count() << endl;
+			dom.doMap(MapWithHash(inputs));
+
+			// handle constraints
+			std::string constraints = "";
+			for (WPoly::ConsIterator it(dom.poly); it; it++) {
+				const WCons &c = *it;
+
+				//cout << "ref: " << c << endl;
+
+				// c = 0 <OP> coef_1 * v_1 + ... + coef_n * v_n + constant
+				// retrieve constant
+				coef_t constant = c.inhomogeneous_term();
+				//cout << "constant: " << constant << endl;
+
+				// retrieve function parameters
+				std::map<guid_t, coef_t> vs; ///< first = parameter register, second = coef
+				int i = 0;
+				for(WPoly::VarIterator vi(dom.poly); vi; vi++){
+					WVar v = *vi;
+					if(c.has_var(v)){
+						coef_t coef = c.coefficient(v);
+						//cout << b->cfg()->name() << "[" << v.guid() << "] * " << coef << endl;
+						vs.emplace(v.guid(), coef);
+					}
+				}
+
+				// retrieve OP
+				std::string op;
+				switch (c.getType())
+				{
+					case CONS_EQ:
+						op = "=";
+						break;
+					case CONS_GE:
+						op = "≤";
+						break;
+					default:
+						cout << "[ERROR] Unrecognized constraint type while searching for branch conditions" << endl;
+						abort();
+						break;
+				}
+
+				// format constraint as a string, which is easier to export in a file
+				std::string cString = "0 " + op;
+				std::string opmult = " * ";
+				std::string opadd = " + ";
+				std::string opminus = " - ";
+				char buf[128];
+				for(auto i = vs.begin(); i != vs.end(); i++){
+					if((*i).second > 0){
+						std::string opv = " ";
+						if(i != vs.begin()){
+							opv = opadd;
+						}
+						if((*i).second != 1){
+							parse((*i).second, buf);
+							std::string coef(buf);
+							opv = opv + coef;
+							opv = opv + opmult;
+						}
+						cString = cString + opv;
+					}
+					else{
+						std::string opv = opminus;
+						if((*i).second != -1){
+							parse(-((*i).second), buf);
+							std::string coef(buf);
+							opv = opv + coef;
+							opv = opv + opmult;
+						}
+						cString = cString + opv;
+					}
+					std::string var2 = std::to_string((*i).first);
+					std::string var = "b:" + var2;
+					cString = cString + var;
+				}
+				if(constant != 0){
+					std::string opconst = "";
+					if(constant > 0){
+						opconst = opadd;
+						parse(constant, buf);
+					}
+					else{
+						opconst = opminus;
+						parse(-constant, buf);
+					}
+					std::string cst(buf);
+					cString = cString + opconst;
+					cString = cString + cst;
+				}
+				std::string concat = "";
+				if(constraints.length() != 0)
+					concat = " & ";
+				cString = concat + cString;
+				constraints = constraints + cString;
+			}
+			
+			if(constraints != ""){
+				//std::cout << "constraints found for " << b->toBasic()->control()->address() << ": " << constraints << endl;
+				// export constraints
+				// only if we are not in a loop
+				Conditional c(b, taken, constraints);
+				int current_loop = CURRENT_LOOP(ROOT_CFG(b->cfg()));
+				if(current_loop == -1){	
+					//ConstraintExporter exp;
+					//exp.exportToFile(c);
+					// we now export constraints later in order
+					OrderedElements orderingManager = EXPORT_ORDER(ROOT_CFG(b->cfg()));
+					OrderedConditional oc(current_loop, c);
+					orderingManager.addElement(oc);
+					EXPORT_ORDER(ROOT_CFG(b->cfg())) = orderingManager;
+				}
+				// otherwise store it to keep only the last conditional and export it later on
+				else{
+					std::map<int, std::map<bool,Conditional>> loopConditionalMap = LOOP_CONDITIONALS(ROOT_CFG(b->cfg()));
+					// try to get current map if exists
+					std::map<bool,Conditional> conditional;
+					bool exists = true;
+					if(loopConditionalMap.find(current_loop) != loopConditionalMap.end()){
+						conditional = loopConditionalMap.at(current_loop);
+					}
+					else{
+						conditional = std::map<bool,Conditional>();
+						exists = false;
+						// it does not exist yet so we can push it in ordered export
+						OrderedElements orderingManager = EXPORT_ORDER(ROOT_CFG(b->cfg()));
+						OrderedConditional oc(current_loop);
+						orderingManager.addElement(oc);
+						EXPORT_ORDER(ROOT_CFG(b->cfg())) = orderingManager;
+					}
+					// replace the conditional with current conditional
+					conditional.erase(taken);
+					conditional.emplace(taken, c);
+					loopConditionalMap.erase(current_loop);
+					loopConditionalMap.emplace(current_loop, conditional);
+					LOOP_CONDITIONALS(ROOT_CFG(b->cfg())) = loopConditionalMap;
+				}
+			}
+			else{
+				//cout << "no constraints found for " << b->toBasic()->control()->address() << endl;
+				//cout << "STATE WITH NO CONSTRAINT RELATED TO MARKED PROGRAM PARAMETERS" << endl << "DOM (projected poly):" << endl << dom << endl << "RES (original poly):" << endl << res << endl;
+			}
+		}
+	}
+
+
 	//res.victims.add(res.getVar(res.compare_reg).guid());
 	res.varKill(res.compare_reg);
 	res.compare_reg = Ident();
@@ -1581,6 +1876,7 @@ PPLDomain PPLDomain::onSemInst(const BasicBlock *bb, const sem::inst &si, int in
 
 
             bool isArray = _isArrayStore(bb, storeAddr);
+            // cout << "arraystore: " << isArray << endl;
 
 			sem::reg_t src = si.d();
 			Ident idStoreValue(src, Ident::ID_REG);
@@ -1721,12 +2017,12 @@ PPLDomain PPLDomain::onSemInst(const BasicBlock *bb, const sem::inst &si, int in
                     Ident idAddrNew(s_out.mem_ref - 1, Ident::ID_MEM_ADDR);
                     int step;
                     WVar newAddr = s_out.getVar(idAddrNew, &step);
-
-                    cout << "Create var with arraystore, attempt to find existing array" << endl;
+                    // cout << "Create var with arraystore, attempt to find existing array" << endl;
+                    cout << "\n";
                     for (MyHTable<Ident, idval_t, HashIdent>::PairIterator it = s_out.idmap.getPairIter(); it; it++) {
                         if ((*it).fst.getType() == Ident::ID_MEM_ADDR) {
                             if ((*it).fst == idAddrNew) break;
-                            cout << "Checking if tab " << (*it).fst << " is the start of " << idAddrNew << " \n";
+                            // cout << "Checking if tab " << (*it).fst << " is the start of " << idAddrNew << " \n";
                             WVar tabAddr = s_out.getVar((*it).fst, &step);
                             Ident idCountAddr((*it).fst.getId(), Ident::ID_MEM_COUNT);
                             WVar count = s_out.getVar(idCountAddr, nullptr);
@@ -1744,27 +2040,25 @@ PPLDomain PPLDomain::onSemInst(const BasicBlock *bb, const sem::inst &si, int in
                                     int tmp = num.get_si() / den.get_si();
                                     if (tmp > 0) {                                        
                                         step = tmp;
-                                        cout << "Guessed step: " << step << endl;
+                                        // cout << "Guessed step: " << step << endl;
                                     }
                                 }
                             }
                             if (step != STEP_BOT && s_out.shouldFold(tabAddr, step, count, newAddr)) {
 
                                 fold = true;
-                                 cout << "yes (keep existing step: " << step << ") " << endl;
+                                // cout << "yes (keep existing step: " << step << ") " << endl;
                             } else {
-                                 cout << "no." << endl;
+                                // cout << "no." << endl;
                             }
 
 
                             Ident idValPlus((*it).fst.getId(), Ident::ID_MEM_VAL_PLUS);
                             // cout << step << " " << fold << " " << s_out.hasIdent(idValPlus) << "\n";
                             if (fold && s_out.hasIdent(idValPlus)) {
+                                cout << "actually folding with: " << step << endl;
 
-                                cout << "Folding store " << idAddrNew << " into existing array " << (*it).fst << endl;
-
-				s_out.showTab((*it).fst);
-
+                                // cout << "Folding store " << idAddrNew << " into existing array " << (*it).fst << endl;
                                 Ident idValMinus((*it).fst.getId(), Ident::ID_MEM_VAL_MINUS);
                                 Ident idValNew(idAddrNew.getId(), Ident::ID_MEM_VAL);
                                 Ident idCountNew(idAddrNew.getId(), Ident::ID_MEM_COUNT);
@@ -1925,11 +2219,11 @@ PPLDomain PPLDomain::onSemInst(const BasicBlock *bb, const sem::inst &si, int in
 					const WVar &v = s_out.memSingleCreate(loadAddr, loadReg, false);
 					if (s_out._summary != nullptr) {
 						// Unknown LOAD value. If we are summarizing, create an input.
-						Ident idInputAddr = s_out.getIdent(v);
+						Ident idInputAddr = s_out.getIdent(v, NULL);
 						Ident idInputVal = Ident(idInputAddr.getId(), Ident::ID_MEM_VAL_INPUT);
 						Ident idCurrentVal = Ident(idInputAddr.getId(), Ident::ID_MEM_VAL);
-						WVar currentVal = s_out.getVar(idCurrentVal);
-						WVar inputVal = s_out.varNew(idInputVal); // c'est une variable qu'on lit donc pas de damaged
+						WVar currentVal = s_out.getVar(idCurrentVal, NULL);
+						WVar inputVal = s_out.varNew(idInputVal, NULL, false, false); // c'est une variable qu'on lit donc pas de damaged
 						PDBG("Summarizing: creating new input memory: " << " what= " << idInputVal << " where=" << idInputAddr << endl)
 	//					s_out._summary->_inputs.add(idInputVal);
 						s_out.doNewConstraint(currentVal == inputVal);
@@ -2275,7 +2569,8 @@ void PPLDomain::listMemoryVariables() {
 		num_loop++;
 	}
     }
-    cout << (num_av + num_sing + num_tab) << " var mem, dont " << num_av << " avatars (x4), " << num_tab << " tab (x3), et " << num_sing << " acces singuliers (x3), " << num_reg << " regs, " << num_loop << " boucles, et " << num_spe << "spe" << "(tot: " << total << ")\n";
+    // DEBUG
+    //cout << (num_av + num_sing + num_tab) << " var mem, dont " << num_av << " avatars (x4), " << num_tab << " tab (x3), et " << num_sing << " acces singuliers (x3), " << num_reg << " regs, " << num_loop << " boucles, et " << num_spe << "spe" << "(tot: " << total << ")\n";
 
     if ((num_av*4 + (num_sing + num_tab)*3 + num_reg + num_loop + num_spe) != total) {
 	    print(cout);
@@ -2407,7 +2702,7 @@ WVar PPLDomain::getVarOrNew(const Ident &ident, bool create_input) {
 			ASSERT(ident.getType() == Ident::ID_REG);
 			Ident idInput(ident.getId(), Ident::ID_REG_INPUT);
 //			_summary->_inputs.add(idInput);
-			WVar input = varNew(idInput);
+			WVar input = varNew(idInput, NULL, false, false);
 			doNewConstraint(input == v);
 			PDBG("Summarizing: creating new input register " << input << endl)
 		}
@@ -2977,7 +3272,7 @@ void PPLDomain::_doMatchGlobals(PPLDomain &l1, PPLDomain &r1,
 				uint32_t staticVal;
                 dfa::INITIAL_STATE(_ws)->get(staticAddr, staticVal); // get static constant value from OTAWA
 				PDBG("Static adress: " << hex(staticAddr) << " value: " << hex(staticVal) << endl)
-				cout << "Static adress: " << hex(staticAddr) << " value: " << hex(staticVal) << endl;
+				DBG("Static adress: " << hex(staticAddr) << " value: " << hex(staticVal) << endl)
 
                 Ident leftIdAddr = l1.getIdent(v, STEP_BOT); /* TODO get initial values for arrays */
 				Ident leftIdVal = Ident(leftIdAddr.getId(), Ident::ID_MEM_VAL);
@@ -3122,10 +3417,8 @@ void PPLDomain::_doUnify(PPLDomain &l1 /* back */, PPLDomain &r1 /* header */, P
             invLeftCSMap.put((*it).snd, (*it).fst);
         }
 
-	/*
         _doMatchGlobals(l1, r1, leftCSMap, invRightCSMap);
         _doMatchGlobals(r1, l1, rightCSMap, invLeftCSMap);
-	*/
         /* Detect variable in left (i.e. backstate) subjected to avatar creation */
         if (avcreate) {
             for (MyHTable<guid_t, LEVect >::PairIterator it(leftCSMap); it; it++) {
@@ -3142,7 +3435,7 @@ void PPLDomain::_doUnify(PPLDomain &l1 /* back */, PPLDomain &r1 /* header */, P
                     guid_t newBase = 42, newCount = 42;
                     guid_t newValPlus = 42, newValMinus = 42;
 
-                    /* cout << "Creating avatar for backstate base variable: " << (*it).fst << endl; */
+                    // cout << "Creating avatar for backstate base variable: " << (*it).fst << endl;
 
                     bool created = PPLDomain::_avcreate_helper(r1, l1, rightVars, idBase, WVar((*it).fst), step, newBase, newCount, newValPlus, newValMinus);
                     if (!created) {
@@ -3754,10 +4047,8 @@ bool PPLDomain::_isArrayStore(const BasicBlock *bb, const WVar &storeAddr) const
             } else if (v.guid() > 0) {
                 has_bound = true;
             }
-            if (has_store && has_bound) {
-		cout << "found cons: " << c << endl;
+            if (has_store && has_bound)
                 return true;
-	    }
         }
     }
     return false;
@@ -3910,48 +4201,6 @@ void PPLDomain::enableSummary() {
 	const WVar &spInput = varNew(Ident(13, Ident::ID_REG_INPUT));
 	 doNewConstraint(spInput == getVar(Ident(13, Ident::ID_REG)));
 	 */
-}
-
-extern elm::String cfgname;
-
-void PPLDomain::showTab(const Ident &ident) {
-	Ident id_ssp(Ident::ID_START_SP, Ident::ID_SPECIAL);
-	int step;
-	WVar ssp = getVar(id_ssp, nullptr);
-	WVar store = getVar(ident, &step);
-
-	WPoly temp = poly;
-	temp.filter_lambda([store, ssp](guid_t guid) {
-		return guid == store.guid() || guid == ssp.guid();
-	});
-	for (WPoly::ConsIterator it(temp); it; it++) {
-		const WCons &c = (*it);
-		bool has_store = false;
-		bool has_ssp = false;
-		bool has_other = false;
-		if (!c.is_equality()) continue;
-		for (WCons::TermIterator it2(c); it2; it2++) {
-		    const WVar &v = (*it2);
-		    if (v.guid() == ssp.guid()) {
-			has_ssp = true;
-		    } else if (v.guid() == store.guid()) {
-			has_store = true;
-		    } else {
-			has_other = true;
-		    }
-		    if (has_store && has_ssp && !has_other && c.coefficient(ssp) == -c.coefficient(store)) {
-			int cst = -c.inhomogeneous_term().get_si();
-			int coef = -c.coefficient(store).get_si();
-			cout << "ARRAY: type=local func=" << cfgname << " addr=START_SP-" << hex(cst/coef) << endl;
-		    }
-		    if (has_store && !has_ssp && !has_other) {
-			int cst = -c.inhomogeneous_term().get_si();
-			int coef = c.coefficient(store).get_si();
-			
-			cout << "ARRAY: type=global addr=" << hex(cst/coef) << endl;
-		    }
-		}
-        }
 }
 p::feature POLY_ANALYSIS_FEATURE("otawa::poly::POLY_ANALYSIS_FEATURE", new Maker<PolyAnalysis>());
 

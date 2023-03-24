@@ -14,6 +14,7 @@
 #include <ppl.hh>
 
 #include "PPLManager.h"
+#include "BranchConditionner.h"
 
 namespace otawa {
 namespace poly {

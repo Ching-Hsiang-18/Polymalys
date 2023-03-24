@@ -18,11 +18,13 @@
 #include "include/PPLDomain.h"
 #include "include/PPLManager.h"
 #include "include/PolyAnalysis.h"
+
+#include "include/LoopAnalyzer.h"
+
 namespace otawa {
 namespace poly {
 using namespace otawa;
 using namespace util;
-elm::String cfgname;
 
 p::declare PolyAnalysis::reg = p::init("otawa::poly::PolyAnalysis", Version(1, 0, 0))
                                    .require(COLLECTED_CFG_FEATURE)
@@ -44,6 +46,17 @@ void PolyAnalysis::configure(const PropList &props) {
 
 PolyAnalysis::state_t PolyAnalysis::processHeader(ai::CFGGraph &graph, MyHTable<int,PPLDomain> &lb,
         BasicBlock *header, PPLManager& man, ai::EdgeStore<PPLManager, ai::CFGGraph>& store, MyHTable<int, HeaderState> &headerState) {
+
+	// manage loop context
+	if(CURRENT_LOOP(ROOT_CFG(header->cfg())) != header->id()){
+		PREVIOUS_LOOP(header) = CURRENT_LOOP(ROOT_CFG(header->cfg()));
+		CURRENT_LOOP(ROOT_CFG(header->cfg())) = header->id();
+	}
+	// reset function instances for each iteration to insert in the same place the conditionals
+	std::map<int,std::map<string,int>> resetMap = CURRENT_INSTANCES(ROOT_CFG(header->cfg()));
+	resetMap.erase(header->id());
+	CURRENT_INSTANCES(ROOT_CFG(header->cfg())) = resetMap;
+
 	state_t entryState = man.bot();
 	state_t backState = man.bot();
 
@@ -92,14 +105,17 @@ DBG("Widening, entryState = " << entryState)
 	bound_t bound = backState.getLoopBound(header->id());
 	backState.setBound(header->id(), bound);
 #endif
+/*	cout << "\n\n\nBackState pour calcul de bornes de boucles parametrique: \n" << backState << "\n\n\n"; */
 
-	PDBG("ITERATION: bound=" << int(bound) << endl)
+	backState.computeParamBound(header);
+
+	/*PDBG("ITERATION: bound=" << int(bound) << endl)
 	if(bound == -1)
 		DBG("ITERATION: bound=" << color::IRed << "UNREACHABLE")
 	else if(bound == -2)
 		DBG("ITERATION: bound=" << color::IRed << "UNBOUNDED")
 	else
-		DBG("ITERATION: bound=" << color::IRed << int(bound))
+		DBG("ITERATION: bound=" << color::IRed << int(bound))*/
 
 
 #ifndef LINBOUND
@@ -112,7 +128,7 @@ DBG("Widening, entryState = " << entryState)
 		lb[header->id()] = PPLDomain();
 
 #ifdef LINBOUND
-	const PPLDomain &oldBound = lb[header->id()];
+	PPLDomain &oldBound = lb[header->id()];
 	lb[header->id()] = oldBound.onMerge(linearBound, false);
 #endif
 	
@@ -173,6 +189,25 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 	 */
 	state_t s = man->bot();
 
+	if(LOOP_RESET(*ana)){
+		Block* h = nullptr;
+		auto iter = (*ana)->ins();
+		for(int i=0;i<(*ana)->countIns();i++){
+			if(ROOT_CFG((*ana)->cfg()) != nullptr && (*iter)->source()->id() == CURRENT_LOOP(ROOT_CFG((*ana)->cfg()))){
+				h = (*iter)->source();
+				break;
+			}
+			iter++;
+		}
+		if(h != nullptr){
+			CURRENT_LOOP(ROOT_CFG((*ana)->cfg())) = PREVIOUS_LOOP(h);
+		}
+		else{
+			cout << "ERROR : h is null" << endl;
+			//exit(1);
+		}
+	}
+
 	DBG("Processing " << color::On_Blu << "BB " << ((BasicBlock*)*ana)->index() << (LOOP_HEADER(*ana) ? " (loop header)" : "") << color::RCol)
 	/* Special processing for loop headers, to handle loop bounds and widening */
 	if (LOOP_HEADER(*ana)) {
@@ -182,6 +217,12 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 		s = processHeader(graph, lb, (*ana)->toBasic(), *man, store, headerState);
 	} else {
 		s = ana.input();
+	}
+
+	/* doing this avoid bottom state */
+	if(((BasicBlock*)*ana)->index() == 1){
+		ArmArgumentsDetector detector;
+		detector.initFunctionParameters(&s, ((BasicBlock*)*ana)->cfg()->entry());
 	}
 
 	if (s.isBottom()) {
@@ -199,6 +240,39 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 	if ((*ana)->isSynth()) {
 		/* Handle call to another function */
 		CFG *subCFG = (*ana)->toSynth()->callee();
+		
+		/* handle crash on null CFG */
+		if (subCFG == nullptr) {
+			cout << "Error: calling a null CFG" << endl;
+			exit(1);
+		}
+
+		ROOT_CFG(subCFG) = ROOT_CFG((*ana)->cfg());
+		int oldLoop = CURRENT_LOOP(ROOT_CFG(subCFG)); //< store old loop id to restore it after return
+		//CURRENT_LOOP(ROOT_CFG(subCFG)) = -1;
+		string name = subCFG->name();
+		
+		// create artificiel loop context for function calls
+		std::map<int,std::map<string,int>> currentInstancesAll = CURRENT_INSTANCES(ROOT_CFG(subCFG));
+		std::map<string,int> currentInstances;
+		if(currentInstancesAll.find(oldLoop) == currentInstancesAll.end()){
+			currentInstances = std::map<string,int>();
+		}
+		else{
+			currentInstances = currentInstancesAll.at(oldLoop);
+			currentInstancesAll.erase(oldLoop);
+		}
+		int instance = 1; // default value
+		if(currentInstances.find(name) != currentInstances.end()){
+			instance = currentInstances.at(name) + 1; //< new value
+			currentInstances.erase(name); //< to replace the value	
+		}
+		currentInstances.emplace(name,instance);
+		CURRENT_LOOP(ROOT_CFG(subCFG)) = - MAX_LOOP * oldLoop + instance; // unique negative value for each loop
+		currentInstancesAll.emplace(oldLoop,currentInstances);
+		CURRENT_INSTANCES(ROOT_CFG(subCFG)) = currentInstancesAll;
+		// end of artificial loop context
+
 		cout << "Call from " << (*ana)->toSynth()->caller()->name() << " to " << subCFG->name() << endl;
 		
 		bool compose_ok = false;
@@ -273,6 +347,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 			} else {
 				processCFG(*subCFG, s, lb, false, false);
 				cout << "Return from " << subCFG->name() << " to " << (*ana)->toSynth()->caller()->name() << endl;
+				CURRENT_LOOP(ROOT_CFG(subCFG)) = oldLoop;
 			}
 		}
 	
@@ -345,7 +420,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 					/* Filtering: apply branch condition on edge state */
 					PDBG("BEFORE FILTERING: " << endl)
 					PDBG(edgeState)
-					edgeState = edgeState.onBranch(e->isTaken());
+					edgeState = edgeState.onBranch(e->isTaken(), *ana);
 					if (edgeState.isBottom()) {
 						continue;
 					}
@@ -369,6 +444,11 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 				if (LOOP_EXIT_EDGE(e) != nullptr) {
 					/* Exit edge: remove virtual loop counter, and apply loop bound constraint on state */
 					Block *bb = LOOP_EXIT_EDGE(e);
+					
+					// tells that we get out of a loop
+					if(LOOP_HEADER(e->source())){
+						LOOP_RESET(e->sink()) = true;
+					}
 
 					/* 
 					 * FIXME: should be bound = s.getLoopBound(bb->id()) but we need to fix the widening to make it work
@@ -380,7 +460,7 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 
 					PDBG("Bound on loop exit: " << bound << endl)
 					if (!linBound.isBottom()) {
-						edgeState = edgeState.onLoopExitLinear(bb->id(), linBound);
+						edgeState = edgeState.onLoopExitLinear(bb->id(), linBound, bb);
 						if (edgeState.isBottom())
 							continue;
 					}
@@ -388,12 +468,14 @@ void PolyAnalysis::processBB(PPLManager *man, ai::CFGGraph &graph, MyHTable<int,
 #endif
                             edgeState.doRemoveUselessAvatars();
                             edgeState.doRemoveAllAvatars();
+#ifndef LINBOUND
 					if (bound >= 0) {
-						edgeState = edgeState.onLoopExit(bb->id(), bound);
+						edgeState = edgeState.onLoopExit(bb->id(), bound, bb);
 						if (edgeState.isBottom()) {
 							continue;
 						}
 					}
+#endif
 				}
 				edgeState.doFinalizeUpdate();
 				ana.check(*e, edgeState);
@@ -494,9 +576,6 @@ void PolyAnalysis::processCFG(CFG &cfg, state_t &s, MyHTable<int, PPLDomain> &lb
 
 	PDBG("Init state: " << s << endl)
 	cout << "Entering CFG: " << cfg.name() << endl;
-	auto curname = cfgname;
-	cfgname = cfg.name();
-
 	WorkListDriver<PPLManager, ai::CFGGraph, ai::EdgeStore<PPLManager, ai::CFGGraph>, PseudoTopoOrder> ana(*man, graph, store, _orders[cfg.index()]);
 
 	while (ana) {
@@ -505,7 +584,6 @@ void PolyAnalysis::processCFG(CFG &cfg, state_t &s, MyHTable<int, PPLDomain> &lb
 	}
 
 	cout << "Exiting CFG: " << cfg.name() << endl;
-	cfgname = curname;
 
 	Block *bb = graph.exit();
 	Block::EdgeIter edge(bb->ins());
@@ -546,6 +624,9 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	elm::log::Debug::setColorFlag(false);
 #endif
 
+    ConstraintExporter exporter;
+    exporter.resetFile();
+
     struct timeval now;
     gettimeofday(&now, nullptr);
 
@@ -562,12 +643,17 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 
 
 	CFG *entry = coll->get(0);
+	ROOT_CFG(entry) = entry;
 	state_t dummy;
 	ASSERT(dummy.getSummary() == nullptr);
 	SUMMARIZE(ws) = false;
 	MyHTable<int, PPLDomain> bounds;
 	MyHTable<int, int> static_bounds;
 	processCFG(*entry, dummy, bounds, true /* is entry */, false /* summarize */);
+	
+	// add non parametric loop bounds to the loop bounds
+	std::map<int,LoopBound> loop_bounds;
+
 #ifdef LINBOUND
 	cout << "PARAMETRIC LOOP BOUNDS: " << endl;
 	for (MyHTable<int, PPLDomain>::PairIterator it(bounds); it; it++) {
@@ -590,6 +676,10 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	for (CFGCollection::Iter iter2(coll); iter2; iter2++) {
 		for (CFG::BlockIter iter((*iter2)->blocks()); iter; iter++) {
 			Block *bb = (*iter);
+			
+			if(loop_bounds.size() == 0 && ROOT_CFG(bb->cfg()) != nullptr)
+				loop_bounds = LOOP_BOUNDS(ROOT_CFG(bb->cfg())->entry());
+
 			if (LOOP_HEADER(bb)) {
 				if (static_bounds.hasKey(bb->id())) {
 					MAX_ITERATION(bb) = static_bounds[bb->id()];
@@ -600,6 +690,10 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 				cout << "[" << (*iter2)->name() << "]"
 				     << "TOTAL_ITERATION(" << bb->id() << ") = " << TOTAL_ITERATION(bb) << endl;
 					 */
+				if(MAX_ITERATION(bb) >= 0){ // if found without error, add non parametric loop bounds to the file
+					LoopBound lb(false, MAX_ITERATION(bb), "");
+					loop_bounds.emplace(bb->id(), lb);
+				}
 			}
 		}
 		delete _orders[(*iter2)->index()];
@@ -609,6 +703,10 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 	for (CFGCollection::Iter iter2(coll); iter2; iter2++) {
 		for (CFG::BlockIter iter((*iter2)->blocks()); iter; iter++) {
 			Block *bb = (*iter);
+
+			if(loop_bounds.size() == 0 && ROOT_CFG(bb->cfg()) != nullptr)
+				loop_bounds = LOOP_BOUNDS(ROOT_CFG(bb->cfg())->entry());
+
 			if (LOOP_HEADER(bb)) {
 				cout << "[" << (*iter2)->name() << "]"
 				     << "MAX_ITERATION(" << bb->id() << ") = " << MAX_ITERATION(bb) << endl;
@@ -616,11 +714,34 @@ void PolyAnalysis::processWorkSpace(WorkSpace *ws) {
 				cout << "[" << (*iter2)->name() << "]"
 				     << "TOTAL_ITERATION(" << bb->id() << ") = " << TOTAL_ITERATION(bb) << endl;
 					 */
+				if(MAX_ITERATION(bb) >= 0){ // if found without error, add non parametric loop bounds to the file
+					LoopBound lb(false, MAX_ITERATION(bb), "");
+					loop_bounds.emplace(bb->id(), lb);
+				}
 			}
 		}
 		delete _orders[(*iter2)->index()];
 	}
 #endif
+    // export constraints
+    bool exported = false;
+     for (CFGCollection::Iter iter2(coll); iter2; iter2++) {
+        for (CFG::BlockIter iter((*iter2)->blocks()); iter; iter++) {
+            Block *bb = (*iter);
+            ConstraintExporter exp;
+	    if(ROOT_CFG(bb->cfg()) == nullptr)
+		    continue;
+	    OrderedElements order = EXPORT_ORDER(ROOT_CFG(bb->cfg())); //< order also contains non loop conditionals
+	    std::map<int,std::map<bool,Conditional>> loopConditions = LOOP_CONDITIONALS(ROOT_CFG(bb->cfg()));
+	    exp.exportOrderedConstraints(order, loopConditions);
+	    LoopBoundsExporter lbe;
+	    lbe.exportToFile(loop_bounds);
+	    exported = true;
+	    break;
+        }
+	if(exported)
+		break;
+    }
     cout << "Max variable count: " << max_vars << endl;
     cout << "Max constraint count:  " << max_cons << endl;
     struct timeval after;

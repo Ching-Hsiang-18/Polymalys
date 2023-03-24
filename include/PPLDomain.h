@@ -15,7 +15,8 @@
 // #include "Clp.h"
 #include "PolyCommon.h"
 #include "PolyWrap.h"
-
+#include "BranchConditionner.h"
+#include "LoopAnalyzer.h"
 
 namespace otawa {
 namespace poly {
@@ -95,7 +96,6 @@ class Ident {
 	inline bool equals(const Ident &b) const { return (_id == b._id) && (_type == b._type); }
 
 	void print(io::Output &out) const;
-
 
 	inline bool operator==(const Ident &i) const { return (_id == i._id) && (_type == i._type); }
 	inline bool operator!=(const Ident &i) const { return (_id != i._id) || (_type != i._type); }
@@ -416,10 +416,6 @@ private:
 	// };
 
   public:
-	
-	
-	void showTab(const Ident&);
-
 	/* Basic operations (constructor, destructor, copy, comparison) */
 
 	/**
@@ -668,6 +664,12 @@ private:
 	 * bounded.
 	 */
 	bound_t getLoopBound(int loopId) const;
+	
+	/**
+	 * Tries to find a parametric loop bound
+	 * @param b the loop header
+	 */
+	void computeParamBound(Block* b) const;
 
 	inline bound_t getBound(int loopId) const { 
 		if (bounds.length() <= loopId)
@@ -737,7 +739,7 @@ private:
 	 * @return The updated state.
 	 */
 
-	PPLDomain onBranch(bool taken) const;
+	PPLDomain onBranch(bool taken, Block* b) const;
 
 	/**
 	 * Process join and widening
@@ -770,8 +772,8 @@ private:
 	 * unreachable/unbounded)
 	 * @return The updated state.
 	 */
-	PPLDomain onLoopExit(int loop, int bound) const;
-	PPLDomain onLoopExitLinear(int loop, const PPLDomain &bound) const;
+	PPLDomain onLoopExit(int loop, int bound, Block* b) const;
+	PPLDomain onLoopExitLinear(int loop, const PPLDomain &bound, Block* b) const;
 
 	/* Operations that modify the state in-place */
 
@@ -1152,7 +1154,6 @@ private:
     int lca(const WVar &b1, const int s1, const WVar &n1, const WVar &b2, const int s2, const WVar &n2) const;
     bool mayIntersect(const WVar &b1, const int s1, const WVar &n1, const WVar &b2, const int s2, const WVar &n2) const;
     bool mustSupseteq(const WVar &b1, const int s1, const WVar &n1, const WVar &b2, const int s2, const WLinExpr &n2) const;
-
 
   private:
 	/* Private helper functions. Subject to changes, and should not be used directly. */

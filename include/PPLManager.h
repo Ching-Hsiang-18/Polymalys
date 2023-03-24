@@ -43,15 +43,10 @@ class PPLManager {
 	inline bool equals(const t &v1, const t &v2) { return v1.equals(v2); }
 
 	inline void enableSummary() { _init.enableSummary(); }
-
-	void setName(elm::String str) {
-		cfg_name = str;
-	}
   private:
 	t _init;
 	t _bot;
 	t _top;
-	elm::String cfg_name;
 };
 
 } // namespace poly

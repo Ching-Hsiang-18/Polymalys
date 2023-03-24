@@ -1,15 +1,20 @@
-CXXFLAGS=`otawa/bin/otawa-config otawa/oslice --cflags`
-LIBS=`otawa/bin/otawa-config otawa/oslice --libs`
+CXXFLAGS=`otawa-config otawa/oslice --cflags`
+LIBS=`otawa-config otawa/oslice --libs`
 LIBS+=-lppl
 
 CC=gcc
 CXX=g++
 
 
-CXXFLAGS+=-fPIC -Wall -DUSE_CLANG_COMPLETER -std=c++14 -O3 -march=native
+CXXFLAGS+= -g -fPIC -Wall -DUSE_CLANG_COMPLETER -std=c++14 -O3 -march=native
 #CXXFLAGS+=-fPIC -Wall -DUSE_CLANG_COMPLETER -std=c++14 -O0 -g
 
-all: poly.so
+default: poly.so install test_poly
+
+all: clean poly.so install test_poly
+
+test_poly:
+	cd tests;$(MAKE)
 
 dbg: CXXFLAGS += -DELM_LOG
 dbg: poly.so
@@ -17,17 +22,23 @@ dbg: poly.so
 debug: CXXFLAGS += -DPOLY_DEBUG
 debug: poly.so
 
-poly.so: poly_PolyAnalysis.o poly_PlugHook.o poly_PPLDomain.o poly_PPLManager.o poly_PolyWrap.o
-	$(CC) -shared -o poly.so poly_PolyAnalysis.o poly_PlugHook.o poly_PPLDomain.o poly_PPLManager.o poly_PolyWrap.o $(LIBS)
-	
+poly.so: poly_PolyAnalysis.o poly_PlugHook.o poly_PPLDomain.o poly_PPLManager.o poly_PolyWrap.o poly_BranchConditionner.o poly_LoopAnalyzer.o
+	$(CC) -shared -o poly.so poly_PolyAnalysis.o poly_PlugHook.o poly_PPLDomain.o poly_PPLManager.o poly_PolyWrap.o poly_BranchConditionner.o poly_LoopAnalyzer.o $(LIBS)
 
-poly_PolyAnalysis.o: poly_PolyAnalysis.cpp include/PolyAnalysis.h include/PPLDomain.h include/PolyWrap.h include/PPLManager.h include/PolyCommon.h include/MyHTable.h include/OrderedDriver.h
+poly_BranchConditionner.o: poly_BranchConditionner.cpp include/BranchConditionner.h include/PPLDomain.h include/PolyWrap.h include/PolyAnalysis.h
+	$(CXX) $(CXXFLAGS) -c poly_BranchConditionner.cpp -o poly_BranchConditionner.o
+
+poly_LoopAnalyzer.o: poly_BranchConditionner.cpp include/BranchConditionner.h include/PPLDomain.h include/PolyWrap.h include/PolyAnalysis.h
+	$(CXX) $(CXXFLAGS) -c poly_LoopAnalyzer.cpp -o poly_LoopAnalyzer.o
+
+
+poly_PolyAnalysis.o: poly_PolyAnalysis.cpp include/PolyAnalysis.h include/PPLDomain.h include/PolyWrap.h include/PPLManager.h include/PolyCommon.h include/MyHTable.h include/OrderedDriver.h include/BranchConditionner.h
 	$(CXX) $(CXXFLAGS) -c poly_PolyAnalysis.cpp -o poly_PolyAnalysis.o
 
 poly_PPLManager.o: poly_PPLManager.cpp include/PolyAnalysis.h include/PPLDomain.h include/PolyWrap.h include/PPLManager.h include/PolyCommon.h include/MyHTable.h include/OrderedDriver.h
 	$(CXX) $(CXXFLAGS) -c poly_PPLManager.cpp -o poly_PPLManager.o
 
-poly_PPLDomain.o: poly_PPLDomain.cpp include/PolyAnalysis.h include/PPLDomain.h include/PolyWrap.h include/PPLManager.h include/PolyCommon.h include/MyHTable.h include/OrderedDriver.h
+poly_PPLDomain.o: poly_PPLDomain.cpp include/PolyAnalysis.h include/PPLDomain.h include/PolyWrap.h include/PPLManager.h include/PolyCommon.h include/MyHTable.h include/OrderedDriver.h include/BranchConditionner.h
 	$(CXX) $(CXXFLAGS) -c poly_PPLDomain.cpp -o poly_PPLDomain.o
 
 poly_PlugHook.o: poly_PlugHook.cpp

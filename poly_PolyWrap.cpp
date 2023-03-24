@@ -7,6 +7,11 @@ namespace poly {
 using namespace elm::io;
 using namespace PPL;
 
+void parse(const coef_t& coef, char* buf){
+	gmp_snprintf(buf, sizeof(buf), "%Zd", &raw_value(coef));
+	buf[sizeof(buf) - 1] = 0;
+}
+
 output_t& operator<< (output_t& stream, const coef_t& coef) {
 	char buf[128];
 	gmp_snprintf(buf, sizeof(buf), "%Zd", &raw_value(coef));

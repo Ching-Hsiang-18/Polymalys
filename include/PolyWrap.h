@@ -20,6 +20,7 @@ class WCons;
 class WLinExpr;
 class WPoly;
 
+void parse(const coef_t& coef, char* buf);
 output_t& operator<< (output_t& stream, const coef_t&);
 output_t& operator<< (output_t& stream, const WLinExpr&);
 output_t& operator<< (output_t& stream, const WCons&);
