@@ -2,12 +2,15 @@
 
 Polymalys: Polyhedra-based Memory Analysis.
 
-* Version XX for Otawa XX
+* Version 1.1, December 2023
 
 ----
-## Author
+## Authors
 
-Clement Ballabriga <Clement.Ballabriga@nospamuniv-lille.fr>
+* Clement Ballabriga <Clement.Ballabriga@nospamuniv-lille.fr>
+* Julien Forget <Julien.Forget@nospamuniv-lille.fr>
+* Sandro Grebant <sandro.grebant@nospamuniv-lille.fr>
+* Giuseppe Lipari <giuseppe.lipari@nospamuniv-lille.fr>
 
 License: GPL 2.1 or higher.
 
@@ -21,9 +24,9 @@ Polymalys is a tool for static analysis of *binary* code. It discovers
 linear relations between data locations (i.e. memory locations as well
 as registers) of the code. The analysis relies on abstract
 interpretation using a polyhedra-based abstract domain. The current
-implementation exploits the discovered linear relations to compute upper
-bounds to loop iterations. For more information on the underlying
-theory, refer to [1].
+implementation exploits the discovered linear relations to compute
+upper bounds to loop iterations. For more information on the
+underlying theory, refer to [1].
 
 ## Requirements
 
